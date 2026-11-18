@@ -1882,6 +1882,8 @@ event	write request for	demande d'écriture de
 	Rename…	Renommer…
 	Switch Off	Éteindre
 	Switch On	Allumer
+	Load {} of {} W	Charge {} sur {} W
+	Breaker tripped	Disjoncteur déclenché
 	Take off the furniture	Retirer du meuble
 	Plug into	Brancher sur
 	Unplug	Débrancher

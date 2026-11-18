@@ -78,7 +78,8 @@ fn keyed_arg(spec: &Spec, start: usize, i: usize) -> bool {
     let first = spec.path.get(start);
     let group = matches!(first, Some(Tok::K("standby" | "vrrp" | "glbp"))) && i == start + 1;
     let eigrp_as = matches!(first, Some(Tok::K("ip"))) && matches!(i.checked_sub(1).and_then(|j| spec.path.get(j)), Some(Tok::K("eigrp")));
-    group || eigrp_as
+    let alias = matches!(first, Some(Tok::K("alias"))) && i == start + 2;
+    group || eigrp_as || alias
 }
 
 /// Runs `Knob` and `NoKnob`.
@@ -152,7 +153,28 @@ pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
             None => d.knobs.clear(s, &key),
         }
     }
-    Ok(if keep.is_some() { KEPT.to_string() } else { String::new() })
+    Ok(if keep.is_some() && !key.starts_with("alias ") { KEPT.to_string() } else { String::new() })
+}
+
+/// `show aliases`: what each alias stands for, by mode.
+pub(super) fn aliases(d: &netlabcraft_model::Device) -> String {
+    let mut s = String::new();
+    for scope in ["exec", "configure", "interface"] {
+        let mine: Vec<(&str, &str)> = d
+            .knobs
+            .global
+            .iter()
+            .filter_map(|(k, l)| k.strip_prefix(&format!("alias {scope} ")).map(|name| (name, l.splitn(4, ' ').nth(3).unwrap_or(""))))
+            .collect();
+        if mine.is_empty() {
+            continue;
+        }
+        s.push_str(&format!("{scope} mode aliases:\n"));
+        for (name, text) in mine {
+            s.push_str(&format!("  {name:<10} {text}\n"));
+        }
+    }
+    if s.is_empty() { "No aliases are configured (`alias exec NAME command`).".to_string() } else { s.trim_end().to_string() }
 }
 
 /// The global settings, for `show running-config`.
