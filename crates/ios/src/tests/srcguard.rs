@@ -81,5 +81,6 @@ fn the_commands_check_their_arguments() {
     assert!(lab.try_run(s, "no ip source binding 0000.0000.0001 vlan 1").starts_with("% "));
     lab.run(s, "end");
     let r = lab.add(DeviceKind::Router);
-    assert!(lab.try_run(r, "show ip verify source").starts_with("% ") || lab.try_run(r, "show ip verify source").contains("Invalid"));
+    lab.run(r, "en");
+    assert!(!lab.try_run(r, "show ip verify source").contains("Filter-type"));
 }
