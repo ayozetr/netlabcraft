@@ -95,6 +95,7 @@ labs! {
     lab_53_ike_with_certificates_and_expiry => "53-ike-with-certificates-and-expiry.md",
     lab_54_pki_enrolment_by_hand_and_ca_grant => "54-pki-enrolment-by-hand-and-ca-grant.md",
     lab_57_bgp_prefix_limits_and_timers => "57-bgp-prefix-limits-and-timers.md",
+    lab_58_aliases_reload_extended_ping_and_telnet_by_name => "58-aliases-reload-extended-ping-and-telnet-by-name.md",
     lab_61_troubleshoot_site_to_site_vpn => "61-troubleshoot-site-to-site-vpn.md",
     lab_62_troubleshoot_remote_access_vpn => "62-troubleshoot-remote-access-vpn.md",
     lab_63_troubleshoot_wireless_clients => "63-troubleshoot-wireless-clients.md",
