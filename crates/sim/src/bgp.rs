@@ -1552,7 +1552,7 @@ impl Sim {
         if self.bgp_damp_update(t, &new) {
             new = compute(t, &self.bgp.base, &self.bgp.analysis, &self.bgp.settled, &self.bgp_damped());
         }
-        let new6 = crate::bgp6::compute6(t, &new, &self.bgp.analysis6, &self.bgp.settled6);
+        let new6 = crate::bgp6::compute6(t, &self.bgp.base6, &new, &self.bgp.analysis, &self.bgp.settled, &self.bgp.analysis6, &self.bgp.settled6);
         self.bgp6_transitions(t, &new6);
         self.bgp.state6 = Some(new6);
         self.bgp.state = Some(new.clone());

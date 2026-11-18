@@ -1002,6 +1002,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip prefix-list NAME {seq <1-4294967294>\|{permit\|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]}` | config | router, switch | Delete one line of a prefix list |
 | `show ip prefix-list` | user, privileged | router, switch | Every prefix list |
 | `show ip prefix-list NAME` | user, privileged | router, switch | One prefix list |
+| `ipv6 prefix-list NAME [seq <1-4294967294>] {permit\|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]` | config | router, switch | Add a line to an IPv6 prefix list |
+| `no ipv6 prefix-list NAME` | config | router, switch | Delete an IPv6 prefix list |
+| `no ipv6 prefix-list NAME {seq <1-4294967294>\|{permit\|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]}` | config | router, switch | Delete one line of an IPv6 prefix list |
+| `show ipv6 prefix-list` | user, privileged | router, switch | Every IPv6 prefix list |
+| `show ipv6 prefix-list NAME` | user, privileged | router, switch | One IPv6 prefix list |
 | `show route-map` | user, privileged | router, switch | Every route map |
 | `show route-map NAME` | user, privileged | router, switch | One route map |
 | `ip policy route-map NAME` | interface, subinterface | router | Route the packets that arrive here by a route map first |
@@ -1070,6 +1075,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `match ip address [prefix-list] <name> [<name>...]` |  | router, switch | Match prefixes that prefix lists or access lists permit |
 | `no match ip address` |  | router, switch | Remove every address match |
 | `no match ip address [prefix-list] <name> [<name>...]` |  | router, switch | Remove these names from the address match |
+| `match ipv6 address prefix-list <name> [<name>...]` |  | router, switch | Match IPv6 prefixes that IPv6 prefix lists permit |
+| `no match ipv6 address` |  | router, switch | Remove every IPv6 address match |
+| `no match ipv6 address prefix-list <name> [<name>...]` |  | router, switch | Remove these names from the IPv6 address match |
 | `match metric <0-4294967295>` |  | router, switch | Match routes with this metric |
 | `no match metric` |  | router, switch | Remove the metric match |
 | `match tag <tag> [<tag>...]` |  | router, switch | Match routes that carry one of these tags |
@@ -1088,6 +1096,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no set as-path prepend` |  | router, switch | Leave the AS path alone |
 | `set ip next-hop A.B.C.D` |  | router, switch | Give the paths this next hop |
 | `no set ip next-hop` |  | router, switch | Leave the next hop alone |
+| `set ipv6 next-hop X:X::X` |  | router, switch | Give the IPv6 paths this next hop |
+| `no set ipv6 next-hop` |  | router, switch | Leave the IPv6 next hop alone |
 | `set origin {igp\|egp\|incomplete}` |  | router, switch | Give the paths this origin |
 | `no set origin` |  | router, switch | Leave the origin alone |
 | `ip community-list {standard\|expanded} NAME {permit\|deny} <community>...\|<regular expression>` | config | router, switch | Add a line to a community list |
@@ -1127,7 +1137,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no neighbor A.B.C.D\|NAME filter-list <1-500> {in\|out}` |  | router, switch | Stop filtering with that AS-path list |
 | `aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Advertise one summary while a more specific path exists |
 | `aggregate-address A.B.C.D A.B.C.D [summary-only] [as-set]` |  | router, switch | Advertise one summary while a more specific path exists |
+| `aggregate-address X:X::X/LEN` |  | router, switch | Advertise one IPv6 summary while a more specific path exists |
 | `no aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Stop summarising |
+| `no aggregate-address X:X::X/LEN` |  | router, switch | Stop summarising |
 | `no aggregate-address A.B.C.D A.B.C.D [summary-only] [as-set]` |  | router, switch | Stop summarising |
 | `maximum-paths <1-32>` |  | router, switch | Put up to this many equal external paths in the routing table |
 | `no maximum-paths` |  | router, switch | One path per prefix again |

@@ -1042,6 +1042,14 @@ pub enum Id {
     ShowIpPrefixList,
     ShowRouteMap,
     RouteMapEnter,
+    Prefix6ListLine,
+    NoPrefix6List,
+    NoPrefix6ListLine,
+    ShowIpv6PrefixList,
+    RmMatchAddress6,
+    NoRmMatchAddress6,
+    RmSetNextHop6,
+    NoRmSetNextHop6,
     // Policy-based routing (exec/pbr.rs).
     IpPolicyRouteMap,
     NoIpPolicyRouteMap,
@@ -3819,6 +3827,23 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(ShowIpPrefixList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("prefix-list")], "Every prefix list"),
     spec!(ShowIpPrefixList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("prefix-list"), Arg("NAME")], "One prefix list"),
+    spec!(
+        Prefix6ListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ipv6"), K("prefix-list"), Arg("NAME"), Rest("[seq <1-4294967294>] {permit|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]")],
+        "Add a line to an IPv6 prefix list"
+    ),
+    spec!(NoPrefix6List, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("prefix-list"), Arg("NAME")], "Delete an IPv6 prefix list"),
+    spec!(
+        NoPrefix6ListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("prefix-list"), Arg("NAME"), Rest("{seq <1-4294967294>|{permit|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]}")],
+        "Delete one line of an IPv6 prefix list"
+    ),
+    spec!(ShowIpv6PrefixList, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("prefix-list")], "Every IPv6 prefix list"),
+    spec!(ShowIpv6PrefixList, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("prefix-list"), Arg("NAME")], "One IPv6 prefix list"),
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map")], "Every route map"),
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map"), Arg("NAME")], "One route map"),
     spec!(
@@ -4081,6 +4106,21 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("match"), K("ip"), K("address"), Rest("[prefix-list] <name> [<name>...]")],
         "Remove these names from the address match"
     ),
+    spec!(
+        RmMatchAddress6,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("ipv6"), K("address"), Rest("prefix-list <name> [<name>...]")],
+        "Match IPv6 prefixes that IPv6 prefix lists permit"
+    ),
+    spec!(NoRmMatchAddress6, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("ipv6"), K("address")], "Remove every IPv6 address match"),
+    spec!(
+        NoRmMatchAddress6,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("match"), K("ipv6"), K("address"), Rest("prefix-list <name> [<name>...]")],
+        "Remove these names from the IPv6 address match"
+    ),
     spec!(RmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("match"), K("metric"), Arg("<0-4294967295>")], "Match routes with this metric"),
     spec!(NoRmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("metric")], "Remove the metric match"),
     spec!(RmMatchTag, Modes::ROUTE_MAP, Modes::BOTH, [K("match"), K("tag"), Rest("<tag> [<tag>...]")], "Match routes that carry one of these tags"),
@@ -4117,6 +4157,8 @@ pub static SPECS: &[Spec] = &[
     spec!(NoRmSetPrepend, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("as-path"), K("prepend")], "Leave the AS path alone"),
     spec!(RmSetNextHop, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("ip"), K("next-hop"), Arg("A.B.C.D")], "Give the paths this next hop"),
     spec!(NoRmSetNextHop, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ip"), K("next-hop")], "Leave the next hop alone"),
+    spec!(RmSetNextHop6, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("ipv6"), K("next-hop"), Arg("X:X::X")], "Give the IPv6 paths this next hop"),
+    spec!(NoRmSetNextHop6, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ipv6"), K("next-hop")], "Leave the IPv6 next hop alone"),
     spec!(RmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("origin"), Arg("{igp|egp|incomplete}")], "Give the paths this origin"),
     spec!(NoRmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("origin")], "Leave the origin alone"),
     spec!(
@@ -4317,7 +4359,15 @@ pub static SPECS: &[Spec] = &[
         [K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D"), Rest("[summary-only] [as-set]")],
         "Advertise one summary while a more specific path exists"
     ),
+    spec!(
+        BgpAggregate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("aggregate-address"), Arg("X:X::X/LEN")],
+        "Advertise one IPv6 summary while a more specific path exists"
+    ),
     spec!(NoBgpAggregate, Modes::BGP, Modes::BOTH, [K("no"), K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D")], "Stop summarising"),
+    spec!(NoBgpAggregate, Modes::BGP, Modes::BOTH, [K("no"), K("aggregate-address"), Arg("X:X::X/LEN")], "Stop summarising"),
     spec!(
         NoBgpAggregate,
         Modes::BGP,
