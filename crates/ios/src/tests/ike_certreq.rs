@@ -35,7 +35,7 @@ fn ikev1_main_mode_asks_for_certificates_and_the_exchange_still_works() {
     let asks: Vec<String> = lab.sim.trace().iter().filter(|e| e.summary.contains("CERTREQ")).map(|e| e.summary.clone()).collect();
     // Messages 3 and 4 each carry a request.
     assert!(asks.len() >= 2, "{asks:#?}");
-    assert!(asks.iter().all(|s| s.contains("[KE, Nonce, CERTREQ]")), "{asks:#?}");
+    assert!(asks.iter().all(|s| s.contains("[KE, NONCE, CERTREQ]")), "{asks:#?}");
     // A pre-shared key asks for nothing.
     let (mut lab, r1, _isp, r2, a) = sites_with_certificates();
     lab.run(r1, &v1_config(SITE1, "198.51.100.1", "pre-share"));
