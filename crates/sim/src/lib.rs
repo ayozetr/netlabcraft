@@ -1179,6 +1179,11 @@ pub struct Sim {
     /// Reloads that were asked for (`reload in|at`): the simulated time each device restarts at,
     /// and the reason typed.
     reloads: BTreeMap<DeviceId, (u64, String)>,
+    /// When each device last started (simulated µs) and why; a device never restarted is absent
+    /// (it started with the simulation).
+    boots: BTreeMap<DeviceId, (u64, String)>,
+    /// The reason of a scheduled reload that came due, until `reset_device` takes it.
+    due_reasons: BTreeMap<DeviceId, String>,
     seq: u64,
     queue: BinaryHeap<Reverse<Queued>>,
     state: BTreeMap<DeviceId, DevState>,
@@ -1341,9 +1346,22 @@ impl Sim {
         let now = self.now;
         let due: Vec<DeviceId> = self.reloads.iter().filter(|(_, (at, _))| *at <= now).map(|(d, _)| *d).collect();
         for d in &due {
-            self.reloads.remove(d);
+            if let Some((_, why)) = self.reloads.remove(d) {
+                self.due_reasons.insert(*d, why);
+            }
         }
         due
+    }
+
+    /// How long the device has been running (microseconds): since it last restarted, else since
+    /// the simulation began.
+    pub fn uptime_us(&self, d: DeviceId) -> u64 {
+        self.now.saturating_sub(self.boots.get(&d).map_or(0, |b| b.0))
+    }
+
+    /// Why the device last restarted; `None` when it has not restarted since the simulation began.
+    pub fn last_reload_reason(&self, d: DeviceId) -> Option<&str> {
+        self.boots.get(&d).map(|b| b.1.as_str())
     }
 
     /// Simulated time, in microseconds.
@@ -1532,6 +1550,11 @@ impl Sim {
 
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
+        let why = self.due_reasons.remove(&d).or_else(|| self.reloads.get(&d).map(|(_, w)| w.clone()));
+        let why = why.filter(|w| !w.trim().is_empty()).unwrap_or_else(|| "reload requested".to_string());
+        if self.boots.len() < MAX_MAC_ENTRIES || self.boots.contains_key(&d) {
+            self.boots.insert(d, (self.now, why.chars().take(80).collect()));
+        }
         self.reloads.remove(&d);
         self.state.remove(&d);
         self.l2.forget(d);
