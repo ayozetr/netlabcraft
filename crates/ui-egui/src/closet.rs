@@ -1583,7 +1583,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             }
             let boards: Vec<(u32, String)> =
                 t.furniture_in(place).iter().filter(|f| f.kind == FurnitureKind::CablePegboard).map(|f| (f.id, f.name.clone())).collect();
-            crate::cable_window::menu_items(app, ui, l.a, true);
+            crate::cable_window::menu_items(app, ui, netlabcraft_model::cable_ref::CableRef::Link(l.a), true);
             if !boards.is_empty() {
                 ui.menu_button(tl("Hang on a Peg"), |ui| {
                     for (id, n) in &boards {
