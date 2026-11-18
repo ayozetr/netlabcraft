@@ -40,6 +40,7 @@ pub mod channel;
 pub mod control;
 pub mod debug;
 mod debug_watch;
+pub mod dot1x;
 pub use debug::DebugKind;
 pub mod dhcpsrv;
 pub mod eigrp;
@@ -82,6 +83,7 @@ pub mod sip;
 pub mod sla;
 pub mod snmp;
 mod span;
+pub mod storm;
 pub mod stp;
 #[cfg(test)]
 mod tests;
@@ -89,9 +91,11 @@ mod tests;
 mod tests_cell;
 #[cfg(test)]
 mod tests_lang;
+pub mod udld;
 pub mod v6;
 pub mod voice;
 pub mod vpn;
+pub mod vrf;
 pub mod vtp;
 pub mod wlan;
 pub mod zfw;
@@ -159,6 +163,8 @@ pub struct L3If {
     pub net: Ipv4Net,
     pub mac: MacAddr,
     pub name: String,
+    /// The VRF the interface belongs to (`ip vrf forwarding`); `None` for the global table.
+    pub vrf: Option<String>,
 }
 
 /// The layer-3 interfaces a device has configured and not shut down (whether or not cabled).
@@ -170,19 +176,43 @@ pub fn svi_mac(d: &Device) -> MacAddr {
     MacAddr::local(d.id, 0xfffe)
 }
 
+/// The interfaces of the global routing table: none that a VRF holds. Everything that computes
+/// routes, sends control traffic or owns addresses reads these; the VRFs are seen through
+/// [`l3_ifaces_all`] and their own routing tables (see `vrf.rs`).
 pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
+    let mut all = l3_ifaces_all(d);
+    if !d.vrfs.is_empty() {
+        all.retain(|i| i.vrf.is_none());
+    }
+    all
+}
+
+/// Every layer-3 interface, the ones in a VRF included (marked in [`L3If::vrf`]).
+pub fn l3_ifaces_all(d: &Device) -> Vec<L3If> {
+    let mut all = l3_ifaces_raw(d);
+    if !d.vrfs.is_empty() {
+        for i in &mut all {
+            i.vrf = d.vrf_of(&i.name).map(str::to_string);
+        }
+    }
+    all
+}
+
+fn l3_ifaces_raw(d: &Device) -> Vec<L3If> {
     if d.kind == DeviceKind::Switch {
         let mac = svi_mac(d);
         let mut out: Vec<L3If> = d
             .svis
             .iter()
             .filter(|s| !s.shutdown)
-            .filter_map(|s| s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan) }))
+            .filter_map(|s| {
+                s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan), vrf: None })
+            })
             .collect();
         // Routed ports of a multilayer switch.
         for (i, p) in d.ports.iter().enumerate() {
             if let (true, false, Some(net)) = (p.routed, p.shutdown, p.ip) {
-                out.push(L3If { port: i, sub: None, vlan: None, net, mac: p.mac, name: p.name.clone() });
+                out.push(L3If { port: i, sub: None, vlan: None, net, mac: p.mac, name: p.name.clone(), vrf: None });
             }
         }
         out.extend(loopback::loopback_ifaces(d));
@@ -195,23 +225,29 @@ pub fn l3_ifaces(d: &Device) -> Vec<L3If> {
     // A router's switch card: its VLAN interfaces.
     if d.has_switch_card() {
         let mac = svi_mac(d);
-        out.extend(
-            d.svis.iter().filter(|s| !s.shutdown).filter_map(|s| {
-                s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan) })
-            }),
-        );
+        out.extend(d.svis.iter().filter(|s| !s.shutdown).filter_map(|s| {
+            s.ip.map(|net| L3If { port: SVI_PORT, sub: None, vlan: Some(s.vlan.get()), net, mac, name: format!("Vlan{}", s.vlan), vrf: None })
+        }));
     }
     for (i, p) in d.ports.iter().enumerate() {
         if p.shutdown || d.switch_card_port(i) {
             continue;
         }
         if let Some(net) = p.ip {
-            out.push(L3If { port: i, sub: None, vlan: None, net, mac: p.mac, name: p.name.clone() });
+            out.push(L3If { port: i, sub: None, vlan: None, net, mac: p.mac, name: p.name.clone(), vrf: None });
         }
         if d.kind == DeviceKind::Router {
             for s in &p.subifs {
                 if let (Some(net), Some(v), false) = (s.ip, s.vlan, s.shutdown) {
-                    out.push(L3If { port: i, sub: Some(s.number), vlan: Some(v.get()), net, mac: p.mac, name: format!("{}.{}", p.name, s.number) });
+                    out.push(L3If {
+                        port: i,
+                        sub: Some(s.number),
+                        vlan: Some(v.get()),
+                        net,
+                        mac: p.mac,
+                        name: format!("{}.{}", p.name, s.number),
+                        vrf: None,
+                    });
                 }
             }
         }
@@ -912,6 +948,24 @@ fn classful_net(a: Ipv4Addr) -> Ipv4Net {
     Ipv4Net::new(a, prefix).network()
 }
 
+impl DevState {
+    /// The ARP table of a VRF, or the global one.
+    pub(crate) fn arp_mut(&mut self, vrf: Option<&str>) -> &mut BTreeMap<Ipv4Addr, ArpEntry> {
+        match vrf {
+            None => &mut self.arp,
+            Some(v) => self.vrf_arp.entry(v.to_string()).or_default(),
+        }
+    }
+
+    /// When each address was last asked for, in a VRF or in the global table.
+    pub(crate) fn asked_mut(&mut self, vrf: Option<&str>) -> &mut BTreeMap<Ipv4Addr, u64> {
+        match vrf {
+            None => &mut self.arp_asked,
+            Some(v) => self.vrf_arp_asked.entry(v.to_string()).or_default(),
+        }
+    }
+}
+
 /// A learned ARP binding.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ArpEntry {
@@ -1017,6 +1071,10 @@ const MAX_POOL_SCAN: u32 = 65_536;
 #[derive(Debug, Clone, Default)]
 pub struct DevState {
     pub arp: BTreeMap<Ipv4Addr, ArpEntry>,
+    /// The ARP table of each VRF (an address in one VRF is not the same host as the same address
+    /// in another).
+    pub vrf_arp: BTreeMap<String, BTreeMap<Ipv4Addr, ArpEntry>>,
+    vrf_arp_asked: BTreeMap<String, BTreeMap<Ipv4Addr, u64>>,
     /// Keyed by (VLAN, MAC).
     pub macs: BTreeMap<(u16, MacAddr), MacEntry>,
     /// DHCP servers: addresses handed out.
@@ -1160,6 +1218,10 @@ pub struct DevState {
     pub(crate) reasm: netlabcraft_wire::ipfrag::Reassembly,
     /// PPPoE: a dialer's inbox while it waits, and a concentrator's negotiations.
     pub(crate) pppoe: pppoe::State,
+    /// Switches: the 802.1X login of each controlled port.
+    pub(crate) dot1x: BTreeMap<usize, dot1x::PortAuth>,
+    /// Hosts: the 802.1X supplicant of each wired port.
+    pub(crate) supp: BTreeMap<usize, dot1x::Supp>,
 }
 
 /// One frame delivered across a cable.
@@ -1392,6 +1454,8 @@ pub struct Sim {
     joined: BTreeMap<DeviceId, wlan::Joined>,
     /// 802.1X logins waiting for a RADIUS answer, by the controller's source port.
     dot1x: BTreeMap<u16, wlan::Dot1xWait>,
+    /// Wired 802.1X logins waiting for a RADIUS answer, by the switch's source port.
+    dot1x_wired: BTreeMap<u16, dot1x::WiredWait>,
     /// WPA2-Personal master keys by (passphrase, SSID).
     pmks: BTreeMap<(String, String), [u8; 32]>,
     air_seq: u16,
@@ -1422,6 +1486,17 @@ pub struct Sim {
     peap_srv: peap::Sessions,
     /// PPPoE sessions the dialers heard end, for the lab to drop (see [`Sim::take_pppoe_ended`]).
     pppoe_ended: Vec<(DeviceId, u16)>,
+    /// One simulation per VRF, on the lab as that VRF sees it (see `vrf.rs`).
+    vrf_subs: BTreeMap<String, vrf::VrfSim>,
+    /// The VRF the packet being handled belongs to (`None`: the global table).
+    cur_vrf: Option<String>,
+    /// The lab the VRF simulations were last made from.
+    vrf_src: Option<Topology>,
+    /// Storm control: what each port took in, by kind of traffic.
+    storm_win: BTreeMap<(DeviceId, usize, netlabcraft_model::l2sec::StormKind), storm::Window>,
+    /// UDLD: the last probe each switch port heard, and the ports UDLD shut.
+    udld_heard: BTreeMap<(DeviceId, usize), udld::Heard>,
+    udld_shut: std::collections::BTreeSet<(DeviceId, usize)>,
 }
 
 impl Sim {
@@ -1715,11 +1790,18 @@ impl Sim {
         self.state.get_mut(&d).is_some_and(|st| st.arp.remove(&ip).is_some())
     }
 
+    /// Forgets one ARP entry of a VRF; whether there was one.
+    pub fn forget_arp_vrf(&mut self, d: DeviceId, vrf: &str, ip: Ipv4Addr) -> bool {
+        self.state.get_mut(&d).is_some_and(|st| st.arp_mut(Some(vrf)).remove(&ip).is_some())
+    }
+
     /// Empties a device's ARP cache.
     pub fn clear_arp(&mut self, d: DeviceId) {
         if let Some(st) = self.state.get_mut(&d) {
             st.arp.clear();
             st.arp_asked.clear();
+            st.vrf_arp.clear();
+            st.vrf_arp_asked.clear();
         }
     }
 
@@ -1729,6 +1811,7 @@ impl Sim {
         self.state.retain(|id, _| t.device(*id).is_some());
         self.log_cfg = t.devices.iter().map(|d| (d.id, logcfg::LogCfg::of(d))).filter(|(_, c)| *c != logcfg::LogCfg::default()).collect();
         self.note_links(t);
+        self.dot1x_sync(t);
         // Ports reset by `shutdown`/`no shutdown`, or no longer secured, forget what they learned.
         for (id, st) in &mut self.state {
             if let Some(d) = t.device(*id) {
@@ -1740,6 +1823,13 @@ impl Sim {
             st.macs.retain(|_, e| port_up(t, End { device: *id, port: e.port }));
             let ifs = up_ifaces(t, d);
             st.arp.retain(|ip, e| ifs.iter().any(|i| i.name == e.iface && i.net.contains(*ip)));
+            if !st.vrf_arp.is_empty() {
+                let all = l3_ifaces_all(d);
+                for (name, table) in &mut st.vrf_arp {
+                    table.retain(|ip, e| all.iter().any(|i| i.vrf.as_deref() == Some(name.as_str()) && i.name == e.iface && i.net.contains(*ip)));
+                }
+                st.vrf_arp.retain(|_, table| !table.is_empty());
+            }
             st.pending.retain(|p| ifs.iter().any(|i| i.name == p.iface.name));
             let ifs6 = v6::up_ifaces6(t, d);
             st.nd.retain(|_, e| ifs6.iter().any(|i| i.name == e.iface));
@@ -1757,6 +1847,7 @@ impl Sim {
             self.eigrp_refresh(t);
         }
         self.bgp_refresh(t);
+        self.vrf_sync(t);
         // VRRP's master down interval counts from the change.
         if t.devices.iter().any(|d| !d.fhrp.vrrp.is_empty()) {
             let _ = self.fhrp_roles(t);
@@ -1788,6 +1879,10 @@ impl Sim {
         }
         // A monitor destination carries the copies of its session and nothing else.
         if t.device(from.device).is_some_and(|d| Sim::span_destination(d, from.port)) {
+            return false;
+        }
+        // An 802.1X port that has not authorized its host sends nothing but EAPOL.
+        if self.dot1x_egress_blocked(t, from, &frame) {
             return false;
         }
         let frame = self.phone_tag(t, from, frame);
@@ -1824,13 +1919,21 @@ impl Sim {
 
     /// Processes events up to `deadline`, stopping early when `stop` says so. Returns whether
     /// it stopped early.
-    fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
+    fn advance(&mut self, t: &Topology, deadline: u64, stop: impl FnMut(&Sim) -> bool) -> bool {
+        self.vrf_sync(t);
+        let stopped = self.advance_global(t, deadline, stop);
+        self.vrf_follow();
+        stopped
+    }
+
+    fn advance_global(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
         self.debug_watch(t);
         self.send_rstp_handshakes(t);
         self.l2_tick(t);
         self.wlan_sync(t);
+        self.dot1x_kick(t);
         self.cell_sync(t);
         self.flush_syslog(t);
         self.flush_netflow(t);
@@ -2059,6 +2162,9 @@ impl Sim {
             }
         };
         let pcp = netlabcraft_wire::qos::frame_pcp(bytes);
+        if f.ethertype == netlabcraft_wire::wlan::ETHERTYPE_EAPOL && d.kind.is_host() {
+            return self.dot1x_supplicant_in(t, d, at.port, &f);
+        }
         match d.kind {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
             DeviceKind::Switch => self.switch_in_counted(t, d, at, f, pcp, hops),
@@ -2403,6 +2509,11 @@ impl Sim {
 
     /// [`Sim::route`] for a flow: among equal paths, the one this source and destination take.
     pub fn route_flow(&mut self, t: &Topology, d: &Device, src: Ipv4Addr, dst: Ipv4Addr) -> Option<(L3If, Ipv4Addr)> {
+        if let Some(v) = self.cur_vrf.clone()
+            && d.vrf(&v).is_some()
+        {
+            return self.vrf_route(d, &v, src, dst);
+        }
         let e = self.eigrp_routes(t, d);
         let o = self.ospf_routes(t, d);
         let r = self.rip_routes(t, d);
@@ -2833,6 +2944,10 @@ impl Sim {
             self.storm = true;
             return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
         }
+        // EAPOL is 802.1X's: a controlled port answers it, any other port stops it.
+        if f.ethertype == netlabcraft_wire::wlan::ETHERTYPE_EAPOL {
+            return self.dot1x_switch_in(t, d, in_port, &f);
+        }
         // Spanning tree takes its BPDUs (the tree itself is computed), LLDP its advertisements.
         if netlabcraft_wire::control::link_local(f.dst) {
             self.debug_link_local(d, in_port, &f);
@@ -2841,6 +2956,9 @@ impl Sim {
         // Off a lightweight AP's radio, a centrally switched host's frame goes to the controller.
         if let Some(r) = self.central_in(t, d, in_port, &f) {
             return r;
+        }
+        if let Some(why) = self.dot1x_ingress(d, in_port) {
+            return Err(why);
         }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
@@ -2852,7 +2970,8 @@ impl Sim {
                     return Err("tagged frame on an access port".into());
                 } else {
                     // Off an access point's radio: the VLAN of the sender's WLAN.
-                    wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan)
+                    self.dot1x_vlan(d, in_port)
+                        .unwrap_or_else(|| wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan))
                 }
             }
             SwitchportMode::Trunk => {
@@ -2880,6 +2999,7 @@ impl Sim {
             }
             return Err(format!("port blocked by spanning tree (VLAN {vlan})"));
         }
+        self.storm_in(t, d, in_port, vlan, &f)?;
         self.l2_switch_in(d, in_port, vlan, &f)?;
         let f = self.snoop_option82(d, in_port, vlan, f)?;
         let (f, cos) = self.mls_qos_in(t, d, in_port, f, pcp);
@@ -2975,7 +3095,7 @@ impl Sim {
                     (Some(p) != in_port || is_ap_radio(t, End { device: d.id, port: p }))
                         && !chm.hidden(p)
                         && !chm.suspended(p)
-                        && carries(t, d, p, vlan)
+                        && self.dot1x_carries(d, p, vlan).unwrap_or_else(|| carries(t, d, p, vlan))
                         && !vtp::pruned(t, d, p, vlan)
                         && snooped.as_ref().is_none_or(|s| s.contains(&p))
                 })
@@ -3090,7 +3210,7 @@ impl Sim {
         {
             return self.dhcp_client_in(d, msg);
         }
-        let ifc = l3_ifaces(d).into_iter().find(|i| i.port == in_port && i.vlan == f.vlan).ok_or_else(|| match f.vlan {
+        let ifc = l3_ifaces_all(d).into_iter().find(|i| i.port == in_port && i.vlan == f.vlan).ok_or_else(|| match f.vlan {
             Some(v) => format!("no subinterface for VLAN {v}"),
             None => "the interface has no IP address".to_string(),
         })?;
@@ -3107,11 +3227,15 @@ impl Sim {
         } else {
             explain::Step::ForMe { iface: ifc.name.clone() }
         });
-        match f.ethertype {
+        // What is handled from here on, answers included, belongs to the interface's VRF.
+        let saved = std::mem::replace(&mut self.cur_vrf, ifc.vrf.clone());
+        let r = match f.ethertype {
             ETHERTYPE_ARP => self.arp_in(t, d, &ifc, &f.payload),
             ETHERTYPE_IPV4 => self.ip_in(t, d, &ifc, &f.payload),
             other => Err(format!("ethertype 0x{other:04x} not understood")),
-        }
+        };
+        self.cur_vrf = saved;
+        r
     }
 
     fn arp_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
@@ -3126,7 +3250,7 @@ impl Sim {
         }
         // An off-subnet sender is only accepted as the answer to our own question (a proxy
         // ARP reply for a route out of this interface).
-        let asked = a.op == ArpOp::Reply && self.state.get(&d.id).is_some_and(|st| st.arp_asked.contains_key(&a.sender_ip));
+        let asked = a.op == ArpOp::Reply && self.st(d.id).asked_mut(ifc.vrf.as_deref()).contains_key(&a.sender_ip);
         if !ifc.net.contains(a.sender_ip) && !asked {
             return Err(format!("ARP from {} is not on {}", a.sender_ip, ifc.net.network()));
         }
@@ -3141,8 +3265,9 @@ impl Sim {
             || (netlabcraft_model::firewall::is_firewall(d) && Sim::fw_owns(d, ifc, a.target_ip));
         let now = self.now;
         let st = self.st(d.id);
-        if (for_me || st.arp.contains_key(&a.sender_ip)) && (st.arp.len() < MAX_ARP_ENTRIES || st.arp.contains_key(&a.sender_ip)) {
-            st.arp.insert(a.sender_ip, ArpEntry { mac: a.sender_mac, learned_us: now, iface: ifc.name.clone() });
+        let table = st.arp_mut(ifc.vrf.as_deref());
+        if (for_me || table.contains_key(&a.sender_ip)) && (table.len() < MAX_ARP_ENTRIES || table.contains_key(&a.sender_ip)) {
+            table.insert(a.sender_ip, ArpEntry { mac: a.sender_mac, learned_us: now, iface: ifc.name.clone() });
         }
         // Packets that were waiting for this address can go now.
         let ready: Vec<Pending> = {
@@ -3220,7 +3345,8 @@ impl Sim {
         let hsrp = udp_port == Some(netlabcraft_wire::control::HSRP_PORT);
         let ospf_unicast = ip.protocol == netlabcraft_wire::control::PROTO_OSPF && ip.dst == ifc.net.addr;
         if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) || ospf_unicast {
-            if d.kind.is_host() {
+            // A VRF's routing protocols run in its own simulation (see `vrf.rs`).
+            if d.kind.is_host() || ifc.vrf.is_some() {
                 return Ok(());
             }
             let debug = self.state.get(&d.id).map_or((false, false, false, false), |s| {
@@ -3408,7 +3534,7 @@ impl Sim {
                 from_outside = true;
             }
         }
-        let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst)
+        let mine = l3_ifaces_all(d).iter().any(|i| i.vrf == ifc.vrf && i.net.addr == ip.dst)
             || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst)
             || self.ra_owns(d, ip.dst);
         if mine || ip.dst == Ipv4Addr::BROADCAST || (ifc.net.prefix < 31 && ip.dst == ifc.net.broadcast()) {
@@ -3533,6 +3659,9 @@ impl Sim {
             }
             if let Some(r) = self.voice_udp_in(t, d, &ip, &u) {
                 return r;
+            }
+            if u.src_port == netlabcraft_wire::radius::RADIUS_PORT && self.dot1x_wired.contains_key(&u.dst_port) {
+                return self.dot1x_radius_answer(t, d, &u);
             }
             if let Some(r) = self.wlan_udp_in(t, d, &ip, &u) {
                 return r;
@@ -3802,7 +3931,12 @@ impl Sim {
             return Ok(());
         }
         let now = self.now;
-        let known = self.st(d.id).arp.get(&nh).filter(|e| now.saturating_sub(e.learned_us) < ARP_AGING_US && e.iface == out.name).map(|e| e.mac);
+        let known = self
+            .st(d.id)
+            .arp_mut(out.vrf.as_deref())
+            .get(&nh)
+            .filter(|e| now.saturating_sub(e.learned_us) < ARP_AGING_US && e.iface == out.name)
+            .map(|e| e.mac);
         if let Some(mac) = known {
             self.note(explain::Step::ArpKnown { ip: nh, mac });
             let frame = Frame { dst: mac, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_IPV4, payload: datagram };
@@ -3818,12 +3952,13 @@ impl Sim {
         if host && st.pending.len() < MAX_PENDING {
             st.pending.push(Pending { next_hop: nh, iface: out.clone(), datagram, since: now });
         }
-        let ask = st.arp_asked.get(&nh).is_none_or(|at| now.saturating_sub(*at) >= ARP_RETRY_US);
+        let asked = st.asked_mut(out.vrf.as_deref());
+        let ask = asked.get(&nh).is_none_or(|at| now.saturating_sub(*at) >= ARP_RETRY_US);
         if ask {
-            if st.arp_asked.len() > MAX_ARP_ENTRIES {
-                st.arp_asked.clear();
+            if asked.len() > MAX_ARP_ENTRIES {
+                asked.clear();
             }
-            st.arp_asked.insert(nh, now);
+            asked.insert(nh, now);
             let req = Arp { op: ArpOp::Request, sender_mac: out.mac, sender_ip: out.net.addr, target_mac: MacAddr::ZERO, target_ip: nh };
             let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_ARP, payload: req.encode() };
             self.l3_emit(t, d, out, frame);
@@ -4488,7 +4623,8 @@ impl Sim {
         {
             return Ok(i.net.addr);
         }
-        let ifs = l3_ifaces(d);
+        let mut ifs = l3_ifaces_all(d);
+        ifs.retain(|i| i.vrf == self.cur_vrf);
         // A host with two radios (Wi-Fi and cellular) uses the one that is up, Wi-Fi first.
         let up = if d.kind.is_host() { up_ifaces(t, d) } else { Vec::new() };
         let Some(first) = up.first().or(ifs.first()) else {
@@ -4513,11 +4649,17 @@ impl Sim {
         timeout: u64,
         source: Option<Ipv4Addr>,
         df: bool,
+        vrf: Option<String>,
     ) -> Result<Probe, SimError> {
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
         let src = match source {
             Some(s) => s,
-            None => self.source_for(t, d, dst)?,
+            None => {
+                let saved = std::mem::replace(&mut self.cur_vrf, vrf.clone());
+                let found = self.source_for(t, d, dst);
+                self.cur_vrf = saved;
+                found?
+            }
         };
         self.next_echo_id = self.next_echo_id.wrapping_add(1);
         let id = self.next_echo_id;
@@ -4530,11 +4672,14 @@ impl Sim {
             payload: Icmp::EchoRequest { id, seq, data: vec![0xab; size.min(17_996)] }.encode(),
         };
         // An echo to ourselves never touches a cable.
-        if l3_ifaces(d).iter().any(|i| i.net.addr == dst) {
+        if l3_ifaces_all(d).iter().any(|i| i.vrf == vrf && i.net.addr == dst) {
             return Ok(Probe::Reply { from: dst.into(), rtt_us: 0 });
         }
         let sent = self.now;
-        if self.send_ip_df(t, d, ip, df).is_err() && !d.routes_ip() {
+        let saved = std::mem::replace(&mut self.cur_vrf, vrf.clone());
+        let sent_ok = self.send_ip_df(t, d, ip, df);
+        self.cur_vrf = saved;
+        if sent_ok.is_err() && !d.routes_ip() {
             return Ok(Probe::Timeout);
         }
         let matches = |s: &Sim| s.state.get(&dev).is_some_and(|st| st.icmp.iter().any(|e| e.id == id && e.seq == seq));
@@ -4560,7 +4705,23 @@ impl Sim {
         let ttl = opts.ttl.unwrap_or(default_ttl(kind)).max(1);
         let mut out = Vec::with_capacity(usize::from(count));
         for seq in 1..=count {
-            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us, opts.source, opts.df)?);
+            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us, opts.source, opts.df, None)?);
+        }
+        Ok(out)
+    }
+
+    /// [`Sim::ping`] with the echo requests routed in a VRF (`ping vrf NAME`).
+    pub fn ping_vrf(&mut self, t: &Topology, dev: DeviceId, vrf: &str, dst: Ipv4Addr, opts: PingOptions) -> Result<Vec<Probe>, SimError> {
+        let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
+        if d.vrf(vrf).is_none() {
+            return Err(SimError::NoSource(format!("{} has no VRF {vrf}", d.name)));
+        }
+        self.vrf_sync(t);
+        let count = opts.count.clamp(1, 1_000);
+        let ttl = opts.ttl.unwrap_or(default_ttl(d.kind)).max(1);
+        let mut out = Vec::with_capacity(usize::from(count));
+        for seq in 1..=count {
+            out.push(self.probe(t, dev, dst, ttl, seq, opts.size, opts.timeout_us, opts.source, opts.df, Some(vrf.to_string()))?);
         }
         Ok(out)
     }
@@ -4571,7 +4732,7 @@ impl Sim {
         for ttl in 1..=max_hops.clamp(1, 64) {
             let mut probes = Vec::new();
             for seq in 1..=3 {
-                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us, None, false)?);
+                probes.push(self.probe(t, dev, dst, ttl, seq, 32, timeout_us, None, false, None)?);
             }
             let done = probes.iter().any(|p| matches!(p, Probe::Reply { .. } | Probe::Unreachable { .. }));
             hops.push(Hop { ttl, probes });

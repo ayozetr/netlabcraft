@@ -37,6 +37,7 @@ pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
 pub mod md5;
+pub mod pim;
 pub mod ripng;
 pub mod rsa;
 pub mod vrrp;
@@ -70,6 +71,7 @@ pub mod modp;
 pub mod mst;
 pub mod ssh;
 pub mod tls;
+pub mod udld;
 
 /// Why bytes didn't decode.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -606,6 +608,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                     igmp::PROTO_IGMP => match igmp::Igmp::decode(&ip.payload) {
                         Ok(m) => (Protocol::Other, format!("{} {route}{tag}", m.describe())),
                         Err(e) => (Protocol::Other, format!("IGMP ({e}) {route}{tag}")),
+                    },
+                    pim::PROTO_PIM => match pim::Pim::decode(&ip.payload) {
+                        Ok(m) => (Protocol::Other, format!("{} {route}{tag}", m.describe())),
+                        Err(e) => (Protocol::Other, format!("PIM ({e}) {route}{tag}")),
                     },
                     PROTO_ICMP => {
                         let what = match Icmp::decode(&ip.payload) {

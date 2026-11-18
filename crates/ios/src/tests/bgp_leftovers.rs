@@ -72,10 +72,10 @@ fn without_the_default_ipv4_unicast_a_neighbour_must_be_activated() {
     lab.run(r2, "conf t\nrouter bgp 65002\nno neighbor 10.0.12.1 activate\nend");
     advance(&mut lab, 4);
     assert!(!lab.run(r2, "show ip bgp").contains("172.16.1.0/24"));
-    // Only IPv4 unicast exists.
+    // Only IPv4 and IPv6 unicast exist.
     lab.run(r2, "conf t\nrouter bgp 65002");
-    let v6 = lab.try_run(r2, "address-family ipv6 unicast");
-    assert!(v6.starts_with("% Only the IPv4 unicast"), "{v6}");
+    let vpn = lab.try_run(r2, "address-family vpnv4");
+    assert!(vpn.starts_with("% Only the IPv4 and IPv6 unicast"), "{vpn}");
 }
 
 #[test]

@@ -41,9 +41,16 @@ const DEFAULT_ON: &[&str] = &[
 /// Settings the simulator acts on: they are kept like the others, but the console does not say
 /// they change nothing.
 const ACTIVE: &[&str] = &[
+    "aaa authentication dot1x default",
     "absolute-timeout",
+    "authentication event fail action authorize vlan",
+    "authentication event no-response action authorize vlan",
+    "authentication port-control",
     "cdp holdtime",
     "cdp timer",
+    "dot1x pae authenticator",
+    "dot1x system-auth-control",
+    "dot1x timeout tx-period",
     "exec-timeout",
     "ip classless",
     "ip icmp rate-limit unreachable",
@@ -116,7 +123,8 @@ pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
             }
             Tok::Arg(p) => {
                 let v = check(p, next.next().map_or("", String::as_str))?;
-                if p.starts_with('{') || keyed_arg(spec, start, i) {
+                let single = matches!(spec.path.get(start + 1), Some(Tok::K("port-control")));
+                if (p.starts_with('{') && !single) || keyed_arg(spec, start, i) {
                     key.push(v.clone());
                 }
                 words.push(v);
