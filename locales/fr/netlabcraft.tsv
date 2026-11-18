@@ -2397,3 +2397,5 @@ furniture	Table	Table
 	no clock rate on the DCE end	pas de débit d'horloge côté DCE
 	the two ends use different encapsulations	les deux extrémités utilisent des encapsulations différentes
 	PPP authentication failed (check the usernames and passwords)	échec de l'authentification PPP (vérifiez les noms d'utilisateur et les mots de passe)
+	Each place has its own physics	Chaque lieu a sa propre physique
+	Parts change the place they stand in by rates, and the place settles back when they stop	Les appareils modifient leur lieu selon un débit, et le lieu revient à sa valeur quand ils s'arrêtent

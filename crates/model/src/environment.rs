@@ -118,6 +118,8 @@ pub struct Effects {
     /// The loudest thing playing (dB) and its pitch (Hz); 0: silence.
     pub sound_db: u32,
     pub sound_hz: u32,
+    /// The wind outside (kph); it speeds up what an open window lets in or out. 0: still air.
+    pub wind_kph: u32,
 }
 
 impl Effects {
@@ -193,6 +195,8 @@ impl Climate {
     /// One second of simulated time.
     pub fn step_second(&mut self, e: &Environment, fx: &Effects) {
         let open = fx.windows_open > 0;
+        // Wind through an open window shortens the time the room takes to match the outside.
+        let draught = |base: i64| base.saturating_mul(20).checked_div(20 + i64::from(fx.wind_kph.min(500))).unwrap_or(base).max(10);
         let (heat, cool, fans, sprinklers) =
             (Effects::capped(fx.heaters), Effects::capped(fx.coolers), Effects::capped(fx.fans), Effects::capped(fx.sprinklers));
         let (breezes, furnaces, humidifiers, hoses, cars) = (
@@ -204,7 +208,8 @@ impl Climate {
         );
         // Temperature: leaks toward the outside, a heater adds 1.2 degrees a minute (up to a
         // ceiling), an air conditioner removes 1.5 a minute (down to a floor).
-        let mut t = self.temperature_m.saturating_add(leak(self.temperature_m, milli(e.outside_temperature), if open { 300 } else { 1_800 }));
+        let mut t =
+            self.temperature_m.saturating_add(leak(self.temperature_m, milli(e.outside_temperature), if open { draught(300) } else { 1_800 }));
         if (heat > 0 || furnaces > 0) && t < milli(HEATER_CEILING) {
             t = t.saturating_add(heat.saturating_mul(20)).saturating_add(furnaces.saturating_mul(30));
         }
@@ -221,7 +226,7 @@ impl Climate {
         // Humidity: leaks toward the outside; a sprinkler wets, a cooler and a fan dry.
         let h = self
             .humidity_m
-            .saturating_add(leak(self.humidity_m, milli(e.outside_humidity), if open { 300 } else { 1_200 }))
+            .saturating_add(leak(self.humidity_m, milli(e.outside_humidity), if open { draught(300) } else { 1_200 }))
             .saturating_add(sprinklers.saturating_mul(10))
             .saturating_add(humidifiers.saturating_mul(15))
             .saturating_sub(cool.saturating_mul(5))
@@ -241,7 +246,7 @@ impl Climate {
             .saturating_sub(clear.saturating_mul(10))
             .clamp(0, milli(MAX_CO));
         // Carbon dioxide: a running car adds 5 ppm a second; the room leaks toward the outside air.
-        let co2_leak = leak(self.co2_m, milli(OUTSIDE_CO2), if open { 150 } else { 600 });
+        let co2_leak = leak(self.co2_m, milli(OUTSIDE_CO2), if open { draught(150) } else { 600 });
         self.co2_m = self.co2_m.saturating_add(co2_leak).saturating_add(cars.saturating_mul(5_000)).clamp(0, milli(MAX_CO2));
         self.sound_db = i64::from(fx.sound_db.min(200));
         self.sound_hz = if fx.sound_db > 0 { i64::from(fx.sound_hz) } else { 0 };
@@ -307,6 +312,22 @@ mod tests {
         run(&mut c, &e, &Effects::default(), 20_000);
         assert_eq!(c.reading("temperature"), Some(10));
         assert_eq!(c.temperature_m, 10_000, "it arrives exactly, no stall and no overshoot");
+    }
+
+    #[test]
+    fn wind_speeds_up_an_open_window_and_still_air_changes_nothing() {
+        let e = Environment { enabled: true, outside_temperature: 0, ..Environment::default() };
+        let open = Effects { windows_open: 1, ..Effects::default() };
+        let windy = Effects { windows_open: 1, wind_kph: 100, ..Effects::default() };
+        let (mut calm, mut gale) = (Climate::from_settings(&e), Climate::from_settings(&e));
+        run(&mut calm, &e, &open, 300);
+        run(&mut gale, &e, &windy, 300);
+        assert!(gale.temperature_m < calm.temperature_m, "the wind brings the outside in sooner");
+        // Wind with the window shut does nothing.
+        let (mut a, mut b) = (Climate::from_settings(&e), Climate::from_settings(&e));
+        run(&mut a, &e, &Effects::default(), 300);
+        run(&mut b, &e, &Effects { wind_kph: 400, ..Effects::default() }, 300);
+        assert_eq!(a, b);
     }
 
     #[test]
