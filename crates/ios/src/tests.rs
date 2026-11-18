@@ -12,6 +12,7 @@ mod archive;
 mod bgp;
 mod bgp_communities;
 mod bgp_leftovers;
+mod bgp_local_as;
 mod bgp_password;
 mod bgp_peer_groups;
 mod bgp_process_timers;
