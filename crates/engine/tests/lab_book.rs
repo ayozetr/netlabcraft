@@ -114,6 +114,7 @@ labs! {
     lab_75_reverse_telnet_through_an_octal_card => "75-reverse-telnet-through-an-octal-card.md",
     lab_76_backbone_cabling_between_closets => "76-backbone-cabling-between-closets.md",
     lab_77_ip_sla_tracked_default_route => "77-ip-sla-tracked-default-route.md",
+    lab_78_policy_based_routing => "78-policy-based-routing.md",
     lab_81_mst_regions => "81-mst-regions.md",
     lab_82_igmp_snooping => "82-igmp-snooping.md",
 }
