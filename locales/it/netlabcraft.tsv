@@ -1817,7 +1817,7 @@ event	write request for	richiesta di scrittura di
 	Nothing on the workspace yet.	Non c'è ancora nulla nell'area di lavoro.
 	Click or drag to move the view of the workspace	Fai clic o trascina per spostare la vista dell'area di lavoro
 	Workspace List	Elenco dell'area di lavoro
-	Click a device to select it; double-click to open it.	Fai clic su un dispositivo per selezionarlo; doppio clic per aprirlo.
+	Click a row to select it; double-click to open it.	Fai clic su una riga per selezionarla; doppio clic per aprirla.
 	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. Scegli un dispositivo nella casella in basso, poi fai clic sull'area di lavoro per posizionarlo.
 	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. Scegli un cavo nella stessa casella, fai clic su un dispositivo, poi su un altro, e scegli le porte.
 	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. Fai clic su un dispositivo per aprire la sua finestra: router e switch hanno una CLI, i computer un Desktop.
@@ -1829,7 +1829,7 @@ event	write request for	richiesta di scrittura di
 	Each lab lists the devices to place, the commands to type and what you should see.	Ogni laboratorio elenca i dispositivi da posizionare, i comandi da digitare e ciò che dovresti vedere.
 	Every device on the workspace is announced by a screen reader with its name and model.	Uno screen reader annuncia ogni dispositivo dell'area di lavoro con nome e modello.
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab e le frecce si spostano tra dispositivi e cavi; Invio o Spazio apre quello con il focus.
-	The Workspace List in the View menu names every device in a table you can move through.	L'elenco dell'area di lavoro, nel menu Visualizza, nomina ogni dispositivo in una tabella in cui ci si può spostare.
+	The Workspace List in the View menu names every place, piece of furniture and device in a tree you can move through.	L'elenco dell'area di lavoro, nel menu Visualizza, nomina ogni luogo, mobile e dispositivo in un albero in cui ci si può spostare.
 	Everything the menus do can also be typed, from the command line or by an agent.	Tutto ciò che fanno i menu si può anche digitare, dalla riga di comando o tramite un agente.
 	Auto Capture / Play	Cattura automatica / Riproduci
 	Bottom Toolbar	Barra inferiore
@@ -1894,8 +1894,19 @@ event	write request for	richiesta di scrittura di
 	Rename	Rinomina
 	Name:	Nome:
 	{}, {} units	{}, {} unità
+	Turn to the Front	Ruota verso il fronte
+	Turn to the Back	Ruota verso il retro
+	Loose Devices	Dispositivi sparsi
+	As a Grid	A griglia
+	As a List	In elenco
+	Width in cells ({} to {}):	Larghezza in celle ({} a {}):
+	Depth in cells ({} to {}):	Profondità in celle ({} a {}):
+	{}, {} by {} cells	{}, {} per {} celle
+	{}, rear view	{}, vista posteriore
+	{} (rear)	{} (retro)
 	{}, {} levels	{}, {} livelli
 	{}, on {}	{}, su {}
+	Other devices	Altri dispositivi
 	Rack	Rack
 	Shelf	Scaffale
 furniture	Table	Tavolo

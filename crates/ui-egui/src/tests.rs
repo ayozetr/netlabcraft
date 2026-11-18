@@ -2304,6 +2304,50 @@ fn the_workspace_list_names_every_device_and_a_click_selects_one() {
 }
 
 #[test]
+fn the_workspace_list_is_a_tree_of_places_furniture_and_devices() {
+    let mut h = harness(Some("lan"));
+    h.run_steps(3);
+    let name = h.state().session.topology.devices[0].name.clone();
+    h.state_mut().session.execute("furniture.add", json!({"kind": "rack"})).unwrap();
+    h.state_mut().session.execute("passive.add", json!({"kind": "copper-patch-panel", "furniture": "Rack0", "slot": 3})).unwrap();
+    h.state_mut().session.execute("furniture.mount", json!({"device": name, "furniture": "Rack0", "slot": 1})).unwrap();
+    key(&mut h, egui::Key::W, egui::Modifiers::SHIFT);
+    h.run_steps(3);
+    // The places come first, then the furniture, the things on it and what stands loose.
+    for place in h.state().session.topology.places().iter() {
+        assert!(h.query_by_label(&place.name).is_some(), "{} is listed", place.name);
+    }
+    for label in ["Rack0", "Copper Patch Panel0", name.as_str()] {
+        assert!(h.query_by_label(label).is_some(), "{label} is listed");
+    }
+    for d in h.state().session.topology.devices.iter().map(|d| d.display_name().to_string()).collect::<Vec<_>>() {
+        assert!(h.query_by_label(&d).is_some(), "every device is listed, {d} too");
+    }
+    // A click selects (a place, furniture or a device).
+    h.get_by_label("Rack0").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.list_pick, Some(crate::overview::ListPick::Furniture(1)));
+    h.get_by_label(&name).click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.selected, h.state().session.topology.resolve(&name).ok());
+    // A double click opens: a furniture opens the closet it stands in.
+    assert_eq!(h.state().session.place_view, None);
+    let at = h.get_by_label("Rack0").rect().center();
+    h.input_mut().events.push(egui::Event::PointerMoved(at));
+    for pressed in [true, false, true, false] {
+        h.input_mut().events.push(egui::Event::PointerButton {
+            pos: at,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    h.run_steps(3);
+    assert_eq!(h.state().session.place_view, Some(netlabcraft_model::physical::DEFAULT_CLOSET));
+    assert!(h.state().session.physical, "the physical workspace shows the closet");
+}
+
+#[test]
 fn the_drawing_palette_opens_from_its_shortcut() {
     let mut h = harness(None);
     h.run_steps(2);
