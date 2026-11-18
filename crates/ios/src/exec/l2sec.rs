@@ -653,6 +653,15 @@ pub(crate) fn port_lines(s: &mut String, p: &netlabcraft_model::Port) {
     for (k, v) in &l.mst_priority {
         let _ = writeln!(s, " spanning-tree mst {k} port-priority {v}");
     }
+    match l.source_guard {
+        Some(netlabcraft_model::l2sec::SourceGuard::Ip) => {
+            let _ = writeln!(s, " ip verify source");
+        }
+        Some(netlabcraft_model::l2sec::SourceGuard::IpMac) => {
+            let _ = writeln!(s, " ip verify source port-security");
+        }
+        None => {}
+    }
     if let Some(n) = l.lacp_priority {
         let _ = writeln!(s, " lacp port-priority {n}");
     }
@@ -735,6 +744,7 @@ fn show_snooping(sim: &Sim, d: &Device) -> String {
     let n = sim.snooping_counts(d.id);
     let _ = writeln!(s, "DHCP messages passed:     {}", n.dhcp_forwarded);
     let _ = writeln!(s, "DHCP messages dropped:    {}", n.dhcp_dropped);
+    let _ = writeln!(s, "Source guard drops:       {}", n.source_guard_dropped);
     let ports: Vec<(usize, &netlabcraft_model::Port)> =
         d.ports.iter().enumerate().filter(|(_, p)| p.l2.snoop_trust || p.l2.snoop_rate.is_some()).collect();
     let _ = writeln!(s, "\n{:<10} {:<8} Rate limit (messages/s)", "Port", "Trusted");

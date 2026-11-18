@@ -3491,6 +3491,13 @@ impl Sim {
         if offending.protocol == PROTO_ICMP && !matches!(Icmp::decode(&offending.payload), Ok(Icmp::EchoRequest { .. } | Icmp::EchoReply { .. })) {
             return;
         }
+        // `no ip unreachables` on the interface the packet came in by keeps the router from sending
+        // destination-unreachable messages (time-exceeded ones are another setting's business).
+        if matches!(msg, Icmp::Unreachable { .. })
+            && d.knobs.iface.get(&ifc.name).and_then(|lines| lines.get("ip unreachables")).is_some_and(|l| l.starts_with("no "))
+        {
+            return;
+        }
         let err =
             Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_ICMP, src: ifc.net.addr, dst: offending.src, payload: msg.encode() };
         let _ = self.send_ip(t, d, err);
