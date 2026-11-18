@@ -198,7 +198,7 @@ fn host_address(a: Ipv4Addr) -> bool {
 impl Sim {
     /// Shuts a port down for `cause` (once), logging why.
     pub(crate) fn err_disable(&mut self, d: &Device, port: usize, cause: ErrCause, why: &str) {
-        if self.err_disabled_now(d.id, port) {
+        if self.err_disabled_now(d.id, port) || d.l2.detect_off.contains(&cause) {
             return;
         }
         self.events.push(PortEvent::ErrDisabledBy { device: d.id, port, cause });

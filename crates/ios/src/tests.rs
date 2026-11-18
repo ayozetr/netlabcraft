@@ -19,6 +19,7 @@ mod console_depth;
 mod debug_crypto;
 mod debug_framework;
 mod debug_topics;
+mod errdisable_detect;
 mod error_counters;
 mod families;
 mod ike_rsa;
@@ -31,6 +32,7 @@ mod knobs;
 mod knobs_routing;
 mod leftovers;
 mod line_protocol;
+mod mst;
 mod name_resolution;
 mod nat_timeouts;
 mod nat_verbose;
@@ -42,6 +44,7 @@ mod ospf_debug;
 mod ospf_flooding;
 mod ospf_lsdb_copies;
 mod ospf_nssa_bits;
+mod ping_dialogs;
 mod pki;
 mod policy;
 mod protocols_summary;
@@ -462,6 +465,7 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\ninterface virtual-template 1",
                     "en\nconf t\ninterface dialer 1",
                     "en\nconf t\nrouter rip",
+                    "en\nconf t\nspanning-tree mst configuration",
                     "en\nconf t\nipv6 router rip R",
                 ] {
                     for l in setup.lines() {
