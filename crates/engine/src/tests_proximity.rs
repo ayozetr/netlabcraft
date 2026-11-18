@@ -193,3 +193,24 @@ fn a_smart_leds_brightness_lights_the_room_and_a_speaker_plays_the_pitch_it_was_
     assert_eq!(page(&mut s, "Mic1")["frequency"], 900);
     assert!(set(&mut s, "Led1", json!({"frequency": 100})).is_err(), "a LED has no pitch");
 }
+
+#[test]
+fn with_the_places_own_physics_a_speaker_plays_its_pitch_and_a_led_gives_light_by_its_brightness() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"model": "Board-SBC", "name": "Board1"})).unwrap();
+    for (model, name, pin) in [("Speaker", "Speaker1", "D0"), ("Smart LED", "Led1", "D1")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+        s.execute("board.wire", json!({"device": "Board1", "pin": pin, "thing": name})).unwrap();
+    }
+    s.execute("device.add", json!({"model": "Sound Frequency Detector", "name": "Mic1"})).unwrap();
+    s.execute("environment.physics", json!({"enabled": true})).unwrap();
+    s.execute("iot.configure", json!({"device": "Speaker1", "frequency": 1500})).unwrap();
+    s.execute("iot.configure", json!({"device": "Led1", "brightness": 40})).unwrap();
+    s.execute("environment.set", json!({"variable": "luminosity", "value": 0})).unwrap();
+    s.execute("board.program", json!({"device": "Board1", "source": "write(D0, 1)\nwrite(D1, 1)\nsleep 9\n", "run": true})).unwrap();
+    s.execute("sim.advance", json!({"seconds": 600})).unwrap();
+    assert_eq!(page(&mut s, "Mic1")["value"], 1500, "the speaker's own pitch");
+    let g = s.execute("environment.get", json!({})).unwrap();
+    let light = g["variables"].as_array().unwrap().iter().find(|v| v["id"] == "luminosity").unwrap()["value"].as_f64().unwrap();
+    assert!((light - 28.0).abs() < 0.5, "40 % of the lamp's 70: {light}");
+}
