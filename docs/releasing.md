@@ -1,6 +1,6 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the review line names only the latest change)
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (ninth release, 0.9.0) · earlier: minor (final consistency pass: the review line names only the latest change)
 
 The recipe follows the release playbook the Crafting Apps share: a
 release is whatever is on the `release` branch. Pushing to it makes `.github/workflows/release.yml`
@@ -65,6 +65,7 @@ distributions.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Ninth release, 0.9.0, cut with the flow above, with the contributors file refreshed by the `Contributors` workflow. |
 | 2026-11-18 | minor | Final consistency pass: the review line names only the latest change; the revision rows are in date order, newest first. |
 | 2026-11-17 | minor | Eighth release, 0.8.0, cut with the flow above, with the contributors file refreshed by the `Contributors` workflow. |
 | 2026-11-17 | minor | The `Contributors` workflow regenerates contributors/contributors.json in CI for the release step; it had not been refreshed since 0.2.0. |
