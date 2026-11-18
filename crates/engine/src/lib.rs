@@ -16,6 +16,7 @@ use netlabcraft_model::Topology;
 use netlabcraft_sim::Sim;
 use serde_json::Value;
 
+mod aaa;
 pub mod activity;
 pub mod automation;
 mod board;
@@ -49,6 +50,8 @@ pub mod sample;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod tests_aaa;
 #[cfg(test)]
 mod tests_bgp;
 #[cfg(test)]

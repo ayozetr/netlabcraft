@@ -5,6 +5,7 @@ use netlabcraft_sim::Sim;
 use crate::grammar::{SPECS, Tok};
 use crate::*;
 
+mod aaa_levels;
 mod acl_counters;
 mod acl_duplicates;
 mod acl_icmp;

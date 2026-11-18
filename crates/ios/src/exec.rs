@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 pub use dialogs::{Dialog, DialogKind};
 
+pub(crate) mod aaa;
 pub(crate) mod archive;
 pub(crate) mod automation;
 pub(crate) mod bgp;
@@ -262,6 +263,13 @@ pub struct Cli {
     pub logged_in: bool,
     /// Waiting for the enable password: failed attempts so far.
     pub enable_prompt: Option<u8>,
+    /// The privilege level the password being asked for opens (0: 15).
+    pub enable_level: u8,
+    /// The privilege level of the session when it is not the one its mode implies: `enable 7`
+    /// is privileged mode at level 7 (0: 1 in user mode, 15 in privileged mode).
+    pub level: u8,
+    /// Lines typed by a person (not a configuration being replayed): authorized and accounted.
+    pub audited: bool,
     /// A remote login (vty) session: `enable` needs a password to exist.
     pub vty: bool,
     /// The user a remote session logged in as (`show users`).
@@ -385,6 +393,9 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         let from = t.device(dev).map_or_else(String::new, |d| d.name.clone());
         sim.debug_log(target, DebugKind::Ssh, &format!("a session is opened from {from}; the key exchange is done and the login follows"));
     }
+    let here = cli_user_of(cli);
+    let to = t.device(target).map(|d| d.name.clone()).unwrap_or_default();
+    account(t, sim, dev, "aaa accounting connection default", &here, true, 15, &format!("connection to {to}"));
     cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0, via: None }));
     let banner = t.device(target).map(|d| d.access.banner_motd.clone()).unwrap_or_default();
     let mut out = format!("Trying {dst} ... Open");
@@ -439,6 +450,11 @@ pub fn connect_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cl
     cli.remote = Some(Box::new(Remote { target, proto: RemoteProto::Telnet, stage, cli: remote_cli, tries: 0, via: Some((router, line)) }));
     let hello = greeting(t, target);
     format!("Trying {dst}, {port} ... Open\n\n{hello}(close the session with `^^x`, or `exit` from the first level)")
+}
+
+/// The user the console session belongs to, for accounting.
+fn cli_user_of(cli: &Cli) -> String {
+    cli.user.clone().unwrap_or_else(|| "console".to_string())
 }
 
 /// Ends a Telnet or SSH session of this console, freeing the asynchronous line a reverse Telnet held.
@@ -545,10 +561,22 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
             if ok {
                 r.stage = LoginStage::Ready;
                 r.cli.user.clone_from(&user);
-                // A local user with privilege 15 starts in privileged mode.
-                let top = user.as_ref().is_some_and(|u| target.access.users.iter().any(|x| &x.name == u && x.privilege >= 15 && x.matches(line)));
-                if top {
-                    r.cli.mode = Mode::Exec;
+                // A user above level 1 starts in privileged mode at its level; `aaa authorization
+                // exec` can say another one.
+                let local =
+                    user.as_ref().and_then(|u| target.access.users.iter().find(|x| &x.name == u && x.matches(line))).map_or(1, |x| x.privilege);
+                let who = user.clone().unwrap_or_default();
+                match exec_level(t, sim, &target, &who, local) {
+                    Ok(level) => {
+                        if level >= 2 {
+                            set_level(&mut r.cli, level);
+                        }
+                        account(t, sim, target.id, "aaa accounting exec default", &who, true, level, "exec");
+                    }
+                    Err(why) => {
+                        end_remote(sim, cli);
+                        return Outcome { output: format!("{why}\nConnection closed by the remote host"), ..Outcome::default() };
+                    }
                 }
                 return Outcome::default();
             }
@@ -578,6 +606,11 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
                     && ["exit", "logout", "quit"].iter().any(|w| w.starts_with(&word) && word.len() >= 2));
             if leaving {
                 let name = target.name.clone();
+                let who = r.cli.user.clone().unwrap_or_default();
+                let level = effective_level(&r.cli);
+                account(t, sim, target.id, "aaa accounting exec default", &who, false, level, "exec");
+                let here = cli_user_of(cli);
+                account(t, sim, dev, "aaa accounting connection default", &here, false, 15, &format!("connection to {name}"));
                 end_remote(sim, cli);
                 return Outcome { output: format!("Connection to {name} closed."), ..Outcome::default() };
             }
@@ -624,6 +657,110 @@ fn enable_matches(d: &Device, typed: &str) -> bool {
         (None, Some(p)) => p == typed,
         (None, None) => true,
     }
+}
+
+/// Whether `typed` opens privilege level `level` (0 and 15: the enable secret or password; a
+/// level with no secret opens without one).
+fn enable_matches_level(d: &Device, typed: &str, level: u8) -> bool {
+    if level == 0 || level >= 15 {
+        return enable_matches(d, typed);
+    }
+    aaa::level_secret(d, level).is_none_or(|h| h == secret_hash(typed))
+}
+
+/// The privilege level a session is at.
+pub fn effective_level(cli: &Cli) -> u8 {
+    match (cli.level, &cli.mode) {
+        (0, Mode::User) => 1,
+        (0, _) => 15,
+        (n, _) => n,
+    }
+}
+
+/// Puts a session at a privilege level: user mode at level 1, privileged mode above.
+fn set_level(cli: &mut Cli, level: u8) {
+    cli.enable_prompt = None;
+    cli.enable_level = 0;
+    if level <= 1 {
+        cli.mode = Mode::User;
+        cli.level = 0;
+    } else {
+        cli.mode = Mode::Exec;
+        cli.level = if level >= 15 { 0 } else { level };
+    }
+}
+
+/// The privilege level an authorized login gets: the user's own, or what `aaa authorization exec`
+/// says (a TACACS+ server's `priv-lvl`).
+fn exec_level(t: &Topology, sim: &mut Sim, target: &Device, user: &str, local: u8) -> Result<u8, String> {
+    let Some(methods) = aaa::authz_methods(target, "aaa authorization exec default").filter(|_| target.access.aaa) else { return Ok(local) };
+    for m in methods {
+        match m {
+            aaa::Method::Tacacs => match sim.tacacs_authorize_exec(t, target.id, user) {
+                Some(Some(l)) => return Ok(l),
+                Some(None) => return Err("% Authorization failed: the server refused the session".into()),
+                None => {}
+            },
+            aaa::Method::Local | aaa::Method::IfAuthenticated | aaa::Method::NoCheck => return Ok(local),
+            aaa::Method::Radius => {}
+        }
+    }
+    Err("% Authorization failed: no authorization server answered".into())
+}
+
+/// Sends the accounting record of a session or command if `key` has a list.
+fn account(t: &Topology, sim: &mut Sim, dev: DeviceId, key: &str, user: &str, start: bool, level: u8, detail: &str) {
+    let Some((start_stop, tacacs, radius)) = t.device(dev).and_then(|d| aaa::acct_spec(d, key)) else { return };
+    if start && !start_stop {
+        return;
+    }
+    sim.aaa_account(t, dev, tacacs, radius, user, start, level, detail);
+}
+
+/// What a command line needs before it runs: the authorization of its privilege level and its
+/// accounting record.
+fn command_hooks(t: &Topology, sim: &mut Sim, dev: DeviceId, cli: &Cli, spec: &grammar::Spec, args: &[String]) -> Result<(), String> {
+    let Some(d) = t.device(dev) else { return Ok(()) };
+    // The console is not authorized or accounted (as `aaa authorization console` is off by default).
+    if !cli.vty
+        || !d.access.aaa
+        || !d.knobs.global.keys().any(|k| k.starts_with("aaa authorization commands") || k.starts_with("aaa accounting commands"))
+    {
+        return Ok(());
+    }
+    let need = aaa::command_level(d, aaa::scope_of(&cli.mode), spec);
+    let user = cli.user.clone().unwrap_or_else(|| "console".to_string());
+    let mut words: Vec<String> = aaa::keywords(spec).iter().map(|k| (*k).to_string()).collect();
+    for a in args {
+        words.extend(a.split_whitespace().map(str::to_string));
+    }
+    let w: Vec<&str> = words.iter().map(String::as_str).collect();
+    if let Some(methods) = aaa::authz_methods(d, &format!("aaa authorization commands {need} default")) {
+        let mut verdict = None;
+        for m in methods {
+            match m {
+                aaa::Method::Tacacs => {
+                    if let Some(ok) = sim.tacacs_authorize_command(t, dev, &user, need, &w) {
+                        verdict = Some(ok);
+                        break;
+                    }
+                }
+                aaa::Method::Local | aaa::Method::IfAuthenticated | aaa::Method::NoCheck => {
+                    verdict = Some(true);
+                    break;
+                }
+                aaa::Method::Radius => {}
+            }
+        }
+        if verdict != Some(true) {
+            return Err(format!("% Command authorization failed: `{}` is not allowed for {user}", w.join(" ")));
+        }
+    }
+    let key = format!("aaa accounting commands {need} default");
+    let detail = format!("command: {}", w.join(" "));
+    account(t, sim, dev, &key, &user, true, need, &detail);
+    account(t, sim, dev, &key, &user, false, need, &detail);
+    Ok(())
 }
 
 /// What a line did.
@@ -963,15 +1100,16 @@ fn execute_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, l
     }
     // Password prompts come first; what is typed there is never echoed or remembered.
     if let Some(tries) = cli.enable_prompt {
-        if enable_matches(d, line) {
-            cli.enable_prompt = None;
-            cli.mode = Mode::Exec;
+        if enable_matches_level(d, line, cli.enable_level) {
+            let want = if cli.enable_level == 0 { 15 } else { cli.enable_level };
+            set_level(cli, want);
             return Outcome::default();
         }
         let tries = tries + 1;
         if tries >= 3 {
             cli.enable_prompt = None;
-            return Outcome { output: "% Wrong password three times; still in user mode".into(), ..Outcome::default() };
+            cli.enable_level = 0;
+            return Outcome { output: "% Wrong password three times; the privilege level stays as it was".into(), ..Outcome::default() };
         }
         cli.enable_prompt = Some(tries);
         return Outcome { output: "% Wrong password".into(), ..Outcome::default() };
@@ -1009,6 +1147,7 @@ fn execute_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, l
     };
     let expanded = t.device(dev).and_then(|d| expand_alias(d, &cli.mode, command));
     let command = expanded.as_deref().unwrap_or(command);
+    cli.audited = true;
     let output = match (dispatch(t, sim, dev, cli, command), filter) {
         (Ok(s), Some(f)) => crate::pipe::apply(&s, f).unwrap_or_else(|e| e),
         (Ok(s), None) => s,
@@ -1202,6 +1341,17 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
     {
         resolved = Ok((q, vec![words.get(at..).unwrap_or(&[]).join(" ")]));
     }
+    // A command moved down to level 1 (`privilege exec level 1 …`) can be typed in user mode.
+    if resolved.is_err() && cli.mode == Mode::User {
+        let level = effective_level(cli);
+        let moved = t.device(dev).and_then(|d| {
+            let (s, a) = grammar::resolve(&words, Modes::EXEC, device_bits(d, &Mode::Exec)).ok()?;
+            (aaa::command_level(d, "exec", s) <= level).then_some((s, a))
+        });
+        if let Some(r) = moved {
+            resolved = Ok(r);
+        }
+    }
     // A sub-mode falls back to global configuration commands, which leave the sub-mode.
     if resolved.is_err()
         && matches!(
@@ -1277,19 +1427,43 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         Err(ParseError::Incomplete) => return Err("% Incomplete command (type ? for what can follow)".into()),
     };
     let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
+    // Privilege levels: what the session's level may not run is refused.
+    let level = effective_level(cli);
+    if level < 15 && !matches!(spec.id, Id::Exit | Id::End | Id::Enable | Id::EnableLevel | Id::Disable | Id::Logout) {
+        let need = t.device(dev).map_or(15, |d| aaa::command_level(d, aaa::scope_of(&cli.mode), spec));
+        if need > level {
+            return Err(format!("% This command needs privilege level {need}; the session is at level {level}"));
+        }
+    }
+    if cli.audited {
+        command_hooks(t, sim, dev, cli, spec, &args)?;
+    }
     let mut c = Ctx { t, sim, dev, cli };
     match spec.id {
-        Id::Enable => {
-            if c.cli.vty && c.cli.mode == Mode::User && !enable_protected(c.d()?) {
+        Id::Enable | Id::EnableLevel => {
+            let want: u8 = if spec.id == Id::EnableLevel {
+                arg(0).parse().ok().filter(|n| (1..=15).contains(n)).ok_or("% The level is a number from 1 to 15")?
+            } else {
+                15
+            };
+            let have = effective_level(c.cli);
+            let protected = if want == 15 { enable_protected(c.d()?) } else { aaa::level_secret(c.d()?, want).is_some() };
+            if c.cli.vty && want == 15 && have < 15 && !protected {
                 return Err("% No password set (remote sessions need an enable password or secret)".into());
             }
-            if c.cli.mode == Mode::User && enable_protected(c.d()?) {
+            if want > have && protected {
                 c.cli.enable_prompt = Some(0);
+                c.cli.enable_level = want;
                 return Ok(String::new());
             }
-            c.set_mode(Mode::Exec)
+            // Asking for a level below the one the session is at lowers it.
+            set_level(c.cli, want);
+            Ok(String::new())
         }
-        Id::Disable => c.set_mode(Mode::User),
+        Id::Disable => {
+            c.cli.level = 0;
+            c.set_mode(Mode::User)
+        }
         Id::Logout => c.logout(),
         Id::Exit => {
             let next = match c.cli.mode {
@@ -2701,6 +2875,23 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::AaaAuthzExec
+        | Id::NoAaaAuthzExec
+        | Id::AaaAuthzCommands
+        | Id::NoAaaAuthzCommands
+        | Id::AaaAcctExec
+        | Id::NoAaaAcctExec
+        | Id::AaaAcctCommands
+        | Id::NoAaaAcctCommands
+        | Id::AaaAcctConnection
+        | Id::NoAaaAcctConnection
+        | Id::Privilege
+        | Id::NoPrivilege
+        | Id::EnableSecretLevel
+        | Id::NoEnableSecretLevel
+        | Id::ShowAaa
+        | Id::ShowAaaAuthorization
+        | Id::ShowAaaAccounting => aaa::command(&mut c, spec.id, &args),
         Id::ShowDot1x | Id::ShowDot1xAll | Id::ShowDot1xInterface | Id::Dot1xReauth => dot1x::command(&mut c, spec.id, &args),
         Id::IgmpSnooping
         | Id::NoIgmpSnooping
@@ -4177,7 +4368,7 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         Id::ShowProtocols => Ok(render::protocols(c.t, c.d()?)),
         Id::ShowIntDescription => Ok(render::int_descriptions(c.t, c.d()?, None)),
         Id::ShowLogin => Ok(render::login_state(c.d()?, c.sim.login_blocked(c.dev))),
-        Id::ShowPrivilege => Ok(format!("Current privilege level is {}", if c.cli.mode == Mode::User { 1 } else { 15 })),
+        Id::ShowPrivilege => Ok(format!("Current privilege level is {}", effective_level(c.cli))),
         Id::ShowBoot => {
             let d = c.d()?;
             let skip = d.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
@@ -5332,6 +5523,12 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                 s.vlan = Some(v);
             }
             Ok(String::new())
+        }
+        Id::EnableSecret if arg(0).split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("level")) => {
+            // `enable secret level 7 PASSWORD`, typed where the free text took it.
+            let rest: Vec<&str> = arg(0).split_whitespace().skip(1).collect();
+            let (n, pw) = rest.split_first().ok_or("% enable secret level <1-15> PASSWORD")?;
+            aaa::command(&mut c, Id::EnableSecretLevel, &[(*n).to_string(), pw.join(" ")])
         }
         Id::EnableSecret => {
             let hash = match password_words(arg(0)) {

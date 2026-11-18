@@ -185,6 +185,22 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "aaa.profile",
+        "Server authorization profile",
+        "",
+        None,
+        r#"{"device": Server, "user"?: a user of its AAA service, "privilege"?: 0-15 (the level a TACACS+ authorization of the login grants; default 1), "deny"?: ["commands the server refuses, by their first words, such as `reload` or `show running-config`"], "clear"?: true (forget the profile)} → the profile {"user", "privilege", "deny"}, or {"profiles": [...]} with no `user`: what the TACACS+ service answers to `aaa authorization exec` and `aaa authorization commands` from a device that has the server in its `tacacs-server host` list"#,
+        true
+    ),
+    c!(
+        "aaa.records",
+        "Server accounting records",
+        "",
+        None,
+        r#"{"device": Server, "clear"?: true (forget them first)} → {"count", "records": [{"at_us", "from", "protocol": "TACACS+"|"RADIUS", "user", "kind": "start"|"stop"|"update", "detail"}]}: the accounting records the AAA service received from `aaa accounting exec|commands|connection` lists (the newest 500; they are not saved with the lab)"#,
+        false
+    ),
+    c!(
         "dot1x.supplicant",
         "Wired 802.1X login",
         "",

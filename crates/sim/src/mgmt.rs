@@ -8,7 +8,7 @@ use netlabcraft_model::{Device, DeviceKind, Topology};
 use netlabcraft_wire::mgmt::{
     NTP_PORT, Ntp, SYSLOG_PORT, TFTP_BLOCK, TFTP_PORT, Tftp, ntp_key_id, ntp_sign, ntp_verify, syslog_decode, syslog_encode,
 };
-use netlabcraft_wire::radius::{RADIUS_PORT, Radius, reveal_password};
+use netlabcraft_wire::radius::{ACCT_PORT, RADIUS_PORT, Radius, reveal_password};
 use netlabcraft_wire::snmp::{self, PduKind, SNMP_PORT, Snmp};
 use netlabcraft_wire::{Ipv4, PROTO_UDP, Udp};
 
@@ -102,6 +102,7 @@ impl Sim {
                 Ok(())
             }
             (TFTP_PORT, _) if d.kind == DeviceKind::Server => self.tftp_server_in(t, d, ip, u),
+            (ACCT_PORT, _) if d.kind == DeviceKind::Server => self.radius_acct_in(t, d, ip, u),
             (RADIUS_PORT, _) => {
                 if d.kind != DeviceKind::Server || !d.services.aaa.on {
                     return Some(Err("no AAA service here".into()));
@@ -153,7 +154,7 @@ impl Sim {
                 }
                 Ok(())
             }
-            (port, RADIUS_PORT) if self.state.get(&d.id).is_some_and(|s| s.radius_port == Some(port)) => {
+            (port, RADIUS_PORT | ACCT_PORT) if self.state.get(&d.id).is_some_and(|s| s.radius_port == Some(port)) => {
                 if let Ok(r) = Radius::decode(&u.payload) {
                     let st = self.st(d.id);
                     if st.radius_inbox.len() < 16 {
@@ -369,13 +370,21 @@ impl Sim {
         let Some(client) = d.services.aaa.clients.iter().find(|c| c.address == ip.src) else {
             return Some(Err(format!("{} isn't one of this AAA server's clients", ip.src)));
         };
-        let Ok((Tacacs::Start { user, password }, session, seq)) = Tacacs::decode(&seg.payload, &client.secret) else {
+        let Ok((pkt, session, seq)) = Tacacs::decode(&seg.payload, &client.secret) else {
             return Some(Err("a TACACS+ packet this server can't read (wrong key?)".into()));
         };
-        let good = d.services.aaa.users.iter().any(|u| u.name == user && u.password == password);
-        let answer = Tacacs::Reply {
-            status: if good { STATUS_PASS } else { STATUS_FAIL },
-            message: if good { "Welcome".into() } else { "Login refused".into() },
+        let answer = match pkt {
+            Tacacs::Start { user, password } => {
+                let good = d.services.aaa.users.iter().any(|u| u.name == user && u.password == password);
+                Tacacs::Reply {
+                    status: if good { STATUS_PASS } else { STATUS_FAIL },
+                    message: if good { "Welcome".into() } else { "Login refused".into() },
+                }
+            }
+            other => match self.tacacs_answer(d, ip.src, other) {
+                Some(a) => a,
+                None => return Some(Err("a TACACS+ packet that is not a request".into())),
+            },
         };
         let ack = seg.seq.wrapping_add(seg.payload.len() as u32);
         Some(self.seg_to(

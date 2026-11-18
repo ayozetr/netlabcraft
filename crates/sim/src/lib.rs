@@ -22,6 +22,7 @@ use netlabcraft_wire::dhcp::{self, Dhcp, DhcpKind};
 use netlabcraft_wire::tcp::{self, Tcp};
 use netlabcraft_wire::{Arp, ArpOp, ETHERTYPE_ARP, ETHERTYPE_IPV4, Frame, Icmp, Ipv4, PROTO_ICMP, PROTO_TCP, PROTO_UDP, Protocol, Udp, dns};
 
+pub mod aaa;
 pub mod automation;
 pub mod board;
 pub mod cdp;
@@ -1221,6 +1222,10 @@ pub struct DevState {
     pub(crate) pppoe: pppoe::State,
     /// Switches: the 802.1X login of each controlled port.
     pub(crate) dot1x: BTreeMap<usize, dot1x::PortAuth>,
+    /// AAA servers: the accounting records received, newest last.
+    pub(crate) acct: VecDeque<aaa::AcctRecord>,
+    /// Devices: how many accounting records they sent and had acknowledged.
+    pub(crate) acct_stats: aaa::AcctStats,
     /// Hosts: the 802.1X supplicant of each wired port.
     pub(crate) supp: BTreeMap<usize, dot1x::Supp>,
 }

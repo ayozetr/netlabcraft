@@ -59,6 +59,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::dialup::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::aaa::run(s, id, p) {
+        return r;
+    }
     if let Some(r) = crate::dot1x::run(s, id, p) {
         return r;
     }
@@ -206,6 +209,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             sv.ftp.files.retain(|f| !f.name.is_empty());
             sv.aaa.clients.truncate(MAX_ITEMS);
             sv.aaa.users.truncate(MAX_ITEMS);
+            sv.aaa.profiles.truncate(netlabcraft_model::services::MAX_PROFILES);
             for c in &mut sv.aaa.clients {
                 c.name = c.name.chars().take(64).collect();
                 c.secret = c.secret.chars().take(63).collect();

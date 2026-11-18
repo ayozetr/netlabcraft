@@ -17,6 +17,16 @@ pub const RADIUS_PORT: u16 = 1812;
 pub const ACCESS_REQUEST: u8 = 1;
 pub const ACCESS_ACCEPT: u8 = 2;
 pub const ACCESS_REJECT: u8 = 3;
+/// UDP port of RADIUS accounting (RFC 2866).
+pub const ACCT_PORT: u16 = 1813;
+pub const ACCOUNTING_REQUEST: u8 = 4;
+pub const ACCOUNTING_RESPONSE: u8 = 5;
+/// Acct-Status-Type values: the start and the end of a session.
+pub const ACCT_START: u32 = 1;
+pub const ACCT_STOP: u32 = 2;
+const ACCT_STATUS_TYPE: u8 = 40;
+const ACCT_SESSION_ID: u8 = 44;
+const CALLED_STATION: u8 = 30;
 const USER_NAME: u8 = 1;
 const USER_PASSWORD: u8 = 2;
 const NAS_IP: u8 = 4;
@@ -90,6 +100,47 @@ impl Radius {
         r
     }
 
+    /// An Accounting-Request (RFC 2866 §3): the status (start or stop), the session, what the
+    /// record is about (`detail`: a service, a command, a destination) and the sender. Its
+    /// authenticator is MD5 over the packet with zeros there, then the secret.
+    pub fn accounting_request(id: u8, user: &str, status: u32, session: &str, detail: &str, secret: &str, nas: Ipv4Addr) -> Radius {
+        let clip = |s: &str| -> Vec<u8> { s.as_bytes().iter().take(253).copied().collect() };
+        let mut r = Radius {
+            code: ACCOUNTING_REQUEST,
+            id,
+            authenticator: [0; 16],
+            attributes: vec![
+                (ACCT_STATUS_TYPE, status.to_be_bytes().to_vec()),
+                (USER_NAME, clip(user)),
+                (ACCT_SESSION_ID, clip(session)),
+                (CALLED_STATION, clip(detail)),
+                (NAS_IP, nas.octets().to_vec()),
+            ],
+        };
+        r.authenticator = md5(&[r.encode(), secret.as_bytes().to_vec()].concat());
+        r
+    }
+
+    /// Whether an Accounting-Request is signed with `secret`.
+    pub fn accounting_valid(&self, secret: &str) -> bool {
+        let zeroed = Radius { authenticator: [0; 16], ..self.clone() };
+        md5(&[zeroed.encode(), secret.as_bytes().to_vec()].concat()) == self.authenticator
+    }
+
+    /// The Accounting-Response to a request, signed like an Access answer.
+    pub fn accounting_response(request: &Radius, secret: &str) -> Radius {
+        let mut r = Radius { code: ACCOUNTING_RESPONSE, id: request.id, authenticator: request.authenticator, attributes: Vec::new() };
+        r.authenticator = md5(&[r.encode(), secret.as_bytes().to_vec()].concat());
+        r
+    }
+
+    /// The Acct-Status-Type, the session id and the detail of an Accounting-Request.
+    pub fn accounting_fields(&self) -> Option<(u32, String, String)> {
+        let status = u32::from_be_bytes(self.attribute(ACCT_STATUS_TYPE)?.try_into().ok()?);
+        let text = |k: u8| self.attribute(k).map(|v| String::from_utf8_lossy(v).into_owned()).unwrap_or_default();
+        Some((status, text(ACCT_SESSION_ID), text(CALLED_STATION)))
+    }
+
     /// Whether an answer is signed with `secret` for the request that had `request_auth`.
     pub fn verifies(&self, request_auth: &[u8; 16], secret: &str) -> bool {
         let unsigned = Radius { authenticator: *request_auth, ..self.clone() };
@@ -153,6 +204,8 @@ impl Radius {
             ACCESS_ACCEPT => "Access-Accept",
             ACCESS_REJECT => "Access-Reject",
             ACCESS_CHALLENGE => "Access-Challenge",
+            ACCOUNTING_REQUEST => "Accounting-Request",
+            ACCOUNTING_RESPONSE => "Accounting-Response",
             _ => "message",
         }
     }
@@ -426,6 +479,21 @@ mod tests {
             if let Ok(r) = Radius::decode(&raw_ok[..k]) {
                 let _ = r.mppe_recv_key(&auth, "wlcsecret");
             }
+        }
+    }
+
+    #[test]
+    fn an_accounting_request_is_signed_and_answered() {
+        let nas: Ipv4Addr = "10.0.0.2".parse().unwrap();
+        let r = Radius::accounting_request(7, "ana", ACCT_START, "00000001", "exec", "acct-secret", nas);
+        let back = Radius::decode(&r.encode()).unwrap();
+        assert!(back.accounting_valid("acct-secret") && !back.accounting_valid("other"));
+        assert_eq!(back.accounting_fields(), Some((ACCT_START, "00000001".into(), "exec".into())));
+        let answer = Radius::accounting_response(&back, "acct-secret");
+        assert_eq!(answer.code, ACCOUNTING_RESPONSE);
+        assert!(Radius::decode(&answer.encode()).unwrap().verifies(&back.authenticator, "acct-secret"));
+        for k in 0..r.encode().len() {
+            let _ = Radius::decode(&r.encode()[..k]);
         }
     }
 }
