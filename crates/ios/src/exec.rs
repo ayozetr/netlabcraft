@@ -1912,6 +1912,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
+        Id::ShowIpOspfMaxage => routing::ospf_maxage(&mut c),
         Id::ShowIpOspf => {
             let st = c.sim.ospf_state(c.t);
             let now = c.sim.now_us();

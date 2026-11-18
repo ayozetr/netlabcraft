@@ -489,6 +489,7 @@ pub enum Id {
     NoOspfRedistribute,
     OspfTimersThrottleSpf,
     NoOspfTimersThrottleSpf,
+    ShowIpOspfMaxage,
     RipRedistribute,
     NoRipRedistribute,
     EigrpRedistribute,
@@ -1699,6 +1700,13 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("no"), K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>")],
         "Remove a message-digest key"
+    ),
+    spec!(
+        ShowIpOspfMaxage,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("maxage-database")],
+        "LSAs this router still holds at MaxAge, withdrawn by their originator"
     ),
     spec!(
         OspfTimersThrottleSpf,

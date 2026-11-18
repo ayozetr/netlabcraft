@@ -497,7 +497,7 @@ pub(crate) fn keep_elections(old: &OspfState, new: &mut OspfState) {
 pub const FLOOD_HOP_US: u64 = 10_000;
 /// How long a withdrawn LSA stays in the other routers' databases at MaxAge before every router has
 /// acknowledged the flush and removed it.
-pub const FLUSH_US: u64 = 500_000;
+pub const FLUSH_US: u64 = 5_000_000;
 
 /// How many adjacencies away each router is from `me`, counting only the adjacencies LSAs of
 /// `area` travel over (every one for an AS-external LSA).
@@ -522,7 +522,7 @@ fn flood_distances(st: &OspfState, me: DeviceId, area: Option<u32>) -> BTreeMap<
 /// router still holds the previous instance of an LSA that was originated again until the new
 /// one has been flooded to it, and an LSA that was withdrawn is held at MaxAge for a moment
 /// before every router removes it (the flush, RFC 2328 §14.1).
-fn copy_for(st: &OspfState, stamps: &Stamps, now: u64, me: DeviceId, lsas: &mut Vec<Lsa>) {
+fn copy_for(st: &OspfState, stamps: &Stamps, now: u64, me: DeviceId, lsas: &mut Vec<Lsa>, with_flushed: bool) {
     let by_rid: BTreeMap<Ipv4Addr, DeviceId> = st.router_ids.iter().map(|(d, r)| (*r, *d)).collect();
     let mut dists: BTreeMap<Option<u32>, BTreeMap<DeviceId, u32>> = BTreeMap::new();
     for l in lsas.iter_mut() {
@@ -537,7 +537,7 @@ fn copy_for(st: &OspfState, stamps: &Stamps, now: u64, me: DeviceId, lsas: &mut 
     }
     let my_areas: BTreeSet<u32> = st.segments.iter().filter(|((d, _), _)| *d == me).map(|(_, s)| s.area).collect();
     let domain = flooding_domain(st, me);
-    for (key, s) in stamps.iter().filter(|(_, s)| !s.present) {
+    for (key, s) in stamps.iter().filter(|(_, s)| !s.present && with_flushed) {
         let (Some(gone), Some(body)) = (s.gone, &s.body) else { continue };
         let Some(adv) = by_rid.get(&key.3).copied().filter(|a| *a != me && domain.contains(a)) else { continue };
         if key.1.is_some_and(|a| !my_areas.contains(&a)) || lsas.iter().any(|l| l.key() == *key) {
@@ -572,7 +572,19 @@ impl crate::Sim {
         let st = self.ospf_state(t);
         let mut lsas = database(t, &st, me);
         apply_stamps(&self.lsa_stamps, self.now, &mut lsas);
-        copy_for(&st, &self.lsa_stamps, self.now, me, &mut lsas);
+        copy_for(&st, &self.lsa_stamps, self.now, me, &mut lsas, false);
+        lsas
+    }
+
+    /// The LSAs `me` still holds at MaxAge: ones their originator withdrew, until every router has
+    /// acknowledged the flush (`show ip ospf maxage-database`). They are not part of
+    /// [`Sim::lsdb`], which is what routes are worked out from.
+    pub fn lsdb_maxage(&mut self, t: &Topology, me: DeviceId) -> Vec<Lsa> {
+        let st = self.ospf_state(t);
+        let mut lsas = database(t, &st, me);
+        apply_stamps(&self.lsa_stamps, self.now, &mut lsas);
+        copy_for(&st, &self.lsa_stamps, self.now, me, &mut lsas, true);
+        lsas.retain(|l| l.age == MAX_AGE_SECS);
         lsas
     }
 

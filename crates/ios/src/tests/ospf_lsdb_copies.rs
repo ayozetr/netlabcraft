@@ -76,14 +76,15 @@ fn a_withdrawn_lsa_is_flushed_at_maxage_before_it_leaves_the_other_databases() {
     lab.run(r1, "conf t\nrouter ospf 1\nno redistribute static\nend");
     // The originator drops it at once; nothing has reached the others yet.
     assert!(lab.run(r1, "show ip ospf database external").starts_with("No external LSAs"));
-    // Flooded two hops away: R3 holds it at MaxAge for a moment.
+    // It is not in the database any more, but R3 holds it at MaxAge until the flush is acknowledged.
     lab.sim.run_for(&lab.t, 200_000);
-    let flushing = lab.run(r3, "show ip ospf database external");
-    assert!(flushing.contains("192.168.50.0") && age_of(&flushing) == 3600, "{flushing}");
-    assert!(lab.run(r3, "show ip ospf database").contains("3600"));
-    // Then every router has removed it.
-    lab.sim.run_for(&lab.t, 3_000_000);
     assert!(lab.run(r3, "show ip ospf database external").starts_with("No external LSAs"));
+    let flushing = lab.run(r3, "show ip ospf maxage-database");
+    assert!(flushing.contains("external") && flushing.contains("192.168.50.0") && flushing.contains("3600"), "{flushing}");
+    assert!(lab.run(r1, "show ip ospf maxage-database").starts_with("No LSAs at MaxAge"));
+    // Then every router has removed it.
+    lab.sim.run_for(&lab.t, 6_000_000);
+    assert!(lab.run(r3, "show ip ospf maxage-database").starts_with("No LSAs at MaxAge"));
 }
 
 #[test]

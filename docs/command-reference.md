@@ -361,6 +361,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `show ip ospf maxage-database` | user, privileged | router, switch | LSAs this router still holds at MaxAge, withdrawn by their originator |
 | `timers throttle spf <0-600000> <0-600000> <0-600000>` |  | router, switch | Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to |
 | `no timers throttle spf` |  | router, switch | The default SPF delays again (50, 200 and 5000 ms) |
 | `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |

@@ -143,7 +143,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-18 | minor | OSPFv2: every router holds its own copy of each LSA (age grows per hop, a new instance reaches a router a hop later), a withdrawn LSA is flushed at MaxAge, `show ip ospf` counts SPF runs, `timers throttle spf`, `debug ip ospf lsa-generation\|flood\|packet`. |
+| 2026-11-18 | minor | OSPFv2: every router holds its own copy of each LSA (age grows per hop, a new instance reaches a router a hop later), a withdrawn LSA is flushed at MaxAge, `show ip ospf` counts SPF runs, `timers throttle spf`, `show ip ospf maxage-database`, `debug ip ospf lsa-generation\|flood\|packet`. |
 | 2026-11-18 | minor | OSPFv2 authentication: key rollover (one copy of each packet per message-digest key, any held key accepted), key chains (`key chain`, `key`, `key-string`, `accept-lifetime`, `send-lifetime`, `show key chain`, `ip ospf authentication key-chain`) and a replay check on the digest's sequence number. |
 | 2026-11-18 | minor | OSPFv3: authentication with an IPsec AH header (RFC 4552 over RFC 4302) on the hellos, per interface or per area, md5 or sha1, with the neighbours refused and the reason in `show ipv6 ospf neighbor`. |
 | 2026-11-16 | minor | Dial-up: `dialup.connect`, `dialup.disconnect`, `dialup.status`, `cloud.number`, `modem inout` and the Telephone Cloud, Dial-up PC and Access Server models; lab 48. |
