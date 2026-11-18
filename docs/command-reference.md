@@ -976,6 +976,33 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no object <1-1000>` |  | router, switch | Take an object out of the list |
 | `show track` | user, privileged | router, switch | Every tracked object, its state and what follows it |
 | `show track <1-1000>` | user, privileged | router, switch | One tracked object |
+| `ip sla <1-2147483647>` | config | router, switch | Create or edit an IP SLA operation |
+| `no ip sla <1-2147483647>` | config | router, switch | Delete an IP SLA operation |
+| `ip sla schedule <1-2147483647> [life {forever\|<1-2147483647>}] [start-time {now\|pending\|after hh:mm:ss}]` | config | router, switch | Start an operation (life is in seconds, 3600 when left out) |
+| `no ip sla schedule <1-2147483647>` | config | router, switch | Stop an operation and clear its results |
+| `ip sla responder` | config | router, switch | Answer the UDP probes of other devices |
+| `no ip sla responder` | config | router, switch | Stop answering UDP probes |
+| `ip sla reaction-configuration <1-2147483647> react {timeout\|rtt\|connectionLoss\|verifyError\|jitterAvg} [threshold-type {immediate\|never}] [action-type {none\|trapOnly\|triggerOnly\|trapAndTrigger}]` | config | router, switch | Keep a reaction of an operation (it is shown, nothing acts on it) |
+| `no ip sla reaction-configuration <1-2147483647>` | config | router, switch | Forget the reactions of an operation |
+| `icmp-echo A.B.C.D` |  | router, switch | Probe with ICMP echo requests |
+| `icmp-echo A.B.C.D source-ip A.B.C.D` |  | router, switch | Probe with ICMP echo requests from an address |
+| `tcp-connect A.B.C.D <1-65535>` |  | router, switch | Probe with a TCP connection |
+| `udp-echo A.B.C.D <1-65535>` |  | router, switch | Probe with a UDP datagram (the far end needs ip sla responder) |
+| `udp-jitter A.B.C.D <1-65535>` |  | router, switch | Probe with UDP datagrams (the far end needs ip sla responder) |
+| `http get URL` |  | router, switch | Probe with an HTTP request to http://A.B.C.D/path |
+| `frequency <1-604800>` |  | router, switch | Seconds between probes |
+| `no frequency` |  | router, switch | Probe every 60 seconds |
+| `timeout <0-604800000>` |  | router, switch | Milliseconds to wait for an answer |
+| `no timeout` |  | router, switch | Wait 5000 milliseconds |
+| `threshold <0-60000>` |  | router, switch | Milliseconds above which an answer is over threshold |
+| `no threshold` |  | router, switch | The threshold is 5000 milliseconds |
+| `tag TEXT` |  | router, switch | A label for the operation |
+| `no tag` |  | router, switch | Remove the label |
+| `show ip sla statistics` | user, privileged | router, switch | What each IP SLA operation measured |
+| `show ip sla statistics <1-2147483647>` | user, privileged | router, switch | What one IP SLA operation measured |
+| `show ip sla configuration` | user, privileged | router, switch | How each IP SLA operation is set |
+| `show ip sla configuration <1-2147483647>` | user, privileged | router, switch | How one IP SLA operation is set |
+| `show ip sla summary` | user, privileged | router, switch | One line per IP SLA operation |
 | `route-map NAME` | config | router, switch | Create or edit a route map clause |
 | `route-map NAME {permit\|deny} [<1-4294967294>]` | config | router, switch | Create or edit a route map clause that permits or denies |
 | `no route-map NAME` | config | router, switch | Delete a route map |

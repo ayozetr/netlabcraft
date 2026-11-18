@@ -77,6 +77,7 @@ pub mod rip6;
 pub mod script;
 pub mod simmode;
 pub mod sip;
+pub mod sla;
 pub mod snmp;
 mod span;
 pub mod stp;

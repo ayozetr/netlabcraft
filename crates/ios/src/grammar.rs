@@ -1020,6 +1020,32 @@ pub enum Id {
     ShowIpPrefixList,
     ShowRouteMap,
     RouteMapEnter,
+    // IP SLA (exec/sla.rs).
+    IpSla,
+    NoIpSla,
+    IpSlaSchedule,
+    NoIpSlaSchedule,
+    IpSlaResponder,
+    NoIpSlaResponder,
+    IpSlaReaction,
+    NoIpSlaReaction,
+    SlaIcmpEcho,
+    SlaIcmpEchoSource,
+    SlaTcpConnect,
+    SlaUdpEcho,
+    SlaUdpJitter,
+    SlaHttpGet,
+    SlaFrequency,
+    NoSlaFrequency,
+    SlaTimeout,
+    NoSlaTimeout,
+    SlaThreshold,
+    NoSlaThreshold,
+    SlaTag,
+    NoSlaTag,
+    ShowIpSlaStatistics,
+    ShowIpSlaConfiguration,
+    ShowIpSlaSummary,
     // Object tracking (exec/track.rs).
     TrackInterface,
     TrackIpRoute,
@@ -3666,6 +3692,95 @@ pub static SPECS: &[Spec] = &[
     spec!(NoTrackObject, Modes::TRACK, Modes::BOTH, [K("no"), K("object"), Arg("<1-1000>")], "Take an object out of the list"),
     spec!(ShowTrack, EXECS, Modes::BOTH, [K("show"), K("track")], "Every tracked object, its state and what follows it"),
     spec!(ShowTrack, EXECS, Modes::BOTH, [K("show"), K("track"), Arg("<1-1000>")], "One tracked object"),
+    spec!(IpSla, Modes::CONFIG, Modes::BOTH, [K("ip"), K("sla"), Arg("<1-2147483647>")], "Create or edit an IP SLA operation"),
+    spec!(NoIpSla, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("sla"), Arg("<1-2147483647>")], "Delete an IP SLA operation"),
+    spec!(
+        IpSlaSchedule,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("sla"), K("schedule"), Arg("<1-2147483647>"), Rest("[life {forever|<1-2147483647>}] [start-time {now|pending|after hh:mm:ss}]")],
+        "Start an operation (life is in seconds, 3600 when left out)"
+    ),
+    spec!(
+        NoIpSlaSchedule,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("sla"), K("schedule"), Arg("<1-2147483647>")],
+        "Stop an operation and clear its results"
+    ),
+    spec!(IpSlaResponder, Modes::CONFIG, Modes::BOTH, [K("ip"), K("sla"), K("responder")], "Answer the UDP probes of other devices"),
+    spec!(NoIpSlaResponder, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("sla"), K("responder")], "Stop answering UDP probes"),
+    spec!(
+        IpSlaReaction,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [
+            K("ip"),
+            K("sla"),
+            K("reaction-configuration"),
+            Arg("<1-2147483647>"),
+            Rest(
+                "react {timeout|rtt|connectionLoss|verifyError|jitterAvg} [threshold-type {immediate|never}] [action-type {none|trapOnly|triggerOnly|trapAndTrigger}]"
+            )
+        ],
+        "Keep a reaction of an operation (it is shown, nothing acts on it)"
+    ),
+    spec!(
+        NoIpSlaReaction,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("sla"), K("reaction-configuration"), Arg("<1-2147483647>")],
+        "Forget the reactions of an operation"
+    ),
+    spec!(SlaIcmpEcho, Modes::TRACK, Modes::BOTH, [K("icmp-echo"), Arg("A.B.C.D")], "Probe with ICMP echo requests"),
+    spec!(
+        SlaIcmpEchoSource,
+        Modes::TRACK,
+        Modes::BOTH,
+        [K("icmp-echo"), Arg("A.B.C.D"), K("source-ip"), Arg("A.B.C.D")],
+        "Probe with ICMP echo requests from an address"
+    ),
+    spec!(SlaTcpConnect, Modes::TRACK, Modes::BOTH, [K("tcp-connect"), Arg("A.B.C.D"), Arg("<1-65535>")], "Probe with a TCP connection"),
+    spec!(
+        SlaUdpEcho,
+        Modes::TRACK,
+        Modes::BOTH,
+        [K("udp-echo"), Arg("A.B.C.D"), Arg("<1-65535>")],
+        "Probe with a UDP datagram (the far end needs ip sla responder)"
+    ),
+    spec!(
+        SlaUdpJitter,
+        Modes::TRACK,
+        Modes::BOTH,
+        [K("udp-jitter"), Arg("A.B.C.D"), Arg("<1-65535>")],
+        "Probe with UDP datagrams (the far end needs ip sla responder)"
+    ),
+    spec!(SlaHttpGet, Modes::TRACK, Modes::BOTH, [K("http"), K("get"), Arg("URL")], "Probe with an HTTP request to http://A.B.C.D/path"),
+    spec!(SlaFrequency, Modes::TRACK, Modes::BOTH, [K("frequency"), Arg("<1-604800>")], "Seconds between probes"),
+    spec!(NoSlaFrequency, Modes::TRACK, Modes::BOTH, [K("no"), K("frequency")], "Probe every 60 seconds"),
+    spec!(SlaTimeout, Modes::TRACK, Modes::BOTH, [K("timeout"), Arg("<0-604800000>")], "Milliseconds to wait for an answer"),
+    spec!(NoSlaTimeout, Modes::TRACK, Modes::BOTH, [K("no"), K("timeout")], "Wait 5000 milliseconds"),
+    spec!(SlaThreshold, Modes::TRACK, Modes::BOTH, [K("threshold"), Arg("<0-60000>")], "Milliseconds above which an answer is over threshold"),
+    spec!(NoSlaThreshold, Modes::TRACK, Modes::BOTH, [K("no"), K("threshold")], "The threshold is 5000 milliseconds"),
+    spec!(SlaTag, Modes::TRACK, Modes::BOTH, [K("tag"), Rest("TEXT")], "A label for the operation"),
+    spec!(NoSlaTag, Modes::TRACK, Modes::BOTH, [K("no"), K("tag")], "Remove the label"),
+    spec!(ShowIpSlaStatistics, EXECS, Modes::BOTH, [K("show"), K("ip"), K("sla"), K("statistics")], "What each IP SLA operation measured"),
+    spec!(
+        ShowIpSlaStatistics,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("sla"), K("statistics"), Arg("<1-2147483647>")],
+        "What one IP SLA operation measured"
+    ),
+    spec!(ShowIpSlaConfiguration, EXECS, Modes::BOTH, [K("show"), K("ip"), K("sla"), K("configuration")], "How each IP SLA operation is set"),
+    spec!(
+        ShowIpSlaConfiguration,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("sla"), K("configuration"), Arg("<1-2147483647>")],
+        "How one IP SLA operation is set"
+    ),
+    spec!(ShowIpSlaSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("sla"), K("summary")], "One line per IP SLA operation"),
     spec!(RouteMapEnter, Modes::CONFIG, Modes::BOTH, [K("route-map"), Arg("NAME")], "Create or edit a route map clause"),
     spec!(
         RouteMapEnter,

@@ -186,6 +186,8 @@ fn dh_secret(group: u16, private: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
         (None, Some(c)) => c.shared(private, peer),
         (None, None) => None,
     }
+    /// With RSA signatures: the authorities the peer's certificate requests named.
+    pub peer_wants: crate::pki::Wanted,
 }
 
 /// Why opening a message failed.
