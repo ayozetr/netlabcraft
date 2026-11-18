@@ -54,6 +54,8 @@ mod tests_cell;
 #[cfg(test)]
 mod tests_closet;
 #[cfg(test)]
+mod tests_debug;
+#[cfg(test)]
 mod tests_dialup;
 #[cfg(test)]
 mod tests_envs;
@@ -63,6 +65,8 @@ mod tests_families;
 mod tests_hostapps;
 #[cfg(test)]
 mod tests_instructor;
+#[cfg(test)]
+mod tests_lang;
 #[cfg(test)]
 mod tests_netflow;
 #[cfg(test)]
