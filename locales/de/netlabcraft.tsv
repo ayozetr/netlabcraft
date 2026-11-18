@@ -1074,6 +1074,18 @@
 	Show All/None	Alle/Keine anzeigen
 	Show as text	Als Text anzeigen
 	Show grid	Raster anzeigen
+	Grid Preferences	Rastereinstellungen
+	Grid Preferences…	Rastereinstellungen…
+	Grid Scale	Rastermaßstab
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Legt den Rasterabstand in Metern für jede Ebene des physischen Arbeitsbereichs fest. Das Raster einer Ebene wird gezeichnet, sobald ihr Kästchen markiert ist.
+	Grid-X (m)	Raster X (m)
+	Grid-Y (m)	Raster Y (m)
+	Generic Container	Allgemeiner Container
+	A wiring closet has no scale, so it has no grid.	Ein Verteilerschrank hat keinen Maßstab und damit kein Raster.
+	Grid Line Color	Farbe der Rasterlinien
+	Select Grid Color	Rasterfarbe wählen
+	Grid color {}	Rasterfarbe {}
+	{}: zoom in to see the lines	{}: zum Anzeigen der Linien vergrößern
 	Device windows as separate windows	Geräte in eigenen Fenstern
 	Not available in the web version	In der Web-Version nicht verfügbar
 	shown when it fails	bei Fehlschlag angezeigt
@@ -2404,6 +2416,8 @@ furniture	Table	Tisch
 	Application size	Größe der Anwendung
 	Enter the password first: some tabs are locked.	Gib zuerst das Passwort ein: Einige Register sind gesperrt.
 	Port, {}	Port, {}
+	Language:	Sprache:
+	Program ({})	Programm ({})
 	Up	Aktiv
 	Down	Inaktiv
 	Properties…	Eigenschaften…

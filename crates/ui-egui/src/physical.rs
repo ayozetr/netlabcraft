@@ -18,7 +18,6 @@ use crate::{PacketApp, Tool, icons};
 /// A place's icon size, and a device's, in map units.
 const PLACE_ICON: f32 = 84.0;
 const DEVICE_ICON: f32 = 46.0;
-const GRID: f32 = 80.0;
 
 /// What a right-click opened a menu on.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -45,6 +44,8 @@ pub struct PhysState {
     pub renaming: Option<(u32, String)>,
     /// The Cable Length dialog: one end of the cable and the metres being typed.
     pub length: Option<(End, String)>,
+    /// The Grid Preferences window.
+    pub(crate) grid: crate::physical_grid::State,
     /// The wiring-closet view's state (furniture, drags, the Rename dialog).
     pub(crate) closet: crate::closet::State,
     /// The `+` menu of the bar.
@@ -178,11 +179,6 @@ fn runs(app: &PacketApp, view: &View) -> Vec<Run> {
     out
 }
 
-/// A position snapped to half the map grid when aligning is on.
-fn snap(v: f32, on: bool) -> f32 {
-    if on { (v / (GRID / 2.0)).round() * (GRID / 2.0) } else { v }
-}
-
 /// A cable length for people: metres, or kilometres from 1 km; feet, or miles from 1 mile,
 /// when the metric system is off (Preferences).
 pub(crate) fn length_text(m: u32, metric: bool) -> String {
@@ -235,6 +231,7 @@ pub fn add_place(app: &mut PacketApp, at: Option<(f32, f32)>) {
 pub fn add_kind(app: &mut PacketApp, kind: PlaceKind, at: Option<(f32, f32)>) {
     let mut p = json!({"kind": kind.id(), "parent": app.session.place_view});
     if let Some((x, y)) = at {
+        let (x, y) = crate::physical_grid::snap_xy(app, x, y);
         p["x"] = json!(x);
         p["y"] = json!(y);
     }
@@ -317,21 +314,8 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     let view = View::new(app, rect.min.to_vec2() + app.ui.pan);
     app.ui.pointer = resp.hover_pos().map(|p| view.world(p));
 
-    // A faint map grid.
-    let step = GRID * view.zoom;
-    if step >= 12.0 {
-        let off = vec2(view.origin.x.rem_euclid(step), view.origin.y.rem_euclid(step));
-        let mut x = rect.left() + off.x;
-        while x < rect.right() {
-            painter.line_segment([pos2(x, rect.top()), pos2(x, rect.bottom())], Stroke::new(1.0, tk.grid));
-            x += step;
-        }
-        let mut y = rect.top() + off.y;
-        while y < rect.bottom() {
-            painter.line_segment([pos2(rect.left(), y), pos2(rect.right(), y)], Stroke::new(1.0, tk.grid));
-            y += step;
-        }
-    }
+    // The grid of this level, when its box is ticked (Grid Preferences).
+    crate::physical_grid::draw(app, &painter, rect, view.origin, view.zoom, &tk);
 
     if app.ui.prefs.show_wireless_signals {
         draw_wireless(app, &painter, &view, &tk);
@@ -518,14 +502,13 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View, ru
     if resp.dragged() {
         let delta = resp.drag_delta() / view.zoom;
         // Aligned, the object snaps to the grid while the pointer keeps its true position.
-        let align = app.ui.prefs.align_physical;
         if app.ui.physical.drag_place.is_some() || app.ui.physical.drag_device.is_some() {
             app.ui.physical.drag_raw.0 += delta.x;
             app.ui.physical.drag_raw.1 += delta.y;
         }
         let (x, y) = {
             let (rx, ry) = app.ui.physical.drag_raw;
-            (snap(rx, align), snap(ry, align))
+            crate::physical_grid::snap_xy(app, rx, ry)
         };
         if let Some(id) = app.ui.physical.drag_place {
             app.run("place.move", json!({"id": id, "x": x, "y": y, "transient": true}));
@@ -601,6 +584,7 @@ fn place_device(app: &mut PacketApp, view: &View, model: &'static str, p: Pos2) 
         return;
     }
     let (x, y) = view.world(p);
+    let (x, y) = if app.ui.prefs.align_physical { crate::physical_grid::snap_xy(app, x, y) } else { (x, y) };
     app.run("device.add", json!({"model": model, "x": x.round(), "y": y.round()}));
 }
 
@@ -638,6 +622,10 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             }
             if ui.button(tl("Remove Place")).clicked() {
                 app.run("place.remove", json!({"id": id}));
+                ui.close();
+            }
+            if ui.button(tl("Grid Preferences…")).clicked() {
+                app.ui.physical.grid.open = true;
                 ui.close();
             }
         }
@@ -678,12 +666,16 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             crate::cable_window::menu_items(app, ui, l.a, true);
         }
         Target::Empty(x, y) => {
-            let Some(kind) = child_kind(app) else {
+            if let Some(kind) = child_kind(app) {
+                if ui.button(tl(new_label(kind))).clicked() {
+                    add_place(app, Some((x, y)));
+                    ui.close();
+                }
+            } else {
                 ui.label(tl("Right-click a device to move it to another place."));
-                return;
-            };
-            if ui.button(tl(new_label(kind))).clicked() {
-                add_place(app, Some((x, y)));
+            }
+            if ui.button(tl("Grid Preferences…")).clicked() {
+                app.ui.physical.grid.open = true;
                 ui.close();
             }
             let can_container = crate::physical_bar::reason(app, crate::physical_bar::Create::Container).is_none();
@@ -698,6 +690,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
 /// The Rename Place and Cable Length dialogs (and the closet's Rename dialog).
 pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     crate::closet::windows(app, ctx);
+    crate::physical_grid::window(app, ctx);
     if let Some((id, mut name)) = app.ui.physical.renaming.clone() {
         let (mut open, mut ok) = (true, false);
         egui::Window::new(tl("Rename Place")).id(egui::Id::unique("place_rename")).open(&mut open).collapsible(false).resizable(false).show(

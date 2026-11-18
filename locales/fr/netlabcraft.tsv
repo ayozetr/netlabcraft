@@ -1074,6 +1074,18 @@
 	Show All/None	Tout afficher/masquer
 	Show as text	Afficher en texte
 	Show grid	Afficher la grille
+	Grid Preferences	Préférences de la grille
+	Grid Preferences…	Préférences de la grille…
+	Grid Scale	Échelle de la grille
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Fixe l'espacement de la grille, en mètres, pour chaque niveau de l'espace de travail physique. La grille d'un niveau est tracée dès que sa case est cochée.
+	Grid-X (m)	Grille X (m)
+	Grid-Y (m)	Grille Y (m)
+	Generic Container	Conteneur générique
+	A wiring closet has no scale, so it has no grid.	Une baie de brassage n'a pas d'échelle, donc pas de grille.
+	Grid Line Color	Couleur des lignes de la grille
+	Select Grid Color	Choisir la couleur de la grille
+	Grid color {}	Couleur de la grille {}
+	{}: zoom in to see the lines	{} : zoomez pour voir les lignes
 	Device windows as separate windows	Fenêtres d'appareil séparées
 	Not available in the web version	Indisponible dans la version web
 	shown when it fails	affiché en cas d'échec
@@ -2404,6 +2416,8 @@ furniture	Table	Table
 	Application size	Taille de l'application
 	Enter the password first: some tabs are locked.	Saisissez d'abord le mot de passe : certains onglets sont verrouillés.
 	Port, {}	Port, {}
+	Language:	Langue :
+	Program ({})	Programme ({})
 	Up	Actif
 	Down	Inactif
 	Properties…	Propriétés…

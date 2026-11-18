@@ -519,6 +519,8 @@ pub enum Glyph {
     Polygon,
     Cluster,
     Wireless,
+    /// A two-by-two grid of squares (the physical workspace's Grid Preferences).
+    Grid,
 }
 
 /// Draws a glyph in `rect` with colour `c`.
@@ -747,6 +749,15 @@ pub fn glyph(p: &Painter, rect: Rect, g: Glyph, c: Color32) {
                     })
                     .collect();
                 p.add(Shape::line(pts, s));
+            }
+        }
+        Glyph::Grid => {
+            // Four squares in a two-by-two grid.
+            let gap = w * 0.16;
+            let side = (w - gap) / 2.0;
+            for (i, j) in [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)] {
+                let corner = pos2(r.left() + i * (side + gap), r.top() + j * (side + gap));
+                p.rect_stroke(Rect::from_min_size(corner, vec2(side, side)), 1.0, s, egui::StrokeKind::Inside);
             }
         }
         Glyph::Cluster => {

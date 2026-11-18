@@ -34,7 +34,7 @@ use netlabcraft_wire::x509::Certificate;
 use netlabcraft_wire::{PROTO_TCP, http};
 
 use crate::v6::{l3_ifaces6, route6};
-use crate::{Sim, SimError, l3_ifaces};
+use crate::{DebugKind, Sim, SimError, l3_ifaces};
 
 /// Most connections a router keeps open at once (the oldest is dropped).
 pub const MAX_CONNS: usize = 32;
@@ -370,6 +370,8 @@ impl Sim {
                     Some(f) => f(t, d.id, &req),
                     None => Served { response: error_page(503, "RESTCONF is not available."), lines: Vec::new() },
                 };
+                let target: String = req.target.chars().take(80).collect();
+                self.debug_log(d.id, DebugKind::Http, &format!("{} {target} answered with status {}", req.method, served.response.status));
                 if !served.lines.is_empty() {
                     self.auto.changes.push((d.id, served.lines));
                 }

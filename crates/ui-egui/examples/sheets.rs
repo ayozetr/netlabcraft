@@ -13,6 +13,9 @@
 //!   family (hub, PoE and SFP switches, routers with serial ports and a module card, firewall, access point, home
 //!   router, server, PC, laptop, printer, IP phone, modems, clouds, cell tower, central office, an IoT thing and the
 //!   boards), built through engine commands, with the real connector drawn for every port;
+//! * `grid-window-*.png`: the Intercity map with the Grid Preferences window open (the four-squares button on the
+//!   bar), every level's grid ticked; `grid-intercity-*.png`, `grid-city-*.png`, `grid-building-*.png`: the grid of each
+//!   level with its spacing at the corner; `grid-colour-*.png`: the window with the colour palette open;
 //! * `create-menu-<LEVEL>-light.png`, `create-menu-<LEVEL>-dark.png`: the physical bar with the `+` menu open at the
 //!   Intercity map, a city, a building, a wiring closet and a container, the Home button at the right end;
 //! * `create-kinds-light.png`, `create-kinds-dark.png`: a closet with every kind of furniture (a rack, a shelf, a
@@ -26,7 +29,7 @@ use egui::{Align2, FontId, Pos2, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
 use netlabcraft_engine::Session;
 use netlabcraft_model::cable::Cable;
 use netlabcraft_model::models::MODELS;
-use netlabcraft_ui_egui::{PacketApp, theme};
+use netlabcraft_ui_egui::{GridLevel, PacketApp, theme};
 use serde_json::{Value, json};
 
 /// Runs a command; a refusal is printed (the sheet is still rendered) and gives `Null`.
@@ -349,6 +352,40 @@ fn logical_sheet(dir: &str, dark: bool) {
     app_sheet(dir, &format!("logical-{suffix}"), s, (1200.0, 760.0), dark, |_| {});
 }
 
+/// The physical workspace with the grid of every level ticked: the window, the colour palette and each level.
+fn grid_sheets(dir: &str, dark: bool) {
+    let suffix = if dark { "dark" } else { "light" };
+    let lab = || {
+        let mut s = Session::new();
+        cmd(&mut s, "file.new", json!({"sample": "lan"}));
+        s
+    };
+    let on = |app: &mut PacketApp| {
+        for l in GridLevel::ALL {
+            app.ui.prefs.grid.set_on(l, true);
+        }
+        app.set_physical(true);
+    };
+    app_sheet(dir, &format!("grid-window-{suffix}"), lab(), (1200.0, 760.0), dark, move |app| {
+        on(app);
+        app.open_grid_preferences();
+    });
+    app_sheet(dir, &format!("grid-colour-{suffix}"), lab(), (1200.0, 760.0), dark, move |app| {
+        on(app);
+        app.ui.prefs.grid.color = [0x3c, 0x78, 0xc8];
+        app.open_grid_preferences();
+        app.open_grid_colours();
+    });
+    for (name, place) in [("grid-intercity", None), ("grid-city", Some(1)), ("grid-building", Some(2))] {
+        app_sheet(dir, &format!("{name}-{suffix}"), lab(), (1200.0, 760.0), dark, move |app| {
+            on(app);
+            if let Some(p) = place {
+                app.enter_place(p);
+            }
+        });
+    }
+}
+
 /// A small lab with a container in the city, for the menu sheets; the container's number.
 fn create_lab() -> (Session, u32) {
     let mut s = Session::new();
@@ -425,6 +462,7 @@ fn main() {
         closet_zoom_steps(&dir, dark);
         device_physical_sheets(&dir, dark);
         logical_sheet(&dir, dark);
+        grid_sheets(&dir, dark);
         create_menu_sheets(&dir, dark);
         create_kinds_sheet(&dir, dark);
     }
