@@ -24,6 +24,7 @@ mod errdisable_detect;
 mod error_counters;
 mod families;
 mod igmp;
+mod ike_certreq;
 mod ike_rsa;
 mod inspections;
 mod interface_counters;

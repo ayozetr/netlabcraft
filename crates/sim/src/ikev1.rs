@@ -159,6 +159,8 @@ pub struct V1State {
     pub ah_spi_peer: u32,
     /// With RSA signatures: the subject of the certificate the peer proved itself with.
     pub peer_cert: String,
+    /// With RSA signatures: the authorities the peer's certificate requests named.
+    pub peer_wants: crate::pki::Wanted,
 }
 
 /// Why opening a message failed.
