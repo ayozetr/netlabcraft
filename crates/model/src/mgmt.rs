@@ -110,6 +110,9 @@ impl Mgmt {
 pub struct FlashFile {
     pub name: String,
     pub size: u64,
+    /// The text of a configuration copied into flash (`copy running-config flash:`); images have none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub text: Option<String>,
 }
 
 /// What lives outside the configuration and survives a reload: the configuration register

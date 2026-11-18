@@ -62,6 +62,7 @@ pub mod ospf6;
 pub mod ospf_flood;
 pub mod ospf_lsdb;
 pub mod parts;
+pub mod pbr;
 pub mod pdu;
 pub mod peap;
 pub mod pki;
@@ -972,6 +973,8 @@ pub struct DevState {
     /// How often each access-list line matched, by list name and the line's sequence number
     /// (`usize::MAX`: the implicit deny). Firewall rules count under their position.
     pub acl_hits: BTreeMap<(String, usize), u64>,
+    /// Policy-based routing: packets and bytes each route-map clause took, by map and sequence.
+    pub pbr_hits: BTreeMap<(String, u32), (u64, u64)>,
     /// NAT translations in use.
     pub nat: Vec<NatEntry>,
     /// Port security: addresses learned per port (not sticky), and violations counted.
@@ -1220,6 +1223,11 @@ pub struct Sim {
     /// Reloads that were asked for (`reload in|at`): the simulated time each device restarts at,
     /// and the reason typed.
     reloads: BTreeMap<DeviceId, (u64, String)>,
+    /// When each device last started (simulated µs) and why; a device never restarted is absent
+    /// (it started with the simulation).
+    boots: BTreeMap<DeviceId, (u64, String)>,
+    /// The reason of a scheduled reload that came due, until `reset_device` takes it.
+    due_reasons: BTreeMap<DeviceId, String>,
     seq: u64,
     queue: BinaryHeap<Reverse<Queued>>,
     state: BTreeMap<DeviceId, DevState>,
@@ -1382,9 +1390,22 @@ impl Sim {
         let now = self.now;
         let due: Vec<DeviceId> = self.reloads.iter().filter(|(_, (at, _))| *at <= now).map(|(d, _)| *d).collect();
         for d in &due {
-            self.reloads.remove(d);
+            if let Some((_, why)) = self.reloads.remove(d) {
+                self.due_reasons.insert(*d, why);
+            }
         }
         due
+    }
+
+    /// How long the device has been running (microseconds): since it last restarted, else since
+    /// the simulation began.
+    pub fn uptime_us(&self, d: DeviceId) -> u64 {
+        self.now.saturating_sub(self.boots.get(&d).map_or(0, |b| b.0))
+    }
+
+    /// Why the device last restarted; `None` when it has not restarted since the simulation began.
+    pub fn last_reload_reason(&self, d: DeviceId) -> Option<&str> {
+        self.boots.get(&d).map(|b| b.1.as_str())
     }
 
     /// Simulated time, in microseconds.
@@ -1573,6 +1594,11 @@ impl Sim {
 
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
+        let why = self.due_reasons.remove(&d).or_else(|| self.reloads.get(&d).map(|(_, w)| w.clone()));
+        let why = why.filter(|w| !w.trim().is_empty()).unwrap_or_else(|| "reload requested".to_string());
+        if self.boots.len() < MAX_MAC_ENTRIES || self.boots.contains_key(&d) {
+            self.boots.insert(d, (self.now, why.chars().take(80).collect()));
+        }
         self.reloads.remove(&d);
         self.state.remove(&d);
         self.l2.forget(d);
@@ -3321,7 +3347,14 @@ impl Sim {
             return r;
         }
         let debug = self.debug_packet_wanted(d, &ip);
-        match self.route_flow(t, d, ip.src, ip.dst) {
+        // Policy-based routing decides before the routing table is asked.
+        let policy = self.policy_route(t, d, Some(ifc), &ip);
+        let mark = policy.as_ref().and_then(|p| p.dscp);
+        let routed = match policy.and_then(|p| p.route) {
+            Some(r) => Some(r),
+            None => self.route_flow(t, d, ip.src, ip.dst),
+        };
+        match routed {
             Some((out, nh)) => {
                 if debug {
                     let via = if nh == ip.dst { String::new() } else { format!(" via {nh}") };
@@ -3346,6 +3379,9 @@ impl Sim {
                 self.bump(d.id, "forwarded");
                 self.netflow_note(d, ifc, &out, nh, &ip, payload.len());
                 let mut bytes = netlabcraft_wire::ipfrag::keep_fragment_bits(payload, qos::keep_ds(payload, fwd.encode()));
+                if let Some(m) = mark {
+                    let _ = netlabcraft_wire::qos::set_dscp(&mut bytes, m);
+                }
                 // `ip tcp adjust-mss` on either interface: SYNs announce no more than that.
                 let mss = [&ifc.name, &out.name].iter().filter_map(|n| d.security.adjust_mss.get(n.as_str()).copied()).min();
                 if let Some(m) = mss
@@ -3586,9 +3622,18 @@ impl Sim {
         if ip.dst.is_multicast() && d.kind.is_host() {
             return self.send_multicast(t, d, &ip);
         }
-        let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
+        let policy = self.policy_route(t, d, None, &ip);
+        let mark = policy.as_ref().and_then(|p| p.dscp);
+        let routed = match policy.and_then(|p| p.route) {
+            Some(r) => Some(r),
+            None => self.route_flow(t, d, ip.src, ip.dst),
+        };
+        let (out, nh) = routed.ok_or_else(|| format!("no route to {}", ip.dst))?;
         self.note_sends(ip.dst, &out, nh, ip.ttl);
         let mut raw = ip.encode();
+        if let Some(m) = mark {
+            let _ = netlabcraft_wire::qos::set_dscp(&mut raw, m);
+        }
         if !df {
             netlabcraft_wire::ipfrag::set_dont_fragment(&mut raw, false);
         }

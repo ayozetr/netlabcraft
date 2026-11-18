@@ -26,7 +26,7 @@ fn current(c: &Ctx) -> Result<u32, String> {
 
 /// An interface name as the device spells it: a port, a subinterface, a VLAN interface, a loopback
 /// or a tunnel.
-fn interface_name(c: &Ctx, text: &str) -> Result<String, String> {
+pub(super) fn interface_name(c: &Ctx, text: &str) -> Result<String, String> {
     let compact: String = text.chars().filter(|ch| !ch.is_whitespace()).collect();
     let lower = compact.to_ascii_lowercase();
     if let Some(n) = lower.strip_prefix("vlan").and_then(|n| n.parse::<u16>().ok()) {
