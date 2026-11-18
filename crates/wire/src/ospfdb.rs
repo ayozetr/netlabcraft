@@ -1,6 +1,7 @@
 //! OSPFv2 database exchange (RFC 2328 A.3.3–A.3.6): when two routers become neighbours they
 //! describe their link-state databases (DBD), request what they lack (LSR), send it (LSU) and
-//! acknowledge it (LSAck). Only router-LSAs (A.4.2) are carried here.
+//! acknowledge it (LSAck). Router-LSAs (A.4.2) and the other LSA types travel as [`RawLsa`]s: a
+//! header and a body the simulator builds from its database.
 
 use std::net::Ipv4Addr;
 
@@ -20,7 +21,7 @@ pub struct LsaHeader {
 }
 
 impl LsaHeader {
-    fn encode(&self, out: &mut Vec<u8>) {
+    pub fn encode(&self, out: &mut Vec<u8>) {
         out.extend_from_slice(&self.age.to_be_bytes());
         out.extend_from_slice(&[0x02, self.kind]);
         out.extend_from_slice(&self.id.octets());
@@ -30,7 +31,7 @@ impl LsaHeader {
         out.extend_from_slice(&self.length.to_be_bytes());
     }
 
-    fn decode(b: &[u8], at: usize) -> Option<LsaHeader> {
+    pub fn decode(b: &[u8], at: usize) -> Option<LsaHeader> {
         Some(LsaHeader {
             age: be16(b, at)?,
             kind: *b.get(at + 3)?,
@@ -123,6 +124,112 @@ impl RouterLsa {
     }
 }
 
+/// Whether sequence number `a` is newer than `b`: sequence numbers are signed, starting at
+/// 0x80000001 (RFC 2328 §12.1.6).
+pub fn seq_newer(a: u32, b: u32) -> bool {
+    i32::from_be_bytes(a.to_be_bytes()) > i32::from_be_bytes(b.to_be_bytes())
+}
+
+/// The age at which an LSA is flushed (MaxAge, RFC 2328 Appendix B).
+pub const MAX_AGE: u16 = 3600;
+
+/// An LSA of any type: its header and its body, as it travels in an update.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RawLsa {
+    pub header: LsaHeader,
+    pub body: Vec<u8>,
+}
+
+impl RawLsa {
+    /// Builds an LSA (length and checksum are worked out here).
+    pub fn new(age: u16, kind: u8, id: Ipv4Addr, advertising: Ipv4Addr, seq: u32, body: Vec<u8>) -> RawLsa {
+        let length = u16::try_from(20 + body.len()).unwrap_or(u16::MAX);
+        let mut l = RawLsa { header: LsaHeader { age, kind, id, advertising, seq, checksum: 0, length }, body };
+        let mut b = Vec::new();
+        l.header.encode(&mut b);
+        b.extend_from_slice(&l.body);
+        fletcher(&mut b);
+        l.header.checksum = be16(&b, 16).unwrap_or(0);
+        l
+    }
+
+    /// The same LSA with another age (the checksum does not cover the age).
+    pub fn with_age(&self, age: u16) -> RawLsa {
+        let mut l = self.clone();
+        l.header.age = age;
+        l
+    }
+
+    pub fn encode(&self) -> Vec<u8> {
+        let mut b = Vec::new();
+        self.header.encode(&mut b);
+        b.extend_from_slice(&self.body);
+        b
+    }
+
+    /// One LSA at `at`, as long as its header says (none when it does not fit).
+    pub fn decode_at(b: &[u8], at: usize) -> Option<RawLsa> {
+        let header = LsaHeader::decode(b, at)?;
+        let len = usize::from(header.length);
+        if len < 20 {
+            return None;
+        }
+        let body = b.get(at + 20..at.checked_add(len)?)?.to_vec();
+        Some(RawLsa { header, body })
+    }
+
+    /// Whether the Fletcher checksum is the one the LSA's bytes sum to.
+    pub fn checksum_ok(&self) -> bool {
+        let b = self.encode();
+        let (mut c0, mut c1) = (0u32, 0u32);
+        for x in b.iter().skip(2) {
+            c0 = (c0 + u32::from(*x)) % 255;
+            c1 = (c1 + c0) % 255;
+        }
+        (c0, c1) == (0, 0)
+    }
+}
+
+/// The body of a router-LSA (A.4.2): flag bits (B 0x01, E 0x02, Nt 0x10) and the links.
+pub fn router_body(flags: u8, links: &[RouterLink]) -> Vec<u8> {
+    let mut out = vec![flags, 0];
+    out.extend_from_slice(&u16::try_from(links.len()).unwrap_or(u16::MAX).to_be_bytes());
+    for l in links {
+        out.extend_from_slice(&l.id.octets());
+        out.extend_from_slice(&l.data.octets());
+        out.extend_from_slice(&[l.kind, 0]);
+        out.extend_from_slice(&l.metric.to_be_bytes());
+    }
+    out
+}
+
+/// The body of a network-LSA (A.4.3): the mask and the attached routers.
+pub fn network_body(mask: Ipv4Addr, attached: &[Ipv4Addr]) -> Vec<u8> {
+    let mut out = mask.octets().to_vec();
+    for a in attached {
+        out.extend_from_slice(&a.octets());
+    }
+    out
+}
+
+/// The body of a summary-LSA (types 3 and 4, A.4.4): the mask and a 24-bit metric.
+pub fn summary_body(mask: Ipv4Addr, metric: u32) -> Vec<u8> {
+    let mut out = mask.octets().to_vec();
+    out.extend_from_slice(&metric.min(0x00ff_ffff).to_be_bytes());
+    out
+}
+
+/// The body of an AS-external or NSSA LSA (types 5 and 7, A.4.5): the mask, the E bit (a type 2
+/// metric), a 24-bit metric, the forwarding address and the tag.
+pub fn external_body(mask: Ipv4Addr, type2: bool, metric: u32, forward: Ipv4Addr, tag: u32) -> Vec<u8> {
+    let mut out = mask.octets().to_vec();
+    let m = metric.min(0x00ff_ffff).to_be_bytes();
+    out.extend_from_slice(&[if type2 { 0x80 } else { 0 }, m[1], m[2], m[3]]);
+    out.extend_from_slice(&forward.octets());
+    out.extend_from_slice(&tag.to_be_bytes());
+    out
+}
+
 /// DBD flags.
 pub const DBD_INIT: u8 = 4;
 pub const DBD_MORE: u8 = 2;
@@ -138,7 +245,7 @@ pub enum OspfDb {
     },
     /// (LS type, link-state ID, advertising router).
     Request(Vec<(u32, Ipv4Addr, Ipv4Addr)>),
-    Update(Vec<RouterLsa>),
+    Update(Vec<RawLsa>),
     Ack(Vec<LsaHeader>),
 }
 
@@ -231,16 +338,9 @@ impl OspfDb {
                 let mut lsas = Vec::new();
                 let mut at = 28;
                 for _ in 0..count.min(256) {
-                    let Some(h) = LsaHeader::decode(p, at) else { break };
-                    let n = usize::from(be16(p, at + 22).unwrap_or(0));
-                    let links = (0..n.min(256))
-                        .map_while(|i| {
-                            let l = at + 24 + 12 * i;
-                            Some(RouterLink { id: ip_at(p, l)?, data: ip_at(p, l + 4)?, kind: *p.get(l + 8)?, metric: be16(p, l + 10)? })
-                        })
-                        .collect();
-                    lsas.push(RouterLsa { router_id: h.advertising, seq: h.seq, links });
-                    at += usize::from(h.length.max(20));
+                    let Some(l) = RawLsa::decode_at(p, at) else { break };
+                    at += usize::from(l.header.length.max(20));
+                    lsas.push(l);
                 }
                 OspfDb::Update(lsas)
             }
@@ -279,7 +379,7 @@ mod tests {
             OspfDb::Dbd { flags: DBD_INIT | DBD_MORE | DBD_MASTER, seq: 7, headers: vec![] },
             OspfDb::Dbd { flags: DBD_MASTER, seq: 8, headers: vec![lsa.header()] },
             OspfDb::Request(vec![(1, a, a)]),
-            OspfDb::Update(vec![lsa.clone()]),
+            OspfDb::Update(vec![RawLsa::new(5, 1, a, a, lsa.seq, router_body(0, &lsa.links))]),
             OspfDb::Ack(vec![lsa.header()]),
         ] {
             let b = p.encode(a, 0);
@@ -288,5 +388,38 @@ mod tests {
                 let _ = OspfDb::decode(&b[..k]);
             }
         }
+    }
+
+    #[test]
+    fn every_lsa_type_round_trips_with_a_valid_checksum() {
+        let (a, b) = (Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(10, 0, 0, 0));
+        let mask = Ipv4Addr::new(255, 255, 255, 0);
+        let lsas = vec![
+            RawLsa::new(0, 1, a, a, 0x8000_0001, router_body(0x01, &[RouterLink { kind: 3, id: b, data: mask, metric: 1 }])),
+            RawLsa::new(10, 2, Ipv4Addr::new(10, 0, 0, 1), a, 0x8000_0002, network_body(mask, &[a, Ipv4Addr::new(2, 2, 2, 2)])),
+            RawLsa::new(20, 3, b, a, 0x8000_0003, summary_body(mask, 20)),
+            RawLsa::new(30, 4, Ipv4Addr::new(3, 3, 3, 3), a, 0x8000_0004, summary_body(Ipv4Addr::UNSPECIFIED, 5)),
+            RawLsa::new(40, 5, b, a, 0x8000_0005, external_body(mask, true, 20, Ipv4Addr::UNSPECIFIED, 7)),
+            RawLsa::new(50, 7, b, a, 0x8000_0006, external_body(mask, false, 20, Ipv4Addr::new(10, 0, 0, 1), 0)),
+        ];
+        for l in &lsas {
+            assert!(l.checksum_ok(), "type {}", l.header.kind);
+            assert_eq!(l.with_age(3600).header.checksum, l.header.checksum, "the age is outside the checksum");
+            assert_eq!(usize::from(l.header.length), l.encode().len());
+        }
+        let p = OspfDb::Update(lsas.clone());
+        let bytes = p.encode(a, 1);
+        assert_eq!(OspfDb::decode(&bytes).unwrap(), (a, p));
+        for k in 0..bytes.len() {
+            let _ = OspfDb::decode(&bytes[..k]);
+        }
+    }
+
+    #[test]
+    fn sequence_numbers_compare_as_signed() {
+        assert!(seq_newer(0x8000_0002, 0x8000_0001));
+        assert!(!seq_newer(0x8000_0001, 0x8000_0001));
+        assert!(seq_newer(0, 0xffff_ffff), "the number after the largest wraps to zero");
+        assert!(!seq_newer(0x8000_0001, 0x7fff_ffff));
     }
 }
