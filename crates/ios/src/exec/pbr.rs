@@ -149,7 +149,7 @@ fn show_policy(d: &Device, sim: &netlabcraft_sim::Sim) -> String {
         return "No policy routing is set up (apply a route map with `ip policy route-map NAME` on an interface).".into();
     }
     let mut s = String::new();
-    let _ = writeln!(s, "{:<30} {}", "Interface", "Route map");
+    let _ = writeln!(s, "{:<30} Route map", "Interface");
     for (iface, map) in &rows {
         let _ = writeln!(s, "{iface:<30} {map}");
     }
