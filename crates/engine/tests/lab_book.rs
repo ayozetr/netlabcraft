@@ -113,6 +113,7 @@ labs! {
     lab_74_javascript_on_a_microcontroller => "74-javascript-on-a-microcontroller.md",
     lab_75_reverse_telnet_through_an_octal_card => "75-reverse-telnet-through-an-octal-card.md",
     lab_81_mst_regions => "81-mst-regions.md",
+    lab_82_igmp_snooping => "82-igmp-snooping.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
