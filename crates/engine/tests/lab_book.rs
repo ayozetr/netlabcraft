@@ -91,6 +91,15 @@ labs! {
     lab_61_troubleshoot_site_to_site_vpn => "61-troubleshoot-site-to-site-vpn.md",
     lab_62_troubleshoot_remote_access_vpn => "62-troubleshoot-remote-access-vpn.md",
     lab_63_troubleshoot_wireless_clients => "63-troubleshoot-wireless-clients.md",
+    lab_64_troubleshoot_ip_phones => "64-troubleshoot-ip-phones.md",
+    lab_65_debug_icmp_arp_and_packets => "65-debug-icmp-arp-and-packets.md",
+    lab_66_debug_rip_and_eigrp => "66-debug-rip-and-eigrp.md",
+    lab_67_debug_spanning_tree_root => "67-debug-spanning-tree-root.md",
+    lab_68_troubleshoot_ipv6 => "68-troubleshoot-ipv6.md",
+    lab_69_troubleshoot_hsrp => "69-troubleshoot-hsrp.md",
+    lab_70_troubleshoot_dhcp_snooping => "70-troubleshoot-dhcp-snooping.md",
+    lab_71_troubleshoot_acl_order => "71-troubleshoot-acl-order.md",
+    lab_72_debug_nat => "72-debug-nat.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
