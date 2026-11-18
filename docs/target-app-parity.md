@@ -14,7 +14,7 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **248** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **2126** across 47 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **2129** across 47 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **147** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **78** (+1 unnumbered: the cellular lab) | measured: numbered files in `docs/labs/` (the course column of the table in `docs/labs/README.md` has the split) |
@@ -177,7 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-18 | minor | Multicast routing with PIM (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) item 17): `ip multicast-routing`, PIM modes, static rendezvous points, `show ip mroute` and the PIM and IGMP views, `show ip rpf`, `debug ip pim` and `debug ip mpacket`, lab 87; grammar entries measured again: 2126 across 47 modes (the other additions since the last count included); percentages not re-scored. |
+| 2026-11-18 | minor | Multicast routing with PIM (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) item 17): `ip multicast-routing`, PIM modes, static rendezvous points, `show ip mroute` and the PIM and IGMP views, `show ip rpf`, `debug ip pim` and `debug ip mpacket`, lab 87; grammar entries measured again: 2129 across 47 modes (the other additions since the last count included); percentages not re-scored. |
 | 2026-11-18 | minor | Counts measured again after the closet and USB work: 248 engine commands (`backbone.*`, `usb.*`, `printer.*`, `furniture.turn`, `closet.floor` added), 147 device models (USB Storage), 79 numbered labs (76 added). Percentages not re-scored. |
 | 2026-11-18 | minor | BGP `neighbor … local-as`, route dampening, extended communities (RFC 4360), `bgp deterministic-med` and the MP-BGP IPv6 codec (see [protocol-parity.md](protocol-parity.md)) and lab 59: 79 labs; grammar entries measured again (2030). The estimated audience and dimension percentages are unchanged. |
 | 2026-11-18 | minor | System show commands (`show version`, `inventory`, `environment [all|power|temperature]`, `processes cpu [sorted|history]`, `processes memory`, `memory statistics`, `clock detail`, `show ip interface`, `show interfaces switchport`, `show tech-support`), `copy` between flash, FTP servers and web pages, and ten kept settings that now act (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) item 17). Counts measured again by counting: 248 `c!(` entries in the engine catalog and 2030 `spec!(` rows in the grammar. |
