@@ -77,6 +77,14 @@ pub struct Lsa {
     pub age: u16,
     /// External LSA: the route tag it carries (0: none).
     pub tag: u32,
+    /// Router-LSA of an NSSA border router: the Nt bit, set while this router is the area's
+    /// translator of type 7 LSAs into type 5 (RFC 3101 §2.1).
+    pub nt: bool,
+    /// NSSA LSA: the P bit, set when the translator may turn it into a type 5 LSA.
+    pub p_bit: bool,
+    /// NSSA and translated external LSAs: the forwarding address, the originating router's
+    /// address in the NSSA (traffic goes there instead of to the advertising router).
+    pub forward: Option<Ipv4Addr>,
 }
 
 /// The first sequence number of an LSA (RFC 2328 §12.1.6).
@@ -104,6 +112,9 @@ impl Lsa {
             seq: INITIAL_SEQ,
             age: 0,
             tag: 0,
+            nt: false,
+            p_bit: false,
+            forward: None,
         }
     }
 
@@ -119,6 +130,7 @@ impl Lsa {
         let mut h = std::collections::hash_map::DefaultHasher::new();
         (self.kind, self.area, self.id, self.adv, self.count, &self.links, self.metric, &self.attached, self.type1, self.translator, self.tag)
             .hash(&mut h);
+        (self.nt, self.p_bit, self.forward).hash(&mut h);
         h.finish()
     }
 }
@@ -355,6 +367,7 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
             }
             let mut lsa = Lsa::new(LsaKind::Router, Some(*area), r, r, u32::try_from(links.len()).unwrap_or(u32::MAX));
             lsa.links = links;
+            lsa.nt = st.translators.get(area) == Some(d);
             out.insert(lsa);
             // Network-LSAs: from the DR of each segment that has one and neighbours on it.
             for ((dev, name), seg) in st.segments.iter().filter(|((dev, _), s)| dev == d && s.area == *area) {
@@ -426,6 +439,10 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
                 lsa.tag = st.external_tags.get(&(*owner, *net)).copied().unwrap_or(0);
                 // The default route is not translated; the rest is, by the area's border router.
                 lsa.translator = if net.prefix == 0 || !*translated { None } else { st.translators.get(area).and_then(|tr| rid(*tr)) };
+                // The P bit lets the translator turn it into a type 5 LSA; the forwarding address
+                // is the originating router's own address in the area (none for the default route).
+                lsa.p_bit = lsa.translator.is_some();
+                lsa.forward = if net.prefix == 0 { None } else { forwarding_address(st, *adv, *area) };
                 out.insert(lsa);
             }
         }
@@ -438,10 +455,28 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
             lsa.metric = m.map_or(if n.prefix == 0 { 1 } else { 20 }, |m| m.0);
             lsa.type1 = m.is_some_and(|m| m.1);
             lsa.tag = st.external_tags.get(&(*owner, *n)).copied().unwrap_or(0);
+            // A type 5 LSA the translator made from a type 7 LSA keeps its forwarding address.
+            if adv != owner && n.prefix != 0 {
+                lsa.forward = st
+                    .segments
+                    .iter()
+                    .filter(|((d, _), seg)| d == owner && kind_at(*d, seg.area) == AreaKind::Nssa)
+                    .find_map(|((d, _), seg)| forwarding_address(st, *d, seg.area));
+            }
             out.insert(lsa);
         }
     }
     out.into_iter().collect()
+}
+
+/// The forwarding address a router gives the type 7 LSAs it originates in an NSSA: its highest
+/// address on an interface in the area (RFC 3101 §2.3).
+fn forwarding_address(st: &OspfState, dev: DeviceId, area: u32) -> Option<Ipv4Addr> {
+    st.segments
+        .iter()
+        .filter(|((d, _), seg)| *d == dev && seg.area == area)
+        .filter_map(|((d, name), _)| st.addresses.get(&(*d, name.clone())).copied())
+        .max()
 }
 
 /// The router that owns an interface address.

@@ -358,17 +358,27 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
     let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
     match id {
         Id::AreaNssa | Id::NoAreaNssa => {
-            let (mut no_summary, mut originate, mut no_redist) = (false, false, false);
-            for w in rest.split_whitespace() {
+            let (mut no_summary, mut originate, mut no_redist, mut always) = (false, false, false, false);
+            let mut words = rest.split_whitespace();
+            while let Some(w) = words.next() {
                 let w = w.to_ascii_lowercase();
-                if w.starts_with("no-s") && "no-summary".starts_with(&w) {
+                if w.starts_with("tr") && "translate".starts_with(&w) {
+                    let ok = words.next().is_some_and(|x| x.eq_ignore_ascii_case("type7"))
+                        && words.next().is_some_and(|x| "always".starts_with(&x.to_ascii_lowercase()));
+                    if !ok {
+                        return Err("% translate type7 always".into());
+                    }
+                    always = true;
+                } else if w.starts_with("no-s") && "no-summary".starts_with(&w) {
                     no_summary = true;
                 } else if w.starts_with("no-r") && "no-redistribution".starts_with(&w) {
                     no_redist = true;
                 } else if w.starts_with('d') && "default-information-originate".starts_with(&w) {
                     originate = true;
                 } else {
-                    return Err(format!("% `{w}` is not an NSSA option: no-summary, no-redistribution or default-information-originate"));
+                    return Err(format!(
+                        "% `{w}` is not an NSSA option: no-summary, no-redistribution, default-information-originate or translate type7 always"
+                    ));
                 }
             }
             if id == Id::AreaNssa {
@@ -380,17 +390,20 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 a.no_summary = no_summary;
                 a.nssa_default = originate;
                 a.nssa_no_redist = no_redist;
+                a.nssa_translate_always = always;
             } else if let Some(a) = o.areas.get_mut(&area).filter(|a| a.nssa) {
                 if rest.is_empty() {
                     a.nssa = false;
                     a.no_summary = false;
                     a.nssa_default = false;
                     a.nssa_no_redist = false;
+                    a.nssa_translate_always = false;
                     a.default_cost = None;
                 } else {
                     a.no_summary &= !no_summary;
                     a.nssa_default &= !originate;
                     a.nssa_no_redist &= !no_redist;
+                    a.nssa_translate_always &= !always;
                 }
             }
         }
@@ -672,6 +685,9 @@ fn ospf_database_detail(
         match l.kind {
             LsaKind::Router => {
                 let _ = writeln!(s, "Router {}, sequence {seq}, {} link{}, {age}", l.id, l.count, if l.count == 1 { "" } else { "s" });
+                if l.nt {
+                    let _ = writeln!(s, "  Nt bit set: this router translates the type 7 LSAs of the area into type 5");
+                }
                 for k in &l.links {
                     let line = match k.kind {
                         LinkKind::PointToPoint => format!("point-to-point to router {} through {}", k.id, k.data),
@@ -701,6 +717,9 @@ fn ospf_database_detail(
                     "Network {}/{}, sequence {seq}, advertised by {}, type {t} metric {}, tag {}, {age}",
                     l.id, l.count, l.adv, l.metric, l.tag
                 );
+                if let Some(f) = l.forward {
+                    let _ = writeln!(s, "  forwarding address {f} (translated from a type 7 LSA)");
+                }
             }
             LsaKind::Nssa => {
                 let t = if l.type1 { 1 } else { 2 };
@@ -711,11 +730,14 @@ fn ospf_database_detail(
                 );
                 match l.translator {
                     Some(tr) => {
-                        let _ = writeln!(s, "  the border router {tr} translates it into a type 5 LSA for the other areas");
+                        let _ = writeln!(s, "  P bit set: the border router {tr} translates it into a type 5 LSA for the other areas");
                     }
                     None => {
-                        let _ = writeln!(s, "  stays inside the area (not translated)");
+                        let _ = writeln!(s, "  P bit clear: stays inside the area (not translated)");
                     }
+                }
+                if let Some(f) = l.forward {
+                    let _ = writeln!(s, "  forwarding address {f}");
                 }
             }
         }
