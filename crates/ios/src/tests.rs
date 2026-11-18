@@ -13,6 +13,7 @@ mod bgp_communities;
 mod bgp_leftovers;
 mod bgp_password;
 mod bgp_peer_groups;
+mod bgp_process_timers;
 mod bgp_reflection;
 mod cef;
 mod console_depth;
