@@ -41,8 +41,10 @@ const DEFAULT_ON: &[&str] = &[
 /// Settings the simulator acts on: they are kept like the others, but the console does not say
 /// they change nothing.
 const ACTIVE: &[&str] = &[
+    "absolute-timeout",
     "cdp holdtime",
     "cdp timer",
+    "exec-timeout",
     "ip classless",
     "ip icmp rate-limit unreachable",
     "ip unreachables",
@@ -52,6 +54,7 @@ const ACTIVE: &[&str] = &[
     "mac address-table aging-time",
     "mac-address-table aging-time",
     "service sequence-numbers",
+    "session-timeout",
 ];
 
 /// What the console says after it keeps a setting.

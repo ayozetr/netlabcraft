@@ -1328,7 +1328,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no password` |  | router, switch | Remove the line password |
 | `login` |  | router, switch | Ask for the line password |
 | `no login` |  | router, switch | Don't ask for a password |
-| `exec-timeout <minutes> [<seconds>]` |  | router, switch | Idle timeout (accepted, not simulated) |
+| `exec-timeout <minutes> [<seconds>]` |  | router, switch | Minutes of silence after which the session is closed |
+| `no exec-timeout` |  | router, switch | Return this setting to its default |
 | `logging synchronous` |  | router, switch | Keep messages from breaking your typing (accepted) |
 | `service sequence-numbers` | config | router, switch | Number every log message |
 | `no service sequence-numbers` | config | router, switch | Return this setting to its default |
@@ -1560,7 +1561,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no modem {inout\|in\|out}` |  | router, switch | Return this setting to its default |
 | `exec` |  | router, switch | Start an EXEC session on this line (on) |
 | `no exec` |  | router, switch | Turn this off (it is on by default) |
-| `session-timeout <0-35791>` |  | router, switch | Minutes an outgoing session may sit idle |
+| `session-timeout <0-35791>` |  | router, switch | Minutes an outgoing session may sit idle before it is closed |
 | `no session-timeout` |  | router, switch | Return this setting to its default |
 | `absolute-timeout <0-35791>` |  | router, switch | Minutes after which the line logs out |
 | `no absolute-timeout` |  | router, switch | Return this setting to its default |

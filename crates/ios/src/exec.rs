@@ -274,6 +274,10 @@ pub struct Cli {
     /// `line 1 8` in configuration: the asynchronous lines of an octal card the line mode edits
     /// (1-based, first and last); `line console 0` and `line vty` clear it.
     pub async_lines: Option<(u8, u8)>,
+    /// Simulated time (µs) this session began, for `absolute-timeout`.
+    pub opened_us: Option<u64>,
+    /// Simulated time (µs) of the last line typed, for `exec-timeout` and `session-timeout`.
+    pub active_us: Option<u64>,
 }
 
 /// What a block of pasted PEM text is for.
@@ -791,6 +795,9 @@ fn dialog_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, mu
 /// Runs one line typed at a device. A reload that was scheduled (`reload in|at`) and whose time
 /// has come happens first, to this device or to any other one; the console says so.
 pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
+    if let Some(closed) = expire_session(t, sim, dev, cli) {
+        return Outcome { output: closed, ..Outcome::default() };
+    }
     let said = fire_due_reloads(t, sim, dev, cli);
     let mut out = execute_line(t, sim, dev, cli, line);
     if !said.is_empty() {
@@ -798,6 +805,51 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         out.changed = true;
     }
     out
+}
+
+/// Closes a session that sat idle past its line's `exec-timeout`, outlived its `absolute-timeout`,
+/// or whose outgoing session passed `session-timeout`; says what was closed. The three are read
+/// from the line group the session belongs to (`con` or `vty`) and count in simulated time.
+fn expire_session(t: &Topology, sim: &Sim, dev: DeviceId, cli: &mut Cli) -> Option<String> {
+    let now = sim.now_us();
+    let started = *cli.opened_us.get_or_insert(now);
+    let last = cli.active_us.unwrap_or(started);
+    cli.active_us = Some(now);
+    let d = t.device(dev)?;
+    let group = netlabcraft_model::knobs::Scope::Line(if cli.vty { "vty" } else { "con" });
+    // `KEY minutes [seconds]` as kept: the span in microseconds, `None` when unset or zero.
+    let span = |key: &str| -> Option<u64> {
+        let line = d.knobs.get(group, key)?;
+        let mut words = line.split_whitespace().skip(1);
+        let minutes: u64 = words.next()?.parse().ok()?;
+        let seconds: u64 = words.next().and_then(|w| w.parse().ok()).unwrap_or(0);
+        Some(minutes.saturating_mul(60).saturating_add(seconds).saturating_mul(1_000_000)).filter(|us| *us > 0)
+    };
+    let close = |cli: &mut Cli| {
+        cli.mode = Mode::User;
+        cli.logged_in = false;
+        cli.enable_prompt = None;
+        cli.remote = None;
+        cli.dialog = None;
+        cli.copy_prompt = None;
+        cli.opened_us = None;
+        cli.active_us = None;
+    };
+    if let Some(limit) = span("exec-timeout").filter(|l| now.saturating_sub(last) >= *l) {
+        close(cli);
+        return Some(format!("The session was idle for {} minutes and has been closed (exec-timeout).", limit / 60_000_000));
+    }
+    if let Some(limit) = span("absolute-timeout").filter(|l| now.saturating_sub(started) >= *l) {
+        close(cli);
+        return Some(format!("The session reached its {} minute limit and has been closed (absolute-timeout).", limit / 60_000_000));
+    }
+    if cli.remote.is_some()
+        && let Some(limit) = span("session-timeout").filter(|l| now.saturating_sub(last) >= *l)
+    {
+        cli.remote = None;
+        return Some(format!("The outgoing session was idle for {} minutes and has been closed (session-timeout).", limit / 60_000_000));
+    }
+    None
 }
 
 /// Restarts the devices whose scheduled reload time has come (the one typed at keeps its session).
