@@ -45,7 +45,9 @@ pub(crate) fn loopback_ifaces(d: &Device) -> Vec<L3If> {
         .enumerate()
         .take(MAX_LOOPBACKS)
         .filter(|(_, l)| !l.shutdown)
-        .filter_map(|(i, l)| l.ip.map(|net| L3If { port: LOOPBACK_BASE.saturating_add(i), sub: None, vlan: None, net, mac, name: l.name() }))
+        .filter_map(|(i, l)| {
+            l.ip.map(|net| L3If { port: LOOPBACK_BASE.saturating_add(i), sub: None, vlan: None, net, mac, name: l.name(), vrf: None })
+        })
         .collect()
 }
 

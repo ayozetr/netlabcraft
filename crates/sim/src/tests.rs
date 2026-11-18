@@ -1241,3 +1241,154 @@ fn drops_bpdus_and_topology_changes_are_counted_where_they_happen() {
     sim.clear_stp_counters(s3);
     assert_eq!(sim.topology_changes(s3, v1).count, 0);
 }
+
+// ---- storm control and UDLD ----
+
+fn storm_lab(
+    level: netlabcraft_model::l2sec::StormLevel,
+    action: netlabcraft_model::l2sec::StormAction,
+) -> (Topology, Sim, DeviceId, DeviceId, DeviceId) {
+    let mut t = Topology::new();
+    let s = add(&mut t, DeviceKind::Switch);
+    let a = host(&mut t, "192.168.1.10/24", None);
+    let b = host(&mut t, "192.168.1.11/24", None);
+    cable(&mut t, a, 0, s, 0);
+    cable(&mut t, b, 0, s, 1);
+    let p = &mut t.device_mut(s).unwrap().ports[0];
+    p.l2.storm.broadcast = Some(level);
+    p.l2.storm.action = action;
+    (t, Sim::new(), s, a, b)
+}
+
+fn flood(t: &Topology, sim: &mut Sim, from: DeviceId, n: usize) {
+    let src = t.device(from).unwrap().ports[0].mac;
+    for i in 0..n {
+        let f = Frame { dst: MacAddr::BROADCAST, src, vlan: None, ethertype: 0x88b5, payload: vec![u8::try_from(i % 200).unwrap(); 40] };
+        sim.emit(t, End { device: from, port: 0 }, f.encode());
+    }
+}
+
+fn arrivals(sim: &Sim, to: DeviceId) -> usize {
+    sim.trace().iter().filter(|e| e.to.device == to && e.frame.get(12..14) == Some(&[0x88, 0xb5][..])).count()
+}
+
+#[test]
+fn storm_control_drops_what_passes_the_packet_level_and_starts_again_next_second() {
+    use netlabcraft_model::l2sec::{StormAction, StormKind, StormLevel, StormUnit};
+    let (t, mut sim, s, a, b) = storm_lab(StormLevel { unit: StormUnit::Pps, rising: 10, falling: None }, StormAction::Filter);
+    flood(&t, &mut sim, a, 30);
+    sim.run_for(&t, 100_000);
+    assert_eq!(arrivals(&sim, b), 10, "only the first ten broadcasts of the second get through");
+    let stat = sim.storm_stat(s, 0, StormKind::Broadcast);
+    assert!(stat.storming && stat.dropped == 20 && stat.storms == 1, "{stat:?}");
+    // A quiet second ends the storm and the next one is counted from zero.
+    sim.run_for(&t, 3_000_000);
+    assert!(!sim.storm_stat(s, 0, StormKind::Broadcast).storming);
+    sim.clear_trace();
+    flood(&t, &mut sim, a, 8);
+    sim.run_for(&t, 100_000);
+    assert_eq!(arrivals(&sim, b), 8);
+}
+
+#[test]
+fn a_falling_level_keeps_the_storm_until_the_traffic_is_below_it() {
+    use netlabcraft_model::l2sec::{StormAction, StormKind, StormLevel, StormUnit};
+    let (t, mut sim, s, a, _b) = storm_lab(StormLevel { unit: StormUnit::Pps, rising: 10, falling: Some(4) }, StormAction::Filter);
+    flood(&t, &mut sim, a, 20);
+    sim.run_for(&t, 1_000_000);
+    // The next second has six broadcasts: under the rising level but over the falling one.
+    flood(&t, &mut sim, a, 6);
+    sim.run_for(&t, 1_000_000);
+    flood(&t, &mut sim, a, 1);
+    sim.run_for(&t, 100_000);
+    assert!(sim.storm_stat(s, 0, StormKind::Broadcast).storming, "still above the falling level");
+    // One broadcast in a second is below it.
+    sim.run_for(&t, 1_000_000);
+    flood(&t, &mut sim, a, 1);
+    sim.run_for(&t, 100_000);
+    assert!(!sim.storm_stat(s, 0, StormKind::Broadcast).storming);
+}
+
+#[test]
+fn storm_control_with_shutdown_err_disables_the_port() {
+    use netlabcraft_model::l2sec::{ErrCause, StormAction, StormLevel, StormUnit};
+    let (t, mut sim, s, a, _b) = storm_lab(StormLevel { unit: StormUnit::Bps, rising: 4_000, falling: None }, StormAction::Shutdown);
+    flood(&t, &mut sim, a, 40);
+    sim.run_for(&t, 100_000);
+    let events = sim.take_events();
+    assert!(
+        events.iter().any(|e| matches!(e, PortEvent::ErrDisabledBy { device, port: 0, cause: ErrCause::StormControl } if *device == s)),
+        "{events:?}"
+    );
+}
+
+#[test]
+fn udld_finds_a_link_that_works_one_way() {
+    use crate::udld::UdldState;
+    use netlabcraft_model::l2sec::{ErrCause, UdldMode};
+    let mut t = Topology::new();
+    let s1 = add(&mut t, DeviceKind::Switch);
+    let s2 = add(&mut t, DeviceKind::Switch);
+    cable(&mut t, s1, 0, s2, 0);
+    for s in [s1, s2] {
+        let d = t.device_mut(s).unwrap();
+        d.l2.udld = Some(UdldMode::Normal);
+        d.l2.udld_interval = 5;
+    }
+    let mut sim = Sim::new();
+    sim.run_for(&t, 30_000_000);
+    assert_eq!(sim.udld_state(&t, t.device(s1).unwrap(), 0), UdldState::Bidirectional);
+    assert_eq!(sim.udld_state(&t, t.device(s2).unwrap(), 0), UdldState::Bidirectional);
+    assert!(sim.take_events().iter().all(|e| !matches!(e, PortEvent::ErrDisabledBy { .. })));
+    // S1 stops being heard: S2 still sends, so S1 hears S2 and finds the link one-way.
+    t.set_tx_cut(End { device: s1, port: 0 }, true).unwrap();
+    sim.topology_changed(&t);
+    sim.run_for(&t, 60_000_000);
+    let events = sim.take_events();
+    assert!(events.iter().any(|e| matches!(e, PortEvent::ErrDisabledBy { device, port: 0, cause: ErrCause::Udld } if *device == s1)), "{events:?}");
+}
+
+#[test]
+fn aggressive_udld_also_shuts_the_port_that_stopped_hearing() {
+    use netlabcraft_model::l2sec::{ErrCause, UdldMode};
+    let mut t = Topology::new();
+    let s1 = add(&mut t, DeviceKind::Switch);
+    let s2 = add(&mut t, DeviceKind::Switch);
+    cable(&mut t, s1, 0, s2, 0);
+    for s in [s1, s2] {
+        let d = t.device_mut(s).unwrap();
+        d.l2.udld = Some(UdldMode::Aggressive);
+        d.l2.udld_interval = 5;
+    }
+    let mut sim = Sim::new();
+    sim.run_for(&t, 30_000_000);
+    t.set_tx_cut(End { device: s1, port: 0 }, true).unwrap();
+    sim.topology_changed(&t);
+    sim.run_for(&t, 60_000_000);
+    let events = sim.take_events();
+    for s in [s1, s2] {
+        assert!(
+            events.iter().any(|e| matches!(e, PortEvent::ErrDisabledBy { device, cause: ErrCause::Udld, .. } if *device == s)),
+            "{s:?}: {events:?}"
+        );
+    }
+}
+
+#[test]
+fn a_one_way_cut_keeps_the_link_up_and_loses_frames_in_one_direction() {
+    let mut t = Topology::new();
+    let a = host(&mut t, "192.168.1.10/24", None);
+    let b = host(&mut t, "192.168.1.11/24", None);
+    cable(&mut t, a, 0, b, 0);
+    assert!(t.set_tx_cut(End { device: a, port: 0 }, true).is_ok());
+    assert!(port_up(&t, End { device: a, port: 0 }));
+    let mut sim = Sim::new();
+    // A's requests never leave; B's would arrive.
+    let r = sim.ping(&t, a, ip("192.168.1.11"), PingOptions::default()).unwrap();
+    assert_eq!(marks(&r), ".....");
+    t.set_tx_cut(End { device: a, port: 0 }, false).unwrap();
+    let r = sim.ping(&t, a, ip("192.168.1.11"), PingOptions::default()).unwrap();
+    assert_eq!(marks(&r), "!!!!!");
+    t.disconnect(End { device: a, port: 0 });
+    assert!(t.one_way.is_empty());
+}

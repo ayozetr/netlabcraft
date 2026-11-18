@@ -253,6 +253,7 @@ pub fn running_config(d: &Device) -> String {
         }
     }
     crate::exec::qos::running_config(&mut s, d);
+    crate::exec::vrf::definitions(&mut s, d);
     vpn_config(&mut s, d);
     crate::exec::security::running_config(&mut s, d);
     wlan_config(&mut s, d);
@@ -351,6 +352,7 @@ pub fn running_config(d: &Device) -> String {
             crate::exec::l2sec::port_lines(&mut s, p);
             crate::exec::families::port_lines(&mut s, p);
         }
+        crate::exec::vrf::iface_line(&mut s, d, &p.name);
         match p.ip {
             // The leased address isn't configuration; how it is obtained is.
             _ if p.dhcp => {
@@ -419,6 +421,7 @@ pub fn running_config(d: &Device) -> String {
             if let Some(v) = sub.vlan {
                 let _ = writeln!(s, " encapsulation dot1Q {v}");
             }
+            crate::exec::vrf::iface_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if let Some(ip) = sub.ip {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
@@ -449,6 +452,7 @@ pub fn running_config(d: &Device) -> String {
         if !svi.description.is_empty() {
             let _ = writeln!(s, " description {}", svi.description);
         }
+        crate::exec::vrf::iface_line(&mut s, d, &format!("Vlan{}", svi.vlan));
         match svi.ip {
             Some(ip) => {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
@@ -655,7 +659,10 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::knobs::proto_lines(&mut s, d, "eigrp");
         let _ = writeln!(s, "!");
     }
-    crate::exec::bgp::running_config(&mut s, d);
+    crate::exec::vrf::ospf_sections(&mut s, d);
+    let mut bgp = String::new();
+    crate::exec::bgp::running_config(&mut bgp, d);
+    s.push_str(&crate::exec::vrf::with_bgp_families(d, bgp));
     crate::exec::policy::running_config(&mut s, d);
     if let Some(r) = &d.rip {
         let _ = writeln!(s, "router rip");
@@ -737,6 +744,7 @@ pub fn running_config(d: &Device) -> String {
     if !d.routes.is_empty() {
         let _ = writeln!(s, "!");
     }
+    crate::exec::vrf::static_routes(&mut s, d);
     crate::exec::automation::running_config(&mut s, d);
     crate::exec::pki::running_config(&mut s, d);
     if !a.banner_motd.is_empty() {

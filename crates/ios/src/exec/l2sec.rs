@@ -6,7 +6,10 @@
 use std::fmt::Write as _;
 
 use netlabcraft_core::{VlanId, VlanSet};
-use netlabcraft_model::l2sec::{ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, QosTrust, SDM_TEMPLATES, vlan_list};
+use netlabcraft_model::l2sec::{
+    ArpValidate, ERRDISABLE_INTERVAL, ErrCause, LinkType, LoadBalance, PortL2, QosTrust, SDM_TEMPLATES, StormAction, StormKind, StormLevel, UdldMode,
+    vlan_list,
+};
 use netlabcraft_model::{Device, DeviceKind, End, Topology, ifname};
 use netlabcraft_sim::stp::Role;
 use netlabcraft_sim::{Sim, port_up};
@@ -269,14 +272,16 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         // ---- errdisable ----
         L2RecoveryCause | L2NoRecoveryCause => {
-            let causes: Vec<ErrCause> =
-                if arg(0).eq_ignore_ascii_case("all") {
-                    ErrCause::ALL.to_vec()
-                } else {
-                    vec![ErrCause::parse(arg(0)).ok_or_else(|| {
-                        format!("% `{}` is not a cause: bpduguard, psecure-violation, dhcp-rate-limit, arp-inspection or all", arg(0))
-                    })?]
-                };
+            let causes: Vec<ErrCause> = if arg(0).eq_ignore_ascii_case("all") {
+                ErrCause::ALL.to_vec()
+            } else {
+                vec![ErrCause::parse(arg(0)).ok_or_else(|| {
+                    format!(
+                        "% `{}` is not a cause: bpduguard, psecure-violation, dhcp-rate-limit, arp-inspection, storm-control, udld or all",
+                        arg(0)
+                    )
+                })?]
+            };
             let d = c.dm()?;
             for cause in causes {
                 if id == L2RecoveryCause {
@@ -288,14 +293,16 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         L2DetectCause | L2NoDetectCause => {
-            let causes: Vec<ErrCause> =
-                if arg(0).eq_ignore_ascii_case("all") {
-                    ErrCause::ALL.to_vec()
-                } else {
-                    vec![ErrCause::parse(arg(0)).ok_or_else(|| {
-                        format!("% `{}` is not a cause: bpduguard, psecure-violation, dhcp-rate-limit, arp-inspection or all", arg(0))
-                    })?]
-                };
+            let causes: Vec<ErrCause> = if arg(0).eq_ignore_ascii_case("all") {
+                ErrCause::ALL.to_vec()
+            } else {
+                vec![ErrCause::parse(arg(0)).ok_or_else(|| {
+                    format!(
+                        "% `{}` is not a cause: bpduguard, psecure-violation, dhcp-rate-limit, arp-inspection, storm-control, udld or all",
+                        arg(0)
+                    )
+                })?]
+            };
             let d = c.dm()?;
             for cause in causes {
                 if id == L2NoDetectCause {
@@ -319,6 +326,73 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             c.dm()?.l2.recovery_interval = n;
             Ok(String::new())
         }
+        // ---- storm control ----
+        StormLevel | NoStormLevel => {
+            let kind = StormKind::parse(arg(0)).ok_or("% Say one of: broadcast, multicast, unicast")?;
+            let level = if id == StormLevel {
+                let words: Vec<&str> = arg(1).split_whitespace().collect();
+                Some(self::StormLevel::parse(&words).map_err(|e| format!("% {e}"))?)
+            } else {
+                None
+            };
+            c.each_if(|p, _| {
+                p.l2.storm.set(kind, level);
+                Ok(())
+            })
+        }
+        StormAction | NoStormAction => {
+            let action = if id == StormAction {
+                match arg(0).to_ascii_lowercase().as_str() {
+                    "shutdown" => self::StormAction::Shutdown,
+                    "trap" => self::StormAction::Trap,
+                    _ => return Err("% Say one of: shutdown, trap".into()),
+                }
+            } else {
+                self::StormAction::Filter
+            };
+            c.each_if(|p, _| {
+                p.l2.storm.action = action;
+                Ok(())
+            })
+        }
+        ShowStormControl => show_storm(c.t, c.sim, c.d()?, arg(0)),
+        // ---- UDLD ----
+        UdldGlobal | NoUdldGlobal => {
+            let aggressive = arg(0).eq_ignore_ascii_case("aggressive");
+            if !aggressive && !arg(0).eq_ignore_ascii_case("enable") {
+                return Err("% Say one of: enable, aggressive".into());
+            }
+            let d = c.dm()?;
+            d.l2.udld = if id == UdldGlobal { Some(if aggressive { UdldMode::Aggressive } else { UdldMode::Normal }) } else { None };
+            Ok(String::new())
+        }
+        UdldMessageTime => {
+            c.dm()?.l2.udld_interval = number(arg(0), 1, 90, "The message time (seconds)")?;
+            Ok(String::new())
+        }
+        UdldReset => {
+            let d = c.dm()?;
+            let mut n = 0;
+            for p in d.ports.iter_mut().filter(|p| p.err_disabled && p.l2.err_cause == Some(ErrCause::Udld)) {
+                p.err_disabled = false;
+                p.l2.err_cause = None;
+                n += 1;
+            }
+            c.sim.udld_forget(c.dev);
+            Ok(format!("{n} port{} brought back.", if n == 1 { "" } else { "s" }))
+        }
+        UdldPort | UdldPortAggressive | NoUdldPort => {
+            let mode = match id {
+                UdldPort => UdldMode::Normal,
+                UdldPortAggressive => UdldMode::Aggressive,
+                _ => UdldMode::Off,
+            };
+            c.each_if(|p, _| {
+                p.l2.udld = Some(mode);
+                Ok(())
+            })
+        }
+        ShowUdld => show_udld(c.t, c.sim, c.d()?, arg(0)),
         L2ShowErrDisabled => Ok(show_err_disabled(c.d()?)),
         L2ShowRecovery => Ok(show_recovery(c.sim, c.d()?)),
         // ---- port security aging ----
@@ -585,6 +659,18 @@ pub(crate) fn global_lines(s: &mut String, d: &Device) {
     if l.recovery_interval != ERRDISABLE_INTERVAL {
         let _ = writeln!(s, "errdisable recovery interval {}", l.recovery_interval);
     }
+    match l.udld {
+        Some(UdldMode::Normal) => {
+            let _ = writeln!(s, "udld enable");
+        }
+        Some(UdldMode::Aggressive) => {
+            let _ = writeln!(s, "udld aggressive");
+        }
+        _ => {}
+    }
+    if l.udld_interval != netlabcraft_model::l2sec::UDLD_INTERVAL {
+        let _ = writeln!(s, "udld message time {}", l.udld_interval);
+    }
     if l.load_balance != LoadBalance::default() {
         let _ = writeln!(s, "port-channel load-balance {}", l.load_balance.name());
     }
@@ -664,6 +750,29 @@ pub(crate) fn port_lines(s: &mut String, p: &netlabcraft_model::Port) {
     }
     if let Some(n) = l.lacp_priority {
         let _ = writeln!(s, " lacp port-priority {n}");
+    }
+    match l.udld {
+        Some(UdldMode::Normal) => {
+            let _ = writeln!(s, " udld port");
+        }
+        Some(UdldMode::Aggressive) => {
+            let _ = writeln!(s, " udld port aggressive");
+        }
+        Some(UdldMode::Off) => {
+            let _ = writeln!(s, " no udld port");
+        }
+        None => {}
+    }
+    for kind in StormKind::ALL {
+        if let Some(level) = l.storm.level(kind) {
+            let _ = writeln!(s, " storm-control {} level {}", kind.name(), level.text());
+        }
+    }
+    match l.storm.action {
+        StormAction::Filter => {}
+        a => {
+            let _ = writeln!(s, " storm-control action {}", a.name());
+        }
     }
     if l.snoop_trust {
         let _ = writeln!(s, " ip dhcp snooping trust");
@@ -808,6 +917,8 @@ pub(crate) fn cause_words(cause: Option<ErrCause>) -> &'static str {
         ErrCause::Bpduguard => "BPDU guard",
         ErrCause::DhcpRateLimit => "the DHCP snooping rate limit",
         ErrCause::ArpInspection => "the ARP inspection rate limit",
+        ErrCause::StormControl => "storm control",
+        ErrCause::Udld => "UDLD (a one-way link)",
     }
 }
 
@@ -1355,4 +1466,94 @@ fn show_sdm(d: &Device) -> String {
         let _ = write!(s, "\nAfter the next reload: {next} ({})", sdm_about(&next));
     }
     s
+}
+
+/// `show storm-control [INTERFACE|broadcast|multicast|unicast]`.
+fn show_storm(t: &Topology, sim: &Sim, d: &Device, which: &str) -> R {
+    let which = which.trim();
+    let kind = StormKind::parse(which);
+    let only = if which.is_empty() || kind.is_some() { None } else { Some(d.port_index(which).ok_or_else(|| format!("% No interface {which}"))?) };
+    let mut s = format!("{:<8} {:<10} {:<10} {:<22} {:<22} {:<16} {}\n", "Port", "Kind", "Action", "Rising", "Falling", "Last second", "State");
+    let mut rows = 0;
+    for (i, p) in d.ports.iter().enumerate().filter(|(i, _)| only.is_none_or(|o| o == *i)) {
+        for k in StormKind::ALL.into_iter().filter(|k| kind.is_none_or(|w| w == *k)) {
+            let Some(level) = p.l2.storm.level(k) else { continue };
+            rows += 1;
+            let stat = sim.storm_stat(d.id, i, k);
+            let unit = |v: u64| match level.unit {
+                netlabcraft_model::l2sec::StormUnit::Percent => format!("{}%", netlabcraft_model::l2sec::percent_text(v)),
+                netlabcraft_model::l2sec::StormUnit::Bps => format!("{v} bps"),
+                netlabcraft_model::l2sec::StormUnit::Pps => format!("{v} pps"),
+            };
+            let speed = netlabcraft_sim::storm::port_speed_bps(t, d.id, i).max(1);
+            let now = match level.unit {
+                netlabcraft_model::l2sec::StormUnit::Percent => unit(stat.bits.saturating_mul(10_000) / speed),
+                netlabcraft_model::l2sec::StormUnit::Bps => unit(stat.bits),
+                netlabcraft_model::l2sec::StormUnit::Pps => unit(stat.pkts),
+            };
+            let state = if p.err_disabled {
+                "err-disabled".to_string()
+            } else if stat.storming {
+                format!("storm, {} dropped", stat.dropped)
+            } else {
+                format!("normal, {} dropped", stat.dropped)
+            };
+            let _ = writeln!(
+                s,
+                "{:<8} {:<10} {:<10} {:<22} {:<22} {:<16} {state}",
+                short(d, i),
+                k.name(),
+                p.l2.storm.action.name(),
+                unit(level.rising),
+                unit(level.falling.unwrap_or(level.rising)),
+                now
+            );
+        }
+    }
+    if rows == 0 {
+        return Ok("No storm control is set.".into());
+    }
+    Ok(s.trim_end().to_string())
+}
+
+/// `show udld [INTERFACE]`.
+fn show_udld(t: &Topology, sim: &Sim, d: &Device, which: &str) -> R {
+    let which = which.trim();
+    let only = if which.is_empty() { None } else { Some(d.port_index(which).ok_or_else(|| format!("% No interface {which}"))?) };
+    let mut s = String::new();
+    let _ = writeln!(
+        s,
+        "UDLD on this switch: {}; a probe every {} s",
+        match d.l2.udld {
+            Some(UdldMode::Normal) => "enabled",
+            Some(UdldMode::Aggressive) => "aggressive",
+            _ => "off unless a port says otherwise",
+        },
+        d.l2.udld_interval
+    );
+    let mut any = false;
+    for (i, p) in d.ports.iter().enumerate().filter(|(i, _)| only.is_none_or(|o| o == *i)) {
+        let Some(mode) = netlabcraft_sim::udld::mode_of(d, i) else {
+            if only.is_some() {
+                let _ = writeln!(s, "\n{}: UDLD is off on this port", short(d, i));
+            }
+            continue;
+        };
+        any = true;
+        let _ = writeln!(s, "\nInterface {}", p.name);
+        let _ = writeln!(s, "  Mode: {}", if mode == UdldMode::Aggressive { "aggressive" } else { "normal" });
+        let _ = writeln!(s, "  Link: {}", sim.udld_state(t, d, i).text());
+        match sim.udld_neighbour(d.id, i) {
+            Some((dev, port, at)) => {
+                let _ = writeln!(s, "  Neighbour: {dev} {} (last probe {} s ago)", ifname::short(&port), sim.now_us().saturating_sub(at) / 1_000_000);
+            }
+            None => {
+                let _ = writeln!(s, "  Neighbour: none heard");
+            }
+        }
+    }
+    if !any && only.is_none() {
+        s.push_str("\nNo port runs UDLD.");
+    }
+    Ok(s.trim_end().to_string())
 }

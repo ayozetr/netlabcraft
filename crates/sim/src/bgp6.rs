@@ -9,14 +9,17 @@
 //! [`Peer`] is that name.
 
 use std::cmp::Reverse;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use netlabcraft_core::{DeviceId, Ipv6Net};
+use netlabcraft_model::bgp as conf;
+use netlabcraft_model::{Device, Topology};
 use netlabcraft_wire::bgp as msg;
 
 use crate::bgp::SessionState;
+use crate::v6::{L3If6, Route6Entry, routes6, up_ifaces6};
 
 /// How a router names a neighbour: by its IPv4 address or by its IPv6 address.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -141,6 +144,8 @@ pub struct NeighborView6 {
     pub peer_router_id: Option<Ipv4Addr>,
     /// The session runs over IPv6.
     pub transport6: bool,
+    /// Both ends announced the multiprotocol capability for IPv6 unicast, so prefixes are exchanged.
+    pub carries6: bool,
     pub ebgp: bool,
     /// Why a session that cannot come up does not.
     pub error: Option<String>,
@@ -290,6 +295,275 @@ pub fn resolve6(base: &[crate::v6::Route6Entry], ip: Ipv6Addr) -> Option<(String
         (_, None, Some(i)) => Some((i.clone(), ip, metric)),
         _ => None,
     }
+}
+
+/// Most routers a TCP connection is followed through.
+const MAX_HOPS: u8 = 16;
+
+/// One side of an IPv6 session that can come up.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Peering6 {
+    pub peer: DeviceId,
+    /// How the other router names this one (its neighbour statement).
+    pub peer_key: Peer,
+    /// The neighbour's address, as this router configured it.
+    pub peer_addr: Ipv6Addr,
+    /// This router's address on the session: what the neighbour configured for it.
+    pub local: Ipv6Addr,
+    /// This router's link-local address on the interface the session leaves by.
+    pub local_link: Ipv6Addr,
+    pub out_iface: String,
+    pub next_hop: Ipv6Addr,
+    pub ebgp: bool,
+}
+
+/// What the lab allows for the sessions that run over IPv6, before any time has passed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Analysis6 {
+    pub peerings: BTreeMap<Sess6, Peering6>,
+    /// A route to the neighbour's address exists.
+    pub routed: BTreeSet<Sess6>,
+    /// The connection works but the OPEN messages are refused.
+    pub errors: BTreeMap<Sess6, String>,
+    /// The two ends do not have the same `password`.
+    pub auth_failed: BTreeSet<Sess6>,
+}
+
+#[derive(Debug, Clone)]
+struct Hop6 {
+    owner: DeviceId,
+    hops: u8,
+    out_iface: String,
+    next_hop: Ipv6Addr,
+    /// This router's address on the interface it leaves by.
+    egress: Ipv6Addr,
+    egress_link: Ipv6Addr,
+}
+
+/// Follows a datagram from a router to the owner of `dst` through the IPv6 routing tables.
+fn path_to6(t: &Topology, base: &BTreeMap<DeviceId, Vec<Route6Entry>>, from: &Device, dst: Ipv6Addr) -> Option<Hop6> {
+    let mut cur = from;
+    let mut first: Option<(String, Ipv6Addr, Ipv6Addr, Ipv6Addr)> = None;
+    for hops in 0..MAX_HOPS {
+        let ifs = up_ifaces6(t, cur);
+        if ifs.iter().any(|i| i.owns(dst)) {
+            let (out_iface, next_hop, egress, egress_link) = first?;
+            return Some(Hop6 { owner: cur.id, hops, out_iface, next_hop, egress, egress_link });
+        }
+        if hops > 0 && !routes6(cur) {
+            return None;
+        }
+        let table = base.get(&cur.id)?;
+        let (name, nh, _) = resolve6(table, dst)?;
+        let out = ifs.iter().find(|i| i.name == name)?;
+        if first.is_none() {
+            first = Some((name.clone(), nh, out.source_for(nh), out.link_local));
+        }
+        let reach = crate::ospf6::reach(t, cur, out);
+        cur =
+            t.devices.iter().find(|b| b.id != cur.id && up_ifaces6(t, b).iter().any(|ib| ib.owns(nh) && crate::ospf6::reaches(t, &reach, b, ib)))?;
+    }
+    None
+}
+
+fn multihop(n: &conf::Neighbor) -> u8 {
+    n.ebgp_multihop.unwrap_or(1).max(1)
+}
+
+enum Attempt6 {
+    No,
+    BadAs(Sess6, bool),
+    BadAuth(Sess6),
+    Ok(Box<Peering6>, Box<Peering6>, Sess6),
+}
+
+fn near6(t: &Topology, d: &Device, addr: Ipv6Addr) -> bool {
+    up_ifaces6(t, d).iter().any(|i| !crate::loopback::is_loopback(i.port) && i.addresses.iter().any(|n| n.contains(addr)))
+}
+
+fn attempt6(t: &Topology, base: &BTreeMap<DeviceId, Vec<Route6Entry>>, a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, to: &Hop6) -> Attempt6 {
+    let Some(peer_addr) = n.addr6 else { return Attempt6::No };
+    let Some(b) = t.device(to.owner).filter(|b| routes6(b)) else { return Attempt6::No };
+    let Some(bb) = &b.bgp else { return Attempt6::No };
+    let ifs: Vec<L3If6> = up_ifaces6(t, a);
+    let src = match &n.update_source {
+        Some(name) => match ifs.iter().find(|i| i.name.eq_ignore_ascii_case(name)).and_then(|i| i.addresses.first()) {
+            Some(x) => x.addr,
+            None => return Attempt6::No,
+        },
+        None => to.egress,
+    };
+    let Some(m) = bb.neighbor6(src).filter(|m| !m.shutdown && m.remote_as.is_some()) else { return Attempt6::No };
+    let Some(back) = path_to6(t, base, b, src).filter(|h| h.owner == a.id) else { return Attempt6::No };
+    let bkey = (b.id, Peer::V6(src));
+    if n.password != m.password {
+        return Attempt6::BadAuth(bkey);
+    }
+    let (their_as, my_as) = (bb.outer_as(), ab.outer_as());
+    let (mine_ok, theirs_ok) = (n.remote_as == Some(their_as), m.remote_as == Some(my_as));
+    if !mine_ok || !theirs_ok {
+        return Attempt6::BadAs(bkey, !mine_ok);
+    }
+    let ebgp = my_as != their_as;
+    if ebgp
+        && (to.hops > multihop(n)
+            || (multihop(n) == 1 && !near6(t, a, peer_addr))
+            || back.hops > multihop(m)
+            || (multihop(m) == 1 && !near6(t, b, src)))
+    {
+        return Attempt6::No;
+    }
+    let mine = Peering6 {
+        peer: b.id,
+        peer_key: Peer::V6(src),
+        peer_addr,
+        local: src,
+        local_link: to.egress_link,
+        out_iface: to.out_iface.clone(),
+        next_hop: to.next_hop,
+        ebgp,
+    };
+    let theirs = Peering6 {
+        peer: a.id,
+        peer_key: Peer::V6(peer_addr),
+        peer_addr: src,
+        local: peer_addr,
+        local_link: back.egress_link,
+        out_iface: back.out_iface.clone(),
+        next_hop: back.next_hop,
+        ebgp,
+    };
+    Attempt6::Ok(Box::new(mine), Box::new(theirs), bkey)
+}
+
+/// Which sessions over IPv6 can come up in the lab as it is, given every router's IPv6 routing
+/// table without BGP's routes.
+pub fn analyse6(t: &Topology, base: &BTreeMap<DeviceId, Vec<Route6Entry>>) -> Analysis6 {
+    let mut an = Analysis6::default();
+    for a in t.devices.iter().filter(|d| routes6(d)) {
+        let Some(ab) = &a.bgp else { continue };
+        for n in &ab.neighbors6 {
+            let Some(addr) = n.addr6 else { continue };
+            if n.shutdown || n.remote_as.is_none() {
+                continue;
+            }
+            let key = (a.id, Peer::V6(addr));
+            let Some(to) = path_to6(t, base, a, addr) else { continue };
+            an.routed.insert(key);
+            match attempt6(t, base, a, ab, n, &to) {
+                Attempt6::Ok(mine, theirs, bkey) => {
+                    an.peerings.entry(key).or_insert(*mine);
+                    an.peerings.entry(bkey).or_insert(*theirs);
+                }
+                Attempt6::BadAs(bkey, mine_refuses) => {
+                    let (here, there) = if mine_refuses { ("sent", "received") } else { ("received", "sent") };
+                    let why = msg::notification_text(msg::ERR_OPEN, msg::OPEN_BAD_PEER_AS);
+                    an.errors.entry(key).or_insert_with(|| format!("{here} NOTIFICATION: {why}"));
+                    an.errors.entry(bkey).or_insert_with(|| format!("{there} NOTIFICATION: {why}"));
+                }
+                Attempt6::BadAuth(bkey) => {
+                    an.auth_failed.insert(key);
+                    an.auth_failed.insert(bkey);
+                }
+                Attempt6::No => {}
+            }
+        }
+    }
+    an
+}
+
+/// What the IPv6 side of BGP depends on besides what the IPv4 side already hashes: the IPv6
+/// addressing and routes of every router, its IPv6 routing protocols and its IPv6 policy.
+pub fn fingerprint(t: &Topology) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (crate::ospf6::fingerprint(t), crate::eigrp6::fingerprint(t), crate::rip6::fingerprint(t)).hash(&mut h);
+    for d in t.devices.iter().filter(|d| d.bgp.is_some()) {
+        let ports: Vec<String> =
+            d.ports.iter().map(|p| format!("{:?}{:?}{}", p.ipv6, p.subifs.iter().map(|s| &s.ipv6).collect::<Vec<_>>(), p.shutdown)).collect();
+        let svis: Vec<String> = d.svis.iter().map(|s| format!("{:?}{}", s.ipv6, s.shutdown)).collect();
+        format!("{:?}{:?}{:?}{:?}{:?}{:?}{:?}", d.id, d.ipv6_routing, d.routes6, d.prefix_lists6, d.route_maps, ports, svis).hash(&mut h);
+    }
+    h.finish()
+}
+
+/// The IPv6 unicast view of every router: its neighbours that are activated in the family, with the
+/// state of the session they run over (an IPv4 session's state comes from the IPv4 tables `st4`).
+pub fn compute6(t: &Topology, st4: &crate::bgp::BgpState, an6: &Analysis6, settled6: &BTreeSet<Sess6>) -> Bgp6State {
+    let mut st = Bgp6State::default();
+    for d in t.devices.iter().filter(|d| d.bgp.is_some() && routes6(d)) {
+        let Some(ab) = &d.bgp else { continue };
+        let Some(v4) = st4.routers.get(&d.id) else { continue };
+        let mut neighbors = Vec::new();
+        for n in ab.neighbors.iter().filter(|n| n.af6.activated) {
+            let Some(v) = v4.neighbors.iter().find(|v| v.addr == n.addr) else { continue };
+            let theirs = v.peer.and_then(|pd| t.device(pd)).and_then(|pd| pd.bgp.as_ref()).and_then(|pb| v.local.and_then(|l| pb.neighbor(l)));
+            neighbors.push(NeighborView6 {
+                peer: Peer::V4(n.addr),
+                remote_as: n.remote_as,
+                state: v.state,
+                admin_down: v.admin_down,
+                peer_dev: v.peer,
+                peer_router_id: v.peer_router_id,
+                transport6: false,
+                carries6: theirs.is_some_and(|m| m.af6.activated),
+                ebgp: v.ebgp,
+                error: v.error.clone(),
+                received: 0,
+                sent: 0,
+            });
+        }
+        for n in ab.neighbors6.iter().filter(|n| n.af6.activated) {
+            let Some(addr) = n.addr6 else { continue };
+            let key = (d.id, Peer::V6(addr));
+            let peering = an6.peerings.get(&key);
+            let up = peering.is_some_and(|p| settled6.contains(&key) && settled6.contains(&(p.peer, p.peer_key)));
+            let state = if n.shutdown || n.remote_as.is_none() {
+                SessionState::Idle
+            } else if up {
+                SessionState::Established
+            } else if peering.is_some() {
+                SessionState::Connect
+            } else if an6.errors.contains_key(&key) || an6.auth_failed.contains(&key) {
+                SessionState::Idle
+            } else if an6.routed.contains(&key) {
+                SessionState::Active
+            } else {
+                SessionState::Idle
+            };
+            let error = if n.shutdown {
+                None
+            } else if n.remote_as.is_none() {
+                Some("no remote AS configured".to_string())
+            } else if an6.auth_failed.contains(&key) {
+                Some(crate::bgp::AUTH_FAILED.to_string())
+            } else {
+                an6.errors.get(&key).cloned()
+            };
+            let their = peering.and_then(|p| t.device(p.peer).and_then(|pd| pd.bgp.as_ref()).and_then(|pb| pb.neighbor6(p.local)));
+            neighbors.push(NeighborView6 {
+                peer: Peer::V6(addr),
+                remote_as: n.remote_as,
+                state,
+                admin_down: n.shutdown,
+                peer_dev: peering.map(|p| p.peer),
+                peer_router_id: peering.map(|p| router_id_of(t, p.peer)),
+                transport6: true,
+                carries6: their.is_some_and(|m| m.af6.activated),
+                ebgp: peering.is_some_and(|p| p.ebgp),
+                error,
+                received: 0,
+                sent: 0,
+            });
+        }
+        let router_id = crate::bgp::router_id(d);
+        st.routers.insert(d.id, RouterView6 { asn: ab.asn, router_id, neighbors, paths: Vec::new(), routes: Vec::new(), adv: BTreeMap::new() });
+    }
+    st
+}
+
+fn router_id_of(t: &Topology, id: DeviceId) -> Ipv4Addr {
+    t.device(id).map_or(Ipv4Addr::UNSPECIFIED, crate::bgp::router_id)
 }
 
 #[cfg(test)]

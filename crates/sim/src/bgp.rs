@@ -363,6 +363,14 @@ pub struct Runtime {
     pub down_why: BTreeMap<SessKey, &'static str>,
     /// The external routes of the routers that run `bgp dampening`.
     pub damp: BTreeMap<DampKey, Flap>,
+    /// IPv6 unicast: the routers' IPv6 routing tables without BGP, the sessions over IPv6 and how
+    /// far each one is on its way up (see [`crate::bgp6`]).
+    pub base6: BTreeMap<DeviceId, Vec<crate::v6::Route6Entry>>,
+    pub analysis6: crate::bgp6::Analysis6,
+    pub up_at6: BTreeMap<crate::bgp6::Sess6, u64>,
+    pub settled6: BTreeSet<crate::bgp6::Sess6>,
+    pub since6: BTreeMap<crate::bgp6::Sess6, u64>,
+    pub state6: Option<crate::bgp6::Bgp6State>,
 }
 
 /// What `show ip bgp …` reads: states refined by the time spent, counters and uptimes.
@@ -374,6 +382,10 @@ pub struct BgpView {
     pub now: u64,
     /// What route dampening knows about each external route its routers watch.
     pub flaps: BTreeMap<DampKey, Flap>,
+    /// The IPv6 unicast view (see [`crate::bgp6`]).
+    pub v6: crate::bgp6::Bgp6State,
+    /// Established sessions over IPv6: since when (µs).
+    pub since6: BTreeMap<crate::bgp6::Sess6, u64>,
 }
 
 /// The router id: configured, else the highest loopback or interface address.
@@ -1476,7 +1488,12 @@ impl Sim {
             return;
         }
         let now = self.now;
-        let f = crate::ospf::fingerprint(t);
+        let f = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            (crate::ospf::fingerprint(t), crate::bgp6::fingerprint(t)).hash(&mut h);
+            h.finish()
+        };
         // A session whose hold time has run out is over: each end sends a hold-timer NOTIFICATION
         // (which only arrives if the path still works one way) and forgets it.
         let expired: Vec<SessKey> = self.bgp.held.iter().filter(|(_, (until, _))| *until <= now).map(|(k, _)| *k).collect();
@@ -1497,6 +1514,18 @@ impl Sim {
                 let r = self.rip_routes(t, d);
                 base.insert(d.id, crate::routing_table_with(t, d, &e, &o, &r, &[]));
             }
+            let mut base6 = BTreeMap::new();
+            for d in t.devices.iter().filter(|d| crate::v6::routes6(d)) {
+                let dynamic = self.dynamic_routes6_without_bgp(t, d);
+                base6.insert(d.id, crate::v6::routing_table6(t, d, &dynamic));
+            }
+            let an6 = crate::bgp6::analyse6(t, &base6);
+            self.bgp.up_at6.retain(|k, _| an6.peerings.contains_key(k));
+            for k in an6.peerings.keys() {
+                self.bgp.up_at6.entry(*k).or_insert(now);
+            }
+            self.bgp.base6 = base6;
+            self.bgp.analysis6 = an6;
             let mut an = analyse(t, &base);
             self.bgp_hold_lost(t, &mut an, &expired);
             self.bgp.up_at.retain(|k, _| an.peerings.contains_key(k));
@@ -1510,16 +1539,22 @@ impl Sim {
             self.bgp.analysis = an;
         }
         let settled: BTreeSet<SessKey> = self.bgp.up_at.iter().filter(|(_, at)| now.saturating_sub(**at) >= SETUP_US).map(|(k, _)| *k).collect();
+        let settled6: BTreeSet<crate::bgp6::Sess6> =
+            self.bgp.up_at6.iter().filter(|(_, at)| now.saturating_sub(**at) >= SETUP_US).map(|(k, _)| *k).collect();
         let reused = self.bgp_damp_tick();
-        if !fresh && !reused && settled == self.bgp.settled {
+        if !fresh && !reused && settled == self.bgp.settled && settled6 == self.bgp.settled6 {
             return;
         }
         self.bgp.settled = settled;
+        self.bgp.settled6 = settled6;
         let mut new = compute(t, &self.bgp.base, &self.bgp.analysis, &self.bgp.settled, &self.bgp_damped());
         // Withdrawals the new tables show are flaps; a route they push over the limit is held down.
         if self.bgp_damp_update(t, &new) {
             new = compute(t, &self.bgp.base, &self.bgp.analysis, &self.bgp.settled, &self.bgp_damped());
         }
+        let new6 = crate::bgp6::compute6(t, &new, &self.bgp.analysis6, &self.bgp.settled6);
+        self.bgp6_transitions(t, &new6);
+        self.bgp.state6 = Some(new6);
         self.bgp.state = Some(new.clone());
         for k in started {
             self.bgp_start(t, k);
@@ -1567,7 +1602,8 @@ impl Sim {
         let setup = self.bgp.up_at.iter().filter(|(k, _)| !self.bgp.settled.contains(*k)).map(|(_, at)| at.saturating_add(SETUP_US)).min();
         let hold = self.bgp.held.values().map(|(until, _)| *until).min();
         let reuse = self.bgp.damp.values().filter(|f| f.suppressed).map(|f| f.reuse_at).min();
-        [setup, hold, reuse].into_iter().flatten().min()
+        let setup6 = self.bgp.up_at6.iter().filter(|(k, _)| !self.bgp.settled6.contains(*k)).map(|(_, at)| at.saturating_add(SETUP_US)).min();
+        [setup, hold, reuse, setup6].into_iter().flatten().min()
     }
 
     /// The routes dampening holds down now.
@@ -1696,7 +1732,8 @@ impl Sim {
         }
         let Some(d) = t.device(key.0) else { return };
         let hold_secs = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).map_or(conf::HOLD_SECS, |n| timers_at(t, key, n).1);
-        let open = msg::Message::Open(msg::Open { asn: self.bgp_open_as(key, d), hold_secs, bgp_id: router_id(d), ipv6_unicast: false });
+        let ipv6_unicast = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).is_some_and(|n| n.af6.activated);
+        let open = msg::Message::Open(msg::Open { asn: self.bgp_open_as(key, d), hold_secs, bgp_id: router_id(d), ipv6_unicast });
         let now = self.now;
         self.bgp_send(t, key, &open, now.saturating_add(1_000_000));
         self.bgp_send(t, key, &msg::Message::Keepalive, now.saturating_add(2_000_000));
@@ -1817,6 +1854,32 @@ impl Sim {
         self.queue_l3(t, d, &ifc, ifc.mac, mac, ip.encode(), at);
     }
 
+    /// Logs the sessions over IPv6 that came up or went down.
+    fn bgp6_transitions(&mut self, t: &Topology, new: &crate::bgp6::Bgp6State) {
+        use crate::bgp6::Peer;
+        let now = self.now;
+        let est: BTreeSet<crate::bgp6::Sess6> = new
+            .routers
+            .iter()
+            .flat_map(|(id, r)| r.neighbors.iter().filter(|n| n.transport6 && n.state == SessionState::Established).map(move |n| (*id, n.peer)))
+            .collect();
+        let down: Vec<crate::bgp6::Sess6> = self.bgp.since6.keys().filter(|k| !est.contains(*k)).copied().collect();
+        let up: Vec<crate::bgp6::Sess6> = est.iter().filter(|k| !self.bgp.since6.contains_key(*k)).copied().collect();
+        for (key, is_up) in down.into_iter().map(|k| (k, false)).chain(up.into_iter().map(|k| (k, true))) {
+            if is_up {
+                self.bgp.since6.insert(key, now);
+            } else {
+                self.bgp.since6.remove(&key);
+            }
+            let Some(d) = t.device(key.0) else { continue };
+            let Peer::V6(addr) = key.1 else { continue };
+            if d.bgp.as_ref().is_some_and(|b| b.log_neighbor_changes) {
+                let what = if is_up { "Up" } else { "Down session lost (the neighbour is unreachable or was reconfigured)" };
+                self.log(key.0, &format!("%BGP-5-ADJCHANGE: neighbor {addr} {what}"));
+            }
+        }
+    }
+
     /// A keepalive from each Established session.
     pub(crate) fn send_bgp_keepalives(&mut self, t: &Topology, at: u64) {
         if !t.devices.iter().any(|d| d.bgp.is_some()) {
@@ -1911,7 +1974,31 @@ impl Sim {
                 }
             }
         }
-        BgpView { routers, counters: self.bgp.counters.clone(), since: self.bgp.since.clone(), now, flaps: self.bgp.damp.clone() }
+        let mut v6 = self.bgp.state6.clone().unwrap_or_default();
+        for (id, r) in &mut v6.routers {
+            for n in &mut r.neighbors {
+                let crate::bgp6::Peer::V6(_) = n.peer else { continue };
+                if n.state == SessionState::Connect {
+                    let age = self.bgp.up_at6.get(&(*id, n.peer)).map_or(0, |at| now.saturating_sub(*at));
+                    n.state = if age >= 2_000_000 {
+                        SessionState::OpenConfirm
+                    } else if age >= 1_000_000 {
+                        SessionState::OpenSent
+                    } else {
+                        SessionState::Connect
+                    };
+                }
+            }
+        }
+        BgpView {
+            routers,
+            counters: self.bgp.counters.clone(),
+            since: self.bgp.since.clone(),
+            now,
+            flaps: self.bgp.damp.clone(),
+            v6,
+            since6: self.bgp.since6.clone(),
+        }
     }
 }
 
@@ -2615,6 +2702,7 @@ mod tests {
             net: "10.0.0.1/24".parse().unwrap(),
             mac: netlabcraft_core::MacAddr::local(DeviceId(1), 1),
             name: "g0/0".into(),
+            vrf: None,
         };
         let row = |code, net: &str, via: Option<&str>, iface: Option<&str>, distance| RouteEntry {
             code,
