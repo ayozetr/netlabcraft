@@ -404,6 +404,8 @@ fn background_sheets(dir: &str, dark: bool) {
             netlabcraft_ui_egui::icons::glyph(p, cell, netlabcraft_ui_egui::icons::Glyph::Picture, tk.pill_text);
         }
     });
+}
+
 /// The physical workspace with the grid of every level ticked: the window, the colour palette and each level.
 fn grid_sheets(dir: &str, dark: bool) {
     let suffix = if dark { "dark" } else { "light" };
