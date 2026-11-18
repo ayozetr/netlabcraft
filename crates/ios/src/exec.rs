@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 pub use dialogs::{Dialog, DialogKind};
 
+pub(crate) mod archive;
 pub(crate) mod automation;
 pub(crate) mod bgp;
 pub(crate) mod cellular;
@@ -169,6 +170,8 @@ pub enum Mode {
     KeyChain(String),
     /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
     KeyChainKey(String, u32),
+    /// `R1(config-archive)#`: `archive`.
+    Archive,
     /// `S1(config-mst)#`: `spanning-tree mst configuration`.
     MstConfig,
 }
@@ -223,6 +226,7 @@ impl Mode {
             Mode::PkiServer(_) => Modes::PKI_SERVER,
             Mode::KeyChain(_) => Modes::KEYCHAIN,
             Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
+            Mode::Archive => Modes::ARCHIVE,
             Mode::MstConfig => Modes::MST,
         }
     }
@@ -711,6 +715,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
         Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
         Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
+        Mode::Archive => format!("{n}(config-archive)#"),
         Mode::MstConfig => format!("{n}(config-mst)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
@@ -1152,6 +1157,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
                 | Mode::KeyChainKey(..)
+                | Mode::Archive
                 | Mode::MstConfig
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
@@ -1233,6 +1239,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
+                | Mode::Archive
                 | Mode::MstConfig
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
@@ -1620,14 +1627,35 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowHistory => Ok(c.cli.history.iter().map(|h| format!("  {h}")).collect::<Vec<_>>().join("\n")),
         Id::CopyRunStart | Id::WriteMemory => {
             let cfg = render::running_config(c.d()?);
-            c.dm()?.startup = Some(cfg);
-            Ok("Configuration saved to startup-config.".into())
+            c.dm()?.startup = Some(cfg.clone());
+            // `archive` / `write-memory`: saving also makes a copy.
+            let at = c.sim.clock(c.dev).0;
+            let d = c.dm()?;
+            let copy = if d.archive.write_memory { d.archive.push(&cfg, at) } else { None };
+            Ok(match copy {
+                Some(n) => format!("Configuration saved to startup-config and archived as copy {n}."),
+                None => "Configuration saved to startup-config.".into(),
+            })
         }
         Id::EraseStartup => {
             c.dm()?.startup = None;
             Ok("Startup configuration erased; the next reload starts from factory settings.".into())
         }
         Id::Reload => c.reload(),
+        Id::Archive
+        | Id::NoArchive
+        | Id::ArchivePath
+        | Id::NoArchivePath
+        | Id::ArchiveMaximum
+        | Id::NoArchiveMaximum
+        | Id::ArchiveTimePeriod
+        | Id::NoArchiveTimePeriod
+        | Id::ArchiveWriteMemory
+        | Id::NoArchiveWriteMemory
+        | Id::ArchiveConfig
+        | Id::ShowArchive
+        | Id::ConfigureReplace
+        | Id::ConfigureRevert => archive::command(&mut c, spec.id, &args),
         Id::ReloadIn | Id::ReloadAt => {
             let (now, _) = c.sim.clock(c.dev);
             let secs = if spec.id == Id::ReloadIn { reload_delay(arg(0))? } else { reload_until(arg(0), now)? };
@@ -3744,8 +3772,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     _ => return Err("% ssh -l <user> <address>".into()),
                 }
             };
+            let (addr, said) = c.name_to_address(&addr)?;
             let dst = parse_ip(&addr).map_err(|e| format!("% {e}"))?;
-            Ok(connect(c.t, c.sim, c.dev, c.cli, proto, dst, user))
+            Ok(format!("{said}{}", connect(c.t, c.sim, c.dev, c.cli, proto, dst, user)))
         }
         Id::TelnetPort => {
             let dst = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
