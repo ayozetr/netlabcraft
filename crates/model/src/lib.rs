@@ -718,6 +718,9 @@ pub struct Port {
     /// Switches: DHCP snooping, ARP inspection and spanning-tree port settings.
     #[serde(default, skip_serializing_if = "l2sec::PortL2::is_default")]
     pub l2: l2sec::PortL2,
+    /// Hosts: the 802.1X login this wired port answers a switch's EAPOL requests with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplicant: Option<wlan::WifiLogin>,
 }
 
 impl Port {
@@ -2262,6 +2265,7 @@ impl Device {
                 access: AccessGroups::default(),
                 nat: None,
                 l2: l2sec::PortL2::default(),
+                supplicant: None,
             })
             .collect();
         let mut d = Device {

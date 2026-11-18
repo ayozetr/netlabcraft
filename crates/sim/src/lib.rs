@@ -39,6 +39,7 @@ pub mod channel;
 pub mod control;
 pub mod debug;
 mod debug_watch;
+pub mod dot1x;
 pub use debug::DebugKind;
 pub mod dhcpsrv;
 pub mod eigrp;
@@ -1214,6 +1215,10 @@ pub struct DevState {
     pub(crate) reasm: netlabcraft_wire::ipfrag::Reassembly,
     /// PPPoE: a dialer's inbox while it waits, and a concentrator's negotiations.
     pub(crate) pppoe: pppoe::State,
+    /// Switches: the 802.1X login of each controlled port.
+    pub(crate) dot1x: BTreeMap<usize, dot1x::PortAuth>,
+    /// Hosts: the 802.1X supplicant of each wired port.
+    pub(crate) supp: BTreeMap<usize, dot1x::Supp>,
 }
 
 /// One frame delivered across a cable.
@@ -1446,6 +1451,8 @@ pub struct Sim {
     joined: BTreeMap<DeviceId, wlan::Joined>,
     /// 802.1X logins waiting for a RADIUS answer, by the controller's source port.
     dot1x: BTreeMap<u16, wlan::Dot1xWait>,
+    /// Wired 802.1X logins waiting for a RADIUS answer, by the switch's source port.
+    dot1x_wired: BTreeMap<u16, dot1x::WiredWait>,
     /// WPA2-Personal master keys by (passphrase, SSID).
     pmks: BTreeMap<(String, String), [u8; 32]>,
     air_seq: u16,
@@ -1796,6 +1803,7 @@ impl Sim {
         self.state.retain(|id, _| t.device(*id).is_some());
         self.log_cfg = t.devices.iter().map(|d| (d.id, logcfg::LogCfg::of(d))).filter(|(_, c)| *c != logcfg::LogCfg::default()).collect();
         self.note_links(t);
+        self.dot1x_sync(t);
         // Ports reset by `shutdown`/`no shutdown`, or no longer secured, forget what they learned.
         for (id, st) in &mut self.state {
             if let Some(d) = t.device(*id) {
@@ -1865,6 +1873,10 @@ impl Sim {
         if t.device(from.device).is_some_and(|d| Sim::span_destination(d, from.port)) {
             return false;
         }
+        // An 802.1X port that has not authorized its host sends nothing but EAPOL.
+        if self.dot1x_egress_blocked(t, from, &frame) {
+            return false;
+        }
         let frame = self.phone_tag(t, from, frame);
         // Over the air an access point reaches every associated host; each keeps what is its own.
         if is_ap_radio(t, from) {
@@ -1913,6 +1925,7 @@ impl Sim {
         self.send_rstp_handshakes(t);
         self.l2_tick(t);
         self.wlan_sync(t);
+        self.dot1x_kick(t);
         self.cell_sync(t);
         self.flush_syslog(t);
         self.flush_netflow(t);
@@ -2141,6 +2154,9 @@ impl Sim {
             }
         };
         let pcp = netlabcraft_wire::qos::frame_pcp(bytes);
+        if f.ethertype == netlabcraft_wire::wlan::ETHERTYPE_EAPOL && d.kind.is_host() {
+            return self.dot1x_supplicant_in(t, d, at.port, &f);
+        }
         match d.kind {
             DeviceKind::Switch if port.routed => self.l3_in(t, d, at.port, f),
             DeviceKind::Switch => self.switch_in_counted(t, d, at, f, pcp, hops),
@@ -2906,6 +2922,10 @@ impl Sim {
             self.storm = true;
             return Err(format!("switching loop: the frame crossed {MAX_SWITCH_HOPS} switches (no spanning tree)"));
         }
+        // EAPOL is 802.1X's: a controlled port answers it, any other port stops it.
+        if f.ethertype == netlabcraft_wire::wlan::ETHERTYPE_EAPOL {
+            return self.dot1x_switch_in(t, d, in_port, &f);
+        }
         // Spanning tree takes its BPDUs (the tree itself is computed), LLDP its advertisements.
         if netlabcraft_wire::control::link_local(f.dst) {
             self.debug_link_local(d, in_port, &f);
@@ -2914,6 +2934,9 @@ impl Sim {
         // Off a lightweight AP's radio, a centrally switched host's frame goes to the controller.
         if let Some(r) = self.central_in(t, d, in_port, &f) {
             return r;
+        }
+        if let Some(why) = self.dot1x_ingress(d, in_port) {
+            return Err(why);
         }
         let sp = &d.ports.get(in_port).ok_or("no port")?.switchport;
         let vlan = match if t.is_trunk(End { device: d.id, port: in_port }) { SwitchportMode::Trunk } else { SwitchportMode::Access } {
@@ -2925,7 +2948,8 @@ impl Sim {
                     return Err("tagged frame on an access port".into());
                 } else {
                     // Off an access point's radio: the VLAN of the sender's WLAN.
-                    wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan)
+                    self.dot1x_vlan(d, in_port)
+                        .unwrap_or_else(|| wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan))
                 }
             }
             SwitchportMode::Trunk => {
@@ -3048,7 +3072,7 @@ impl Sim {
                     (Some(p) != in_port || is_ap_radio(t, End { device: d.id, port: p }))
                         && !chm.hidden(p)
                         && !chm.suspended(p)
-                        && carries(t, d, p, vlan)
+                        && self.dot1x_carries(d, p, vlan).unwrap_or_else(|| carries(t, d, p, vlan))
                         && !vtp::pruned(t, d, p, vlan)
                         && snooped.as_ref().is_none_or(|s| s.contains(&p))
                 })
@@ -3612,6 +3636,9 @@ impl Sim {
             }
             if let Some(r) = self.voice_udp_in(t, d, &ip, &u) {
                 return r;
+            }
+            if u.src_port == netlabcraft_wire::radius::RADIUS_PORT && self.dot1x_wired.contains_key(&u.dst_port) {
+                return self.dot1x_radius_answer(t, d, &u);
             }
             if let Some(r) = self.wlan_udp_in(t, d, &ip, &u) {
                 return r;

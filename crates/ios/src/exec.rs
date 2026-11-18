@@ -21,6 +21,7 @@ pub(crate) mod cef;
 pub(crate) mod cellular;
 pub(crate) mod debug;
 mod dialogs;
+pub(crate) mod dot1x;
 pub(crate) mod eigrp6;
 pub(crate) mod families;
 pub(crate) mod fhrp;
@@ -2690,6 +2691,7 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::ShowDot1x | Id::ShowDot1xAll | Id::ShowDot1xInterface | Id::Dot1xReauth => dot1x::command(&mut c, spec.id, &args),
         Id::IgmpSnooping
         | Id::NoIgmpSnooping
         | Id::IgmpSnoopingVlan

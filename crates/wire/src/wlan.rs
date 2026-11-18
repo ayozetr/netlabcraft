@@ -1124,4 +1124,28 @@ mod tests {
             let _ = rsn_akm(&junk);
         }
     }
+
+    #[test]
+    fn a_wired_eapol_frame_round_trips_and_survives_every_truncation() {
+        let pae = MacAddr([0x01, 0x80, 0xc2, 0, 0, 3]);
+        for e in [
+            Eapol::Start,
+            Eapol::Logoff,
+            Eapol::Eap(Eap { code: EAP_REQUEST, id: 3, kind: Some(EAP_IDENTITY), data: Vec::new() }),
+            Eapol::Eap(Eap { code: EAP_RESPONSE, id: 3, kind: Some(EAP_IDENTITY), data: b"ana".to_vec() }),
+            Eapol::Eap(Eap { code: EAP_SUCCESS, id: 4, kind: None, data: Vec::new() }),
+        ] {
+            let f = crate::Frame { dst: pae, src: mac(9), vlan: None, ethertype: ETHERTYPE_EAPOL, payload: e.encode() };
+            let bytes = f.encode();
+            let back = crate::Frame::decode(&bytes).unwrap();
+            assert_eq!(back.ethertype, ETHERTYPE_EAPOL);
+            assert_eq!(Eapol::decode(&back.payload).unwrap(), e, "padding after the packet is ignored");
+            let (protocol, text) = crate::summarize(&bytes);
+            assert_eq!(protocol, crate::Protocol::Eapol);
+            assert!(!text.is_empty());
+            for k in 0..e.encode().len() {
+                let _ = Eapol::decode(&e.encode()[..k]);
+            }
+        }
+    }
 }
