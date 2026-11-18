@@ -100,7 +100,7 @@ fn lex(src: &str) -> Result<Vec<Tok>, String> {
             let found = SYMS.iter().find(|s| **s == two).or_else(|| SYMS.iter().find(|s| **s == one));
             let Some(sym) = found else { return Err(format!("`{c}` is not part of the formula language")) };
             i += sym.chars().count();
-            out.push(Tok::Sym(*sym));
+            out.push(Tok::Sym(sym));
         }
     }
     Ok(out)

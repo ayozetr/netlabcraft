@@ -957,6 +957,7 @@ mod tests {
                 ],
                 notes: "n".repeat(MAX_NOTES + 10),
                 show_notes: false,
+                ..PlaceEnv::default()
             },
             PlaceEnv { place: closet, ..PlaceEnv::default() },
             PlaceEnv { place: 777, settings: vec![Setting { id: "gravity".into(), keys: vec![key(1, 1.0)] }], ..PlaceEnv::default() },
