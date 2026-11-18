@@ -9,6 +9,10 @@
 //!   power strip and cables, built through engine commands;
 //! * `closet-zoom-light.png`, `closet-zoom-dark.png`: the same closet zoomed on the rack, for the connectors;
 //! * `closet-z050-*.png`, `closet-z100-*.png`, `closet-z150-*.png`: the closet at zoom 0.5, 1.0 and 1.5;
+//! * `device-physical-<NAME>-light.png`, `device-physical-<NAME>-dark.png`: the Physical tab of one device of every
+//!   family (hub, PoE and SFP switches, routers with serial ports and a module card, firewall, access point, home
+//!   router, server, PC, laptop, printer, IP phone, modems, clouds, cell tower, central office, an IoT thing and the
+//!   boards), built through engine commands, with the real connector drawn for every port;
 //! * `logical-light.png`, `logical-dark.png`: the logical workspace with a few devices.
 //!
 //! The `snapshots` workflow runs it and uploads the PNGs; nothing here is committed.
@@ -230,6 +234,82 @@ fn closet_zoom_steps(dir: &str, dark: bool) {
     }
 }
 
+/// The index of the first port of `dev` whose name starts with `prefix`.
+fn first_port(s: &Session, dev: &str, prefix: &str) -> usize {
+    s.topology.find(dev).and_then(|d| d.ports.iter().position(|p| p.name.starts_with(prefix))).unwrap_or(0)
+}
+
+/// One device of every family, cabled so the lights and cable marks show: what the device windows are rendered from.
+fn physical_lab() -> Session {
+    let mut s = Session::new();
+    for (model, name) in [
+        ("Hub-8", "HUB1"),
+        ("PC", "PC1"),
+        ("Laptop", "LT1"),
+        ("Switch-24-SFP", "SW1"),
+        ("Switch-24-SFP", "SW1B"),
+        ("Switch-8-PoE", "SWP1"),
+        ("Router-WAN", "R1"),
+        ("Router-M2", "RM1"),
+        ("Firewall-5", "FW1"),
+        ("AccessPoint", "AP1"),
+        ("Home-Router", "HR1"),
+        ("Server", "SRV1"),
+        ("Printer", "PR1"),
+        ("IP-Phone", "PH1"),
+        ("DSL-Modem", "DSL1"),
+        ("Cable-Modem", "CM1"),
+        ("Cloud", "NET1"),
+        ("PSTN", "TEL1"),
+        ("Cell-Tower", "TOWER1"),
+        ("Central-Office", "CO1"),
+        ("IoT-Light", "LIGHT1"),
+        ("Board-SBC", "SBC1"),
+        ("Board-MCU", "MCU1"),
+        ("Smartphone", "SP1"),
+    ] {
+        add(&mut s, model, name, 0.0, 0.0);
+    }
+    // A card in the modular router's first bay (cards go in with the power off).
+    cmd(&mut s, "device.power", json!({"device": "RM1", "on": false}));
+    cmd(&mut s, "device.module.add", json!({"device": "RM1", "slot": "0/0", "module": "Card-2S"}));
+    cmd(&mut s, "device.power", json!({"device": "RM1", "on": true}));
+    link(&mut s, "HUB1", 0, "PC1", 0, "straight-through");
+    link(&mut s, "HUB1", 1, "LT1", 0, "straight-through");
+    link(&mut s, "SW1", 0, "SRV1", 0, "straight-through");
+    link(&mut s, "SW1", 1, "PR1", 0, "straight-through");
+    link(&mut s, "SW1", 24, "SW1B", 24, "fiber-multi-mode");
+    link(&mut s, "SWP1", 0, "AP1", 0, "straight-through");
+    link(&mut s, "SWP1", 1, "PH1", 0, "straight-through");
+    link(&mut s, "R1", 0, "SW1", 2, "straight-through");
+    link(&mut s, "FW1", 0, "R1", 1, "straight-through");
+    let (a, b) = (first_port(&s, "R1", "Serial"), first_port(&s, "RM1", "Serial"));
+    link(&mut s, "R1", a, "RM1", b, "serial-dce");
+    let (a, b) = (first_port(&s, "DSL1", "Phone"), first_port(&s, "TEL1", "Phone"));
+    link(&mut s, "DSL1", a, "TEL1", b, "phone");
+    let (a, b) = (first_port(&s, "CM1", "Coaxial"), first_port(&s, "NET1", "Coaxial"));
+    link(&mut s, "CM1", a, "NET1", b, "coaxial");
+    s
+}
+
+/// The Physical tab of every family's device, in both themes: `device-physical-<NAME>-<theme>.png`.
+fn device_physical_sheets(dir: &str, dark: bool) {
+    let suffix = if dark { "dark" } else { "light" };
+    let names = [
+        "HUB1", "PC1", "LT1", "SW1", "SWP1", "R1", "RM1", "FW1", "AP1", "HR1", "SRV1", "PR1", "PH1", "DSL1", "CM1", "NET1", "TEL1", "TOWER1", "CO1",
+        "LIGHT1", "SBC1", "MCU1", "SP1",
+    ];
+    for name in names {
+        let s = physical_lab();
+        app_sheet(dir, &format!("device-physical-{name}-{suffix}"), s, (900.0, 760.0), dark, move |app| {
+            if let Ok(id) = app.session.topology.resolve(name) {
+                app.ui.show_notes = false;
+                netlabcraft_ui_egui::open_physical_tab(app, id);
+            }
+        });
+    }
+}
+
 fn logical_sheet(dir: &str, dark: bool) {
     let suffix = if dark { "dark" } else { "light" };
     let mut s = Session::new();
@@ -273,6 +353,7 @@ fn main() {
         cables_sheet(&dir, dark);
         closet_sheet(&dir, dark);
         closet_zoom_steps(&dir, dark);
+        device_physical_sheets(&dir, dark);
         logical_sheet(&dir, dark);
     }
 }
