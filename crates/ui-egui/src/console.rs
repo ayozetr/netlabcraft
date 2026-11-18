@@ -80,6 +80,8 @@ pub enum DesktopApp {
     NetflowCollector,
     /// An IP phone's screen and dial pad on the computer: registers with a call server and calls.
     Softphone,
+    /// What is plugged into the computer's USB ports, and their state.
+    Usb,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -309,6 +311,8 @@ fn contents(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dev: &Device) {
             ]
         } else if netlabcraft_model::iot::can_serve(dev) && dev.kind != DeviceKind::Server {
             &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Iot, "IoT"), (Tab::Cli, "CLI"), (Tab::Attributes, "Attributes")]
+        } else if dev.is_usb_stick() {
+            &[(Tab::Physical, "Physical"), (Tab::Iot, "Files"), (Tab::Attributes, "Attributes")]
         } else if netlabcraft_model::board::is_board(dev) {
             &[(Tab::Physical, "Physical"), (Tab::Config, "Config"), (Tab::Board, "Programming"), (Tab::Attributes, "Attributes")]
         } else if dev.kind == DeviceKind::Iot {
@@ -346,6 +350,7 @@ fn contents(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, dev: &Device) {
         }
         Tab::Desktop => desktop(app, ui, dev),
         Tab::Phone => crate::phone::tab(app, ui, dev),
+        Tab::Iot if dev.is_usb_stick() => crate::usb_page::stick(app, ui, dev),
         Tab::Iot => {
             let mut form = app.ui.windows.get_mut(&d).map(|w| std::mem::take(&mut w.iot)).unwrap_or_default();
             crate::iot_page::tab(app, ui, dev, &mut form);
@@ -1167,6 +1172,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                             (DesktopApp::VpnClient, "VPN Client"),
                             (DesktopApp::NetflowCollector, "Netflow Collector"),
                             (DesktopApp::Softphone, "Softphone"),
+                            (DesktopApp::Usb, "USB"),
                         ]);
                         // A computer with a modem (a phone port as its first port) also dials.
                         let dial = dev.ports.first().is_some_and(|p| p.name.starts_with("Phone")).then_some((DesktopApp::DialUp, "Dial-up"));
@@ -1234,6 +1240,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::VpnClient => "VPN Client",
                 DesktopApp::NetflowCollector => "Netflow Collector",
                 DesktopApp::Softphone => "Softphone",
+                DesktopApp::Usb => "USB",
             };
             let mut close = false;
             egui::Frame::new().fill(tk.bar).inner_margin(egui::Margin::symmetric(8, 4)).show(ui, |ui| {
@@ -1391,6 +1398,7 @@ fn desktop(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 DesktopApp::VpnClient => crate::host_apps::vpn_client(app, ui, dev),
                 DesktopApp::NetflowCollector => crate::host_apps::netflow_collector(app, ui, dev),
                 DesktopApp::Softphone => crate::phone::softphone(app, ui, dev),
+                DesktopApp::Usb => crate::usb_page::host_app(app, ui, dev),
                 DesktopApp::Settings => {
                     egui::ScrollArea::vertical().id_salt(("settings_scroll", d.0)).auto_shrink([false, true]).show(ui, |ui| {
                         ui.add_space(6.0);
@@ -1639,6 +1647,23 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
                 p.rect_stroke(bar, 2.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
             }
             p.line_segment([egui::pos2(r.left(), base), egui::pos2(r.right(), base)], egui::Stroke::new(3.0, light));
+        }
+        DesktopApp::Usb => {
+            // A USB plug: a steel shell with two contacts, on a cable.
+            let shell = egui::Rect::from_min_size(r.left_top() + vec2(r.width() * 0.15, 0.0), vec2(r.width() * 0.7, r.height() * 0.45));
+            p.rect_filled(shell, 3.0, light);
+            p.rect_stroke(shell, 3.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            for fx in [0.3f32, 0.62] {
+                p.rect_filled(
+                    egui::Rect::from_center_size(shell.left_center() + vec2(shell.width() * fx, 0.0), vec2(r.width() * 0.1, r.height() * 0.12)),
+                    1.0,
+                    dark,
+                );
+            }
+            let body = egui::Rect::from_min_max(egui::pos2(shell.left(), shell.bottom()), egui::pos2(shell.right(), r.bottom() - r.height() * 0.2));
+            p.rect_filled(body, 4.0, egui::Color32::from_rgb(0x2c, 0x7c, 0xc0));
+            p.rect_stroke(body, 4.0, egui::Stroke::new(2.0, dark), egui::StrokeKind::Inside);
+            p.line_segment([body.center_bottom(), egui::pos2(body.center().x, r.bottom())], egui::Stroke::new(5.0, light));
         }
         DesktopApp::Softphone => {
             // A handset: two rounded ends joined by a bar, over a small dial pad.
