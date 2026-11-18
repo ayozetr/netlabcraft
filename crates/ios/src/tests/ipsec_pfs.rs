@@ -78,7 +78,7 @@ fn site(
 #[test]
 fn set_pfs_takes_the_listed_groups_and_is_shown_and_replayed() {
     let (mut lab, r1, ..) = two_sites();
-    lab.run(r1, "en\nconf t\ncrypto map VPN 10 ipsec-isakmp");
+    lab.run(r1, "conf t\ncrypto map VPN 10 ipsec-isakmp");
     for g in ["group2", "group5", "group14", "group15", "group16", "group19", "group20", "group24"] {
         lab.run(r1, &format!("set pfs {g}"));
         assert_eq!(lab.t.device(r1).unwrap().crypto.maps[0].pfs, g.strip_prefix("group").and_then(|n| n.parse().ok()));

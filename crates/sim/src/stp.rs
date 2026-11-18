@@ -116,8 +116,32 @@ pub fn port_id(port: usize) -> u32 {
 /// The port id with the port's configured priority (`spanning-tree [vlan N] port-priority`):
 /// priority × 1000 + port number, so a lower priority wins first.
 pub fn port_id_in(d: Option<&Device>, port: usize, vlan: VlanId) -> u32 {
-    let pri = d.and_then(|d| d.ports.get(port)).map_or(128, |p| p.l2.priority(vlan)).min(240);
+    port_id_for(d, port, vlan, d.and_then(|d| inst_of(d, vlan, false)))
+}
+
+/// The MST instance a VLAN is in on a switch running MST (`None` on any other switch). With
+/// `cist` the VLAN counts as part of instance 0, the common tree.
+pub fn inst_of(d: &Device, vlan: VlanId, cist: bool) -> Option<u16> {
+    d.mst.on.then(|| if cist { 0 } else { d.mst.instance_of(vlan.get()) })
+}
+
+fn port_id_for(d: Option<&Device>, port: usize, vlan: VlanId, inst: Option<u16>) -> u32 {
+    let l2 = d.and_then(|d| d.ports.get(port)).map(|p| &p.l2);
+    let pri = match (l2, inst) {
+        (Some(l2), Some(i)) => l2.mst_priority.get(&i).or_else(|| l2.stp_priority.get(&0)).copied().unwrap_or(128),
+        (Some(l2), None) => l2.priority(vlan),
+        _ => 128,
+    }
+    .min(240);
     pri * 1000 + u32::try_from(port + 1).unwrap_or(999).min(999)
+}
+
+/// How a computation looks at the network: the common tree (`cist`) or one region's instance
+/// (`scope`: only the switches of that region take part).
+#[derive(Clone, Copy, Default)]
+struct View<'a> {
+    cist: bool,
+    scope: Option<&'a BTreeSet<DeviceId>>,
 }
 
 /// Most rounds of root-guard re-election (each round blocks at least one more port).
@@ -127,13 +151,55 @@ const MAX_GUARD_ROUNDS: usize = 16;
 /// root or alternate) are blocked as root-inconsistent and the tree is elected again without
 /// them.
 pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
+    if t.devices.iter().any(|d| d.mst.on && d.switches_frames()) {
+        return compute_mst(t, vlan);
+    }
+    compute_guarded(t, vlan, View::default())
+}
+
+/// Multiple spanning tree: the common tree (CIST) is computed as one tree over every switch, each
+/// MST switch with its instance 0 settings. A VLAN that a region maps to an instance gets that
+/// instance's tree inside the region (its own bridge priorities, costs and port priorities); the
+/// ports on the region's edge keep the roles the common tree gave them, so a region behaves as
+/// one bridge for the instances outside it.
+fn compute_mst(t: &Topology, vlan: VlanId) -> VlanTree {
+    let common = compute_guarded(t, vlan, View { cist: true, scope: None });
+    let mut tree = common.clone();
+    let mst: Vec<&Device> = t.devices.iter().filter(|d| d.mst.on && d.switches_frames() && t.switch_has_vlan(d, vlan)).collect();
+    let mut done: BTreeSet<DeviceId> = BTreeSet::new();
+    for d in &mst {
+        if done.contains(&d.id) || d.mst.instance_of(vlan.get()) == 0 {
+            continue;
+        }
+        let scope: BTreeSet<DeviceId> = mst.iter().filter(|o| d.mst.same_region(&o.mst)).map(|o| o.id).collect();
+        done.extend(scope.iter().copied());
+        let inst = compute_guarded(t, vlan, View { cist: false, scope: Some(&scope) });
+        tree.bridges.retain(|k, _| !scope.contains(k));
+        tree.ports.retain(|k, _| !scope.contains(&k.0));
+        for (k, b) in &inst.bridges {
+            tree.bridges.insert(*k, *b);
+        }
+        let boundary = |dev: DeviceId, port: usize| {
+            t.peer(End { device: dev, port }).is_some_and(|q| t.device(q.device).is_some_and(|pd| pd.switches_frames()) && !scope.contains(&q.device))
+        };
+        for (k, info) in &inst.ports {
+            let info = if boundary(k.0, k.1) { common.ports.get(k).copied().unwrap_or(*info) } else { *info };
+            tree.ports.insert(*k, info);
+        }
+        tree.inconsistent.extend(inst.inconsistent);
+        tree.loop_inconsistent.extend(inst.loop_inconsistent);
+    }
+    tree
+}
+
+fn compute_guarded(t: &Topology, vlan: VlanId, view: View<'_>) -> VlanTree {
     let mut excluded: BTreeSet<(DeviceId, usize)> = BTreeSet::new();
     let guarded = |k: &(DeviceId, usize)| t.device(k.0).and_then(|d| d.ports.get(k.1)).is_some_and(|p| p.l2.root_guard);
     // Loop guard: the guarded ports on a filtered link that would be root or alternate if the
     // BPDUs got through.
     let mut looped: BTreeSet<(DeviceId, usize)> = BTreeSet::new();
     if t.devices.iter().any(|d| d.ports.iter().any(|p| p.l2.bpdufilter == Some(true))) {
-        let full = compute_with(t, vlan, &excluded, &looped, false);
+        let full = compute_with(t, vlan, &excluded, &looped, false, view);
         looped = full
             .ports
             .iter()
@@ -141,7 +207,7 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
             .map(|(k, _)| *k)
             .collect();
     }
-    let mut tree = compute_with(t, vlan, &excluded, &looped, true);
+    let mut tree = compute_with(t, vlan, &excluded, &looped, true, view);
     for _ in 0..MAX_GUARD_ROUNDS {
         let bad: Vec<(DeviceId, usize)> = tree
             .ports
@@ -153,7 +219,7 @@ pub fn compute(t: &Topology, vlan: VlanId) -> VlanTree {
             break;
         }
         excluded.extend(bad);
-        tree = compute_with(t, vlan, &excluded, &looped, true);
+        tree = compute_with(t, vlan, &excluded, &looped, true, view);
     }
     tree.inconsistent = excluded;
     tree.loop_inconsistent = looped;
@@ -209,8 +275,20 @@ pub fn loop_guard_on(t: &Topology, dev: DeviceId, port: usize) -> bool {
 }
 
 pub fn bridge_id(d: &Device, vlan: VlanId) -> BridgeId {
-    let pri = u32::from(d.stp_priority.get(&vlan).copied().unwrap_or(STP_DEFAULT_PRIORITY));
-    BridgeId { priority: pri + u32::from(vlan.get()), mac: d.ports.first().map(|p| p.mac).unwrap_or_default() }
+    bridge_id_for(d, vlan, inst_of(d, vlan, false))
+}
+
+/// The bridge id of a switch in a VLAN's tree: the VLAN's priority plus the VLAN (PVST), or an
+/// instance's priority plus the instance number (MST).
+fn bridge_id_for(d: &Device, vlan: VlanId, inst: Option<u16>) -> BridgeId {
+    let mac = d.ports.first().map(|p| p.mac).unwrap_or_default();
+    match inst {
+        Some(i) => BridgeId { priority: u32::from(d.mst.priority_of(i)) + u32::from(i), mac },
+        None => {
+            let pri = u32::from(d.stp_priority.get(&vlan).copied().unwrap_or(STP_DEFAULT_PRIORITY));
+            BridgeId { priority: pri + u32::from(vlan.get()), mac }
+        }
+    }
 }
 
 /// Whether a switch port carries a VLAN.
@@ -222,25 +300,40 @@ pub fn carries(t: &Topology, d: &Device, port: usize, vlan: VlanId) -> bool {
         }) || t.radio_carries(d, port, vlan))
 }
 
-fn compute_with(t: &Topology, vlan: VlanId, excluded: &BTreeSet<(DeviceId, usize)>, looped: &BTreeSet<(DeviceId, usize)>, filters: bool) -> VlanTree {
+fn compute_with(
+    t: &Topology,
+    vlan: VlanId,
+    excluded: &BTreeSet<(DeviceId, usize)>,
+    looped: &BTreeSet<(DeviceId, usize)>,
+    filters: bool,
+    view: View<'_>,
+) -> VlanTree {
     let mut tree = VlanTree::default();
-    let switches: Vec<&Device> = t.devices.iter().filter(|d| d.switches_frames() && t.switch_has_vlan(d, vlan)).collect();
+    let switches: Vec<&Device> =
+        t.devices.iter().filter(|d| d.switches_frames() && t.switch_has_vlan(d, vlan) && view.scope.is_none_or(|s| s.contains(&d.id))).collect();
     // An EtherChannel takes part as one port: its lead member, costed by the bundle's speed.
     let maps: BTreeMap<DeviceId, PortMap> = switches.iter().map(|d| (d.id, PortMap::new(t, d))).collect();
     let logical = |dev: DeviceId, p: usize| maps.get(&dev).map_or(p, |m| m.logical(p));
     let blocked = |dev: DeviceId, p: usize| maps.get(&dev).is_some_and(|m| m.suspended(p));
     let cost_of = |dev: DeviceId, port: usize| {
         let Some(d) = t.device(dev) else { return 100 };
-        if let Some(c) = d.ports.get(port).and_then(|p| p.l2.cost(vlan)) {
+        let configured = d.ports.get(port).and_then(|p| match inst_of(d, vlan, view.cist) {
+            Some(i) => p.l2.mst_cost.get(&i).or_else(|| p.l2.stp_cost.get(&0)).copied(),
+            None => p.l2.cost(vlan),
+        });
+        if let Some(c) = configured {
             return c;
         }
         let members = maps.get(&dev).map_or_else(|| vec![port], |m| m.members(port));
         let mbps: u32 = members.iter().filter_map(|p| d.ports.get(*p)).map(|p| speed_mbps(&p.name)).sum();
         cost_for_speed(mbps)
     };
-    let pid = |dev: DeviceId, p: usize| port_id_in(t.device(dev), p, vlan);
+    let pid = |dev: DeviceId, p: usize| {
+        let d = t.device(dev);
+        port_id_for(d, p, vlan, d.and_then(|d| inst_of(d, vlan, view.cist)))
+    };
     let mut linkset: BTreeSet<(DeviceId, usize, DeviceId, usize)> = BTreeSet::new();
-    let ids: BTreeMap<DeviceId, BridgeId> = switches.iter().map(|d| (d.id, bridge_id(d, vlan))).collect();
+    let ids: BTreeMap<DeviceId, BridgeId> = switches.iter().map(|d| (d.id, bridge_id_for(d, vlan, inst_of(d, vlan, view.cist)))).collect();
     // Switch-to-switch links carrying the VLAN: (a, port a, b, port b).
     let mut links: Vec<(DeviceId, usize, DeviceId, usize)> = Vec::new();
     for d in &switches {
@@ -267,6 +360,7 @@ fn compute_with(t: &Topology, vlan: VlanId, excluded: &BTreeSet<(DeviceId, usize
             match t.peer(end).and_then(|q| t.device(q.device).map(|pd| (q, pd))) {
                 Some((q, pd))
                     if !silent
+                        && view.scope.is_none_or(|s| s.contains(&q.device))
                         && carries(t, pd, q.port, vlan)
                         && !blocked(q.device, q.port)
                         && !excluded.contains(&(q.device, logical(q.device, q.port))) =>
@@ -410,6 +504,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
         for p in &d.ports {
             (p.shutdown, p.err_disabled, p.channel, p.routed).hash(&mut h);
             (&p.l2.stp_cost, &p.l2.stp_priority, p.l2.root_guard, p.l2.loop_guard, p.l2.bpdufilter).hash(&mut h);
+            (&p.l2.mst_cost, &p.l2.mst_priority).hash(&mut h);
             if d.switches_frames() {
                 format!("{:?}", p.switchport).hash(&mut h);
             }
@@ -418,6 +513,7 @@ pub fn fingerprint(t: &Topology) -> u64 {
         if d.switches_frames() {
             format!("{:?}{:?}", d.vlans.keys().collect::<Vec<_>>(), d.stp_priority).hash(&mut h);
             (d.l2.loopguard_default, d.rapid_stp).hash(&mut h);
+            d.mst.hash(&mut h);
             // An access point's radio is up while hosts are associated (a host moving in or
             // out of range changes it), and a lightweight AP carries its WLANs' VLANs.
             for p in (0..d.ports.len()).filter(|p| crate::is_ap_radio(t, End { device: d.id, port: *p })) {
