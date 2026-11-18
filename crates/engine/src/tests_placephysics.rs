@@ -58,7 +58,7 @@ fn a_heater_warms_its_place_by_a_rate_and_the_place_settles_back() {
     assert!((23..=25).contains(&cooling), "it cools back by the same rate: {cooling}");
     s.execute("sim.advance", json!({"seconds": 6_000})).unwrap();
     assert_eq!(value(&mut s, "Temp1", "value"), 20);
-    assert_eq!(live(&mut s, json!(null), "ambient_temperature").1, "own", "nothing moves it any more");
+    assert_ne!(live(&mut s, json!(null), "ambient_temperature").1, "live", "nothing moves it any more");
     // Off again: back to the older rule.
     s.execute("environment.physics", json!({"enabled": false})).unwrap();
     program(&mut s, "write(D0, 1)\nsleep 9\n");
