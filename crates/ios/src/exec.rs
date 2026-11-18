@@ -1553,7 +1553,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ConfigRegister
         | Id::CopyStartRun
         | Id::CopyFlashTftp
-        | Id::CopyTftpFlash => mgmt::command(&mut c, spec.id, &args),
+        | Id::CopyTftpFlash
+        | Id::CopyRunFlash
+        | Id::CopyStartFlash
+        | Id::CopyFlashRun
+        | Id::CopyFlashStart
+        | Id::CopyFlashFtp
+        | Id::CopyFtpFlash
+        | Id::CopyHttpRun
+        | Id::CopyHttpStart
+        | Id::CopyHttpFlash => mgmt::command(&mut c, spec.id, &args),
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();

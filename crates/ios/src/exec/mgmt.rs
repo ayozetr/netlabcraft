@@ -42,6 +42,75 @@ pub fn flash_files(d: &Device) -> Vec<(String, u64)> {
     files
 }
 
+/// Largest configuration text kept inside a flash file.
+const MAX_FLASH_TEXT: usize = 60_000;
+
+/// Keeps `text` in flash as `name` (replacing a file of that name); returns its size.
+fn store_flash_text(c: &mut Ctx<'_>, name: &str, text: &str) -> Result<u64, String> {
+    let d = c.dm()?;
+    if name == factory_image(d) {
+        return Err("% That name is the system image; choose another".into());
+    }
+    d.nvram.flash.retain(|f| f.name != name);
+    if d.nvram.flash.len() >= MAX_FLASH_FILES {
+        return Err(format!("% Flash holds at most {MAX_FLASH_FILES} copied files"));
+    }
+    let kept: String = text.chars().take(MAX_FLASH_TEXT).collect();
+    let size = kept.len() as u64;
+    d.nvram.flash.push(FlashFile { name: name.to_string(), size, text: Some(kept) });
+    Ok(size)
+}
+
+/// What a flash file holds as text: a configuration kept there, or the stand-in of an image.
+fn flash_content(d: &Device, name: &str) -> Result<(String, u64), String> {
+    let size = flash_files(d).iter().find(|(n, _)| n == name).map(|f| f.1).ok_or_else(|| format!("% flash:{name}: no such file"))?;
+    let text = d.nvram.flash.iter().find(|f| f.name == name).and_then(|f| f.text.clone());
+    Ok((text.unwrap_or_else(|| format!("{IMAGE_MARK} {name} {size}\n")), size))
+}
+
+/// Keeps what was fetched in flash: an image stand-in keeps its real size, any other text its bytes.
+fn store_fetched(c: &mut Ctx<'_>, name: &str, text: &str) -> Result<u64, String> {
+    if let Some(size) = text.strip_prefix(IMAGE_MARK).and_then(|r| r.split_whitespace().nth(1)).and_then(|n| n.parse::<u64>().ok()) {
+        let d = c.dm()?;
+        if name == factory_image(d) {
+            return Err("% That name is the system image; choose another".into());
+        }
+        d.nvram.flash.retain(|f| f.name != name);
+        if d.nvram.flash.len() >= MAX_FLASH_FILES {
+            return Err(format!("% Flash holds at most {MAX_FLASH_FILES} copied files"));
+        }
+        d.nvram.flash.push(FlashFile { name: name.to_string(), size, text: None });
+        return Ok(size);
+    }
+    store_flash_text(c, name, text)
+}
+
+/// Applies a configuration text: merged into the running one, or kept as the startup one.
+fn take_config(c: &mut Ctx<'_>, text: &str, startup: bool, from: &str) -> R {
+    if startup {
+        c.dm()?.startup = Some(text.to_string());
+        return Ok(format!("Copied {} bytes from {from} to startup-config", text.len()));
+    }
+    let failed = apply_config(c.t, c.sim, c.dev, text);
+    c.cli.mode = super::Mode::Exec;
+    let mut out = format!("Merged {} bytes from {from} into the running configuration", text.len());
+    for f in failed.iter().take(10) {
+        out.push_str(&format!("\n% {f}"));
+    }
+    Ok(out)
+}
+
+/// The address, the file and the name to keep it under, from the words after `ftp:` or `http:`.
+fn server_words(rest: &str) -> Result<(std::net::Ipv4Addr, String, Option<String>), String> {
+    let words: Vec<&str> = rest.split_whitespace().collect();
+    let (addr, file, local) = match words.as_slice() {
+        [a, f] => (*a, *f, None),
+        [a, f, l] => (*a, *f, Some(l.to_string())),
+        _ => return Err("% Give the server's address, the file and, if you want one, a name to keep it under".into()),
+    };
+    Ok((parse_ip(addr).map_err(|e| format!("% {e}"))?, file.to_string(), local))
+}
+
 /// `flash:NAME` or `NAME` → `NAME`.
 fn flash_name(w: &str) -> Result<String, String> {
     let n = w.strip_prefix("flash:").unwrap_or(w).trim_start_matches('/');
@@ -318,6 +387,75 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
             super::keep_on_tftp_server(c.t, server, &remote, &text);
             Ok(format!("Copied flash:{name} ({size} bytes) to tftp://{server}/{remote}"))
         }
+        Id::CopyRunFlash | Id::CopyStartFlash => {
+            let name = flash_name(arg(0).trim())?;
+            let d = c.d()?;
+            let text =
+                if id == Id::CopyStartFlash { d.startup.clone().ok_or("% No startup-config to copy")? } else { crate::render::running_config(d) };
+            let size = store_flash_text(c, &name, &text)?;
+            Ok(format!("Wrote {size} bytes to flash:{name}"))
+        }
+        Id::CopyFlashRun | Id::CopyFlashStart => {
+            let name = flash_name(arg(0).trim())?;
+            let text = c
+                .d()?
+                .nvram
+                .flash
+                .iter()
+                .find(|f| f.name == name)
+                .and_then(|f| f.text.clone())
+                .ok_or_else(|| format!("% flash:{name} holds no configuration text"))?;
+            take_config(c, &text, id == Id::CopyFlashStart, &format!("flash:{name}"))
+        }
+        Id::CopyFlashFtp => {
+            use netlabcraft_sim::ftp::FtpOp;
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (file, addr, remote) = match words.as_slice() {
+                [f, a] => (*f, *a, *f),
+                [f, a, r] => (*f, *a, *r),
+                _ => return Err("% copy flash: ftp: <file> <server address> [name on the server]".into()),
+            };
+            let name = flash_name(file)?;
+            let remote = flash_name(remote)?;
+            let server = parse_ip(addr).map_err(|e| format!("% {e}"))?;
+            let (user, pass) = c.d()?.ftp_login.clone().ok_or("% Set the account first: ip ftp username <name>, ip ftp password <password>")?;
+            let (text, size) = flash_content(c.d()?, &name)?;
+            let r = c.sim.ftp(c.t, c.dev, server, &user, &pass, &FtpOp::Put(remote.clone(), text.into_bytes()));
+            crate::host::apply_ftp_changes(c.t, c.sim);
+            r.map_err(|e| format!("% {e}"))?;
+            Ok(format!("Sent flash:{name} ({size} bytes) to ftp://{server}/{remote}"))
+        }
+        Id::CopyFtpFlash => {
+            use netlabcraft_sim::ftp::FtpOp;
+            let (server, file, local) = server_words(arg(0))?;
+            let name = flash_name(&file)?;
+            let local = flash_name(&local.unwrap_or_else(|| name.clone()))?;
+            let (user, pass) = c.d()?.ftp_login.clone().ok_or("% Set the account first: ip ftp username <name>, ip ftp password <password>")?;
+            let (_, bytes) = c.sim.ftp(c.t, c.dev, server, &user, &pass, &FtpOp::Get(name.clone())).map_err(|e| format!("% {e}"))?;
+            let text = String::from_utf8_lossy(&bytes).into_owned();
+            let size = store_fetched(c, &local, &text)?;
+            Ok(format!("Fetched ftp://{server}/{name} into flash:{local} ({size} bytes)"))
+        }
+        Id::CopyHttpRun | Id::CopyHttpStart | Id::CopyHttpFlash => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (addr, path) = match words.as_slice() {
+                [a, p, ..] => (*a, p.trim_start_matches('/').to_string()),
+                _ => return Err("% Give the server's address and the page's path".into()),
+            };
+            let server = parse_ip(addr).map_err(|e| format!("% {e}"))?;
+            let (status, body) = c.sim.http_get(c.t, c.dev, server, addr, &format!("/{path}")).map_err(|e| format!("% {e}"))?;
+            if !status.trim_start().starts_with("200") {
+                return Err(format!("% The server answered: {status}"));
+            }
+            let from = format!("http://{server}/{path}");
+            if id == Id::CopyHttpFlash {
+                let default = path.rsplit('/').next().filter(|s| !s.is_empty()).unwrap_or("index.html").to_string();
+                let local = flash_name(words.get(2).copied().unwrap_or(&default))?;
+                let size = store_fetched(c, &local, &body)?;
+                return Ok(format!("Fetched {from} into flash:{local} ({size} bytes)"));
+            }
+            take_config(c, &body, id == Id::CopyHttpStart, &from)
+        }
         Id::CopyTftpFlash => {
             let words: Vec<&str> = arg(0).split_whitespace().collect();
             let (addr, file, local) = match words.as_slice() {
@@ -342,7 +480,7 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
                 return Err(format!("% Flash holds at most {MAX_FLASH_FILES} copied files"));
             }
             if local != factory_image(d) {
-                d.nvram.flash.push(FlashFile { name: local.clone(), size });
+                d.nvram.flash.push(FlashFile { name: local.clone(), size, text: None });
             }
             Ok(format!("Copied tftp://{server}/{name} to flash:{local} ({size} bytes)"))
         }

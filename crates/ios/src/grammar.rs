@@ -334,6 +334,15 @@ pub enum Id {
     CopyStartRun,
     CopyFlashTftp,
     CopyTftpFlash,
+    CopyRunFlash,
+    CopyStartFlash,
+    CopyFlashRun,
+    CopyFlashStart,
+    CopyFlashFtp,
+    CopyFtpFlash,
+    CopyHttpRun,
+    CopyHttpStart,
+    CopyHttpFlash,
     DhcpLease,
     NoDhcpLease,
     DhcpDomain,
@@ -2560,6 +2569,69 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("copy"), K("tftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
         "Copy a file from a TFTP server into flash"
+    ),
+    spec!(
+        CopyRunFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("running-config"), K("flash:"), Arg("NAME")],
+        "Keep the running configuration as a file in flash"
+    ),
+    spec!(
+        CopyStartFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("startup-config"), K("flash:"), Arg("NAME")],
+        "Keep the startup configuration as a file in flash"
+    ),
+    spec!(
+        CopyFlashRun,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("running-config"), Arg("NAME")],
+        "Merge a configuration file from flash into the running one"
+    ),
+    spec!(
+        CopyFlashStart,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("startup-config"), Arg("NAME")],
+        "Make a configuration file in flash the startup configuration"
+    ),
+    spec!(
+        CopyFlashFtp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("ftp:"), Rest("<file> <address> [name on the server]")],
+        "Back up a flash file to an FTP server"
+    ),
+    spec!(
+        CopyFtpFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("ftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
+        "Copy a file from an FTP server into flash"
+    ),
+    spec!(
+        CopyHttpRun,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("http:"), K("running-config"), Rest("<address> <path>")],
+        "Merge a configuration fetched from a web server"
+    ),
+    spec!(
+        CopyHttpStart,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("http:"), K("startup-config"), Rest("<address> <path>")],
+        "Make a page of a web server the startup configuration"
+    ),
+    spec!(
+        CopyHttpFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("http:"), K("flash:"), Rest("<address> <path> [name in flash]")],
+        "Fetch a page of a web server into flash"
     ),
     spec!(ShowUsers, EXECS, Modes::BOTH, [K("show"), K("users")], "Who is logged in, and where"),
     spec!(
