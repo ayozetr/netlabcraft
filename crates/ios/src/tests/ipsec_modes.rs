@@ -85,7 +85,7 @@ fn a_transform_set_with_no_cipher_is_esp_with_null_encryption() {
     // A set with a cipher and one with nothing real to run are told apart.
     let (mut lab, r1, ..) = two_sites();
     lab.run(r1, "conf t\ncrypto ipsec transform-set NULLONLY esp-null\nend");
-    assert!(lab.run(r1, "show crypto ipsec transform-set").contains("NULLONLY"));
+    assert!(lab.run(r1, "show running-config").contains("crypto ipsec transform-set NULLONLY esp-null"));
 }
 
 #[test]
@@ -99,7 +99,7 @@ fn transport_mode_protects_only_the_payload_of_traffic_between_the_peers() {
         assert!(ping.contains("100% answered"), "{v2} {ts}: {ping}");
         let sa = lab.run(r1, "show crypto ipsec sa");
         assert!(sa.contains("Mode: transport"), "{sa}");
-        assert!(lab.run(r1, "show crypto ipsec transform-set").contains("transport mode"));
+        assert!(lab.run(r1, "show crypto map").contains("transport mode"));
         // On the ISP's links the packets are ESP (or AH) between the public addresses, with the
         // peers' own header, and no ICMP shows in the clear.
         let proto = if ts.starts_with("ah") { "AH SPI" } else { "ESP SPI" };
