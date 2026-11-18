@@ -88,8 +88,9 @@ fn telnet_and_connect_take_a_host_name() {
     assert_eq!(lab.prompt(r1), "Password: ");
     assert_eq!(lab.try_run(r1, "remote"), "");
     lab.run(r1, "exit");
-    let again = lab.try_run(r1, "connect core");
-    assert!(again.contains("Translating") && again.contains("Open"), "{again}");
+    let again = lab.try_run(r1, "telnet core");
+    assert!(again.contains("Translating") && again.contains("Open"), "names are not case sensitive: {again}");
+    lab.run(r1, "remote");
     lab.run(r1, "exit");
     assert!(lab.try_run(r1, "telnet NOPE").starts_with("% Unrecognized host"));
     assert!(lab.try_run(r1, "ssh -l admin NOPE").starts_with("% Unrecognized host"));

@@ -5098,7 +5098,6 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security")], "Secured ports"),
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security"), Rest("{interface X | address}")], "Secured ports"),
     spec!(Telnet, EXECS, Modes::BOTH, [K("telnet"), Arg("A.B.C.D|NAME")], "Log in to another device with Telnet, by address or name"),
-    spec!(Telnet, EXECS, Modes::BOTH, [K("connect"), Arg("A.B.C.D|NAME")], "Log in to another device (the same as telnet)"),
     spec!(Ssh, EXECS, Modes::BOTH, [K("ssh"), Rest("-l USER A.B.C.D|NAME")], "Log in to another device with SSH, by address or name"),
     spec!(ShowIpSsh, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ssh")], "SSH status"),
     spec!(ShowSsh, EXECS, Modes::BOTH, [K("show"), K("ssh")], "SSH sessions open to this device"),

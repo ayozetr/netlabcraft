@@ -1567,7 +1567,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
 | `telnet A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with Telnet, by address or name |
-| `connect A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device (the same as telnet) |
 | `ssh -l USER A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with SSH, by address or name |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
