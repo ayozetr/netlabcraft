@@ -1051,6 +1051,15 @@ impl Sim {
         if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Packet)) {
             self.log(d.id, &format!("IKE: starting main mode with {peer} for traffic a crypto map protects"));
         }
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIsakmp,
+            &format!(
+                "main mode starts with {peer}: this router offers {} IKE polic{}",
+                d.crypto.policies.len().max(1),
+                if d.crypto.policies.len() > 1 { "ies" } else { "y" }
+            ),
+        );
         self.ike_send(t, d, local, peer, &m);
     }
 
@@ -1062,11 +1071,13 @@ impl Sim {
         if sa.phase == IkePhase::Established {
             sa.rekey_us = 0;
             self.log(d.id, &format!("IKE with {peer}: renewing the IPsec keys failed: {why}"));
+            self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("renewing the keys with {peer} failed: {why}"));
             return;
         }
         sa.phase = IkePhase::Failed;
         sa.failed = Some(why.clone());
         self.log(d.id, &format!("IKE with {peer} failed: {why}"));
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the exchange with {peer} is abandoned: {why}"));
     }
 
     /// Keeps the exchange state; a quick mode under an SA that is up (a rekey) leaves it up.

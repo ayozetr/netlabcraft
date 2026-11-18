@@ -169,3 +169,18 @@ fn ensa_eigrp_through_mcp() {
 fn srwe_troubleshooting_etherchannel_through_mcp() {
     check("34-troubleshoot-etherchannel.md");
 }
+
+#[test]
+fn ensa_troubleshooting_site_to_site_vpn_through_mcp() {
+    check("61-troubleshoot-site-to-site-vpn.md");
+}
+
+#[test]
+fn srwe_reading_debug_icmp_arp_and_packets_through_mcp() {
+    check("65-debug-icmp-arp-and-packets.md");
+}
+
+#[test]
+fn srwe_troubleshooting_hsrp_through_mcp() {
+    check("69-troubleshoot-hsrp.md");
+}
