@@ -21,7 +21,8 @@ use netlabcraft_model::Shape;
 use serde_json::json;
 
 use crate::bottom::{Category, Sub};
-use crate::i18n::{tl, trf};
+use crate::i18n::tl;
+use crate::physical_bar::Create;
 use crate::{Mode, PacketApp, Tool, UiRequest};
 
 /// Control (Command on a Mac).
@@ -87,6 +88,8 @@ pub enum Act {
     NewCity,
     NewBuilding,
     NewCloset,
+    NewContainer,
+    WorkingCloset,
     ActivityWizard,
     DrawingPalette,
     Help,
@@ -152,7 +155,7 @@ use When::{Always, Idle};
 /// Every shortcut. Written in reading order (by group); [`ordered`] sorts what is read first.
 ///
 /// Not here, because we have nothing for them: Ctrl+Shift+H (dock the Instruction window),
-/// Ctrl+Shift+I (scenario description), Ctrl+Shift+P (Port Monitor), Shift+F (generic container), Shift+H (working closet), Shift+M (Move Object),
+/// Ctrl+Shift+I (scenario description), Ctrl+Shift+P (Port Monitor), Shift+M (Move Object),
 /// Shift+N (Navigation panel), Ctrl+Space and Space (rubber-band and select by
 /// key), Alt+F/E/O/V/T/X/H (open a menu), Y and N for confirmations, and the device boxes for
 /// wireless, security, home, smart city, industrial, power grid, boards, actuators, sensors and
@@ -203,6 +206,8 @@ pub static TABLE: &[Shortcut] = &[
     row("Physical", "New City", S, Key::C, Act::NewCity, Idle),
     row("Physical", "New Building", S, Key::B, Act::NewBuilding, Idle),
     row("Physical", "New Wiring Closet", S, Key::J, Act::NewCloset, Idle),
+    row("Physical", "New Generic Container", S, Key::F, Act::NewContainer, Idle),
+    row("Physical", "Go to Working Closet", S, Key::H, Act::WorkingCloset, Idle),
     // Tools
     row("Tools", "Activity Wizard…", C, Key::W, Act::ActivityWizard, Idle),
     row("Tools", "Drawing Palette", C, Key::D, Act::DrawingPalette, Idle),
@@ -388,16 +393,6 @@ fn select_toward(app: &mut PacketApp, d: Dir) {
     }
 }
 
-/// A new place of a kind, when the map shown holds that kind.
-fn new_place(app: &mut PacketApp, kind: &str, label: &'static str) {
-    if app.session.physical && crate::physical::child_kind(app).is_some_and(|k| k.id() == kind) {
-        crate::physical::add_place(app, None);
-    } else {
-        let msg = trf("{} is not available at this level of the Physical view.", &[&tl(label)]);
-        app.ui.status = Some((msg, true));
-    }
-}
-
 fn show_category(app: &mut PacketApp, cat: Category, sub: Sub) {
     app.ui.toolbars.bottom = true;
     crate::bottom::show_category(app, cat, sub);
@@ -457,13 +452,18 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
                 app.run("view.up", json!({}));
             }
         }
-        Act::NewCity => new_place(app, "city", "New City"),
-        Act::NewBuilding => new_place(app, "building", "New Building"),
-        Act::NewCloset => new_place(app, "closet", "New Wiring Closet"),
+        Act::NewCity => crate::physical_bar::create(app, Create::City),
+        Act::NewBuilding => crate::physical_bar::create(app, Create::Building),
+        Act::NewCloset => crate::physical_bar::create(app, Create::Closet),
+        Act::NewContainer => crate::physical_bar::create(app, Create::Container),
+        Act::WorkingCloset => crate::physical_bar::go_home(app),
         Act::ActivityWizard => app.ui.activity.show_wizard = true,
         Act::DrawingPalette => app.open_drawing_palette(),
         Act::Help => app.ui.help = Some(crate::help::Page::Contents),
         Act::Escape => {
+            if crate::physical_bar::close_menu(app) {
+                return;
+            }
             // Esc first drops a cable being made in a closet, or a polygon being placed, then the tool.
             if app.ui.physical.closet.wire.take().is_some() {
                 // The cable tool stays picked for the next cable.
