@@ -1076,7 +1076,6 @@
 	Services	服务
 	services run on Server devices	服务在服务器设备上运行
 	Session {} is open: the next operations run on it	会话 {} 已打开：接下来的操作将在其上运行
-	Set Background (not available yet)	设置背景（暂不可用）
 	Set Gateway	设置网关
 	Set its Wi-Fi network in Config > Wireless0; move it near an access point to join.	在“配置 > Wireless0”中设置其 Wi-Fi 网络；将其移到接入点附近即可加入。
 	set up the Email app first (mail.configure)	请先设置电子邮件应用 (mail.configure)
@@ -2374,7 +2373,6 @@ furniture	Table	桌子
 	A bar under the workspace lists the open device windows: click one to bring it to the front.	工作区下方的栏列出已打开的设备窗口，单击其中一个可将其置于最前。
 	Not applicable	不适用
 	Reload local image files	重新加载本地图片文件
-	Labs hold no images, so there is nothing to reload.	实验不包含图片，没有需要重新加载的内容。
 	External network access	外部网络访问
 	Use a proxy	使用代理
 	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	NetLabCraft 自身不建立任何网络连接，因此没有网络访问或代理可设置。
@@ -2421,8 +2419,42 @@ furniture	Table	桌子
 	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	不可用：NetLabCraft 没有脚本化的设备页面，因此无法为设备指定自定义页面。
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	不适用：没有需要签名的脚本模块。活动结果带有自己的签名，由讲师的“验证结果”检查。
 	Images held by the lab	实验中的图片
+	Set Background Image	设置背景图片
+	Set Background Image…	设置背景图片…
+	Background Image	背景图片
+	Place Icon	地点图标
+	Remove Picture	移除图片
+	Browse… picks a PNG or JPEG picture.	浏览… 可选择 PNG 或 JPEG 图片。
+	Sizes	尺寸
+	Picture:	图片：
+	Map area:	地图区域：
+	Recommended picture:	建议图片：
+	{} × {} px	{} × {} 像素
+	No picture	无图片
+	Preview of the background	背景预览
+	Layout	布局
+	Original size	原始大小
+	Tiled	平铺
+	Stretch to the map area	拉伸至地图区域
+	Custom width	自定义宽度
+	Custom height	自定义高度
+	Size of the place	地点大小
+	Width (m):	宽度（米）：
+	Height (m):	高度（米）：
+	Volume:	体积：
+	Scale:	比例：
+	{} m³	{} 立方米
+	{} m per pixel	每像素 {} 米
+	The picture this place wears on the map above it, instead of its drawn icon.	此地点在上级地图上显示的图片，用来代替绘制的图标。
+	Preview of the icon	图标预览
+	Workspace background	工作区背景
+	Background of {}	{} 的背景
+	Icon of {}	{} 的图标
+	The lab holds no images yet: set one with the Set Background Image button.	实验尚不包含图片：请使用设置背景图片按钮添加。
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	已从 {} × {} 缩小到 {} × {}，以符合实验的限制
+	Pictures are stored inside the lab, so there is nothing to reload.	图片保存在实验文件内，因此无需重新加载。
+	{} × {} px, {}	{} × {} 像素，{}
 	Image	图片
-	The lab holds no images: a lab file is only its devices, cables, places and settings.	实验不包含图片：实验文件只包含设备、线缆、场所和设置。
 	MAC address: {}	MAC 地址：{}
 	IP address: {}	IP 地址：{}
 	Default gateway: {}	默认网关：{}
