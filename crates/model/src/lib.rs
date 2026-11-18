@@ -45,6 +45,7 @@ pub mod mst;
 pub mod netflow;
 pub mod pbr;
 pub mod physical;
+pub mod pim;
 pub mod pki;
 pub mod poe;
 pub mod policy;
@@ -981,6 +982,9 @@ pub struct Device {
     /// IGMP snooping on switches, joined groups on hosts.
     #[serde(default, skip_serializing_if = "is_default")]
     pub igmp: igmp::Igmp,
+    /// Routers: multicast routing and PIM.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub pim: pim::Pim,
     /// Routers and switches: the configuration archive (kept in flash, so a reload keeps it).
     #[serde(default, skip_serializing_if = "is_default")]
     pub archive: archive::Archive,
@@ -2302,6 +2306,7 @@ impl Device {
             vtp: Vtp::default(),
             rapid_stp: false,
             igmp: igmp::Igmp::default(),
+            pim: pim::Pim::default(),
             archive: archive::Archive::default(),
             printer: usb::Printer::default(),
             usb: if model.id == usb::STICK_MODEL { usb::Stick::fresh() } else { usb::Stick::default() },
@@ -2437,6 +2442,7 @@ impl Device {
         self.access = Access::default();
         self.stp_priority.clear();
         self.igmp = igmp::Igmp::default();
+        self.pim = pim::Pim::default();
         self.mst = mst::Mst::default();
         self.svis.clear();
         self.ospf = None;

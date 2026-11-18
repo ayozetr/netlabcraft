@@ -67,6 +67,7 @@ pub mod parts;
 pub mod pbr;
 pub mod pdu;
 pub mod peap;
+pub mod pim;
 pub mod pki;
 pub mod pppoe;
 pub mod proximity;
@@ -1472,6 +1473,8 @@ pub struct Sim {
     l2: l2sec::L2State,
     /// IGMP snooping: groups, member ports and ports that lead to multicast routers.
     igmp: igmp::State,
+    /// Multicast routing: sources seen, counters, neighbour ages.
+    pim: pim::State,
     /// Log stamps and severity filters of devices that changed them.
     log_cfg: BTreeMap<DeviceId, logcfg::LogCfg>,
     /// Decisions about the frame being received now (see [`explain`]).
@@ -3499,6 +3502,9 @@ impl Sim {
                 (netlabcraft_wire::control::PROTO_OSPF, _) => Err("OSPF is not running here".into()),
                 (netlabcraft_wire::eigrp::PROTO_EIGRP, _) if d.eigrp.is_some() => Ok(()),
                 (netlabcraft_wire::eigrp::PROTO_EIGRP, _) => Err("EIGRP is not running here".into()),
+                (netlabcraft_wire::pim::PROTO_PIM, _) if d.pim.routing => Ok(()),
+                (netlabcraft_wire::pim::PROTO_PIM, _) => Err("multicast routing is off here".into()),
+                (netlabcraft_wire::igmp::PROTO_IGMP, _) => Ok(()),
                 (netlabcraft_wire::vrrp::PROTO_VRRP, _) if !d.fhrp.vrrp.is_empty() => Ok(()),
                 (netlabcraft_wire::vrrp::PROTO_VRRP, _) => Err("VRRP is not running here".into()),
                 (_, true) if d.rip.is_some() => Ok(()),
@@ -3509,6 +3515,10 @@ impl Sim {
         }
         if netlabcraft_model::firewall::is_firewall(d) {
             return self.fw_ip_in(t, d, ifc, ip, payload);
+        }
+        // Multicast data at a router that may route it.
+        if ip.dst.is_multicast() && d.routes_ip() {
+            return self.mcast_in(t, d, ifc, ip);
         }
         let mut from_outside = false;
         let marked;
@@ -3634,6 +3644,9 @@ impl Sim {
                 _ => "delivered: other",
             },
         );
+        if ip.protocol == netlabcraft_wire::pim::PROTO_PIM && d.routes_ip() {
+            return self.pim_unicast_in(t, d, &ip);
+        }
         if hostfw::blocks4(d, &ip) {
             self.bump(d.id, "dropped by the firewall");
             return Err(format!("dropped by this device's firewall (from {})", ip.src));
