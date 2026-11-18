@@ -417,6 +417,9 @@ pub struct Sets {
     /// `set tag N`: the tag a redistributed route is given.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<u32>,
+    /// `set dampening H R S M`: the dampening values of the routes `bgp dampening route-map` matches.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dampening: Option<crate::bgp::DampParams>,
     /// `set extcommunity rt|soo …`: the extended communities to give.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ext_community: Option<Vec<u64>>,

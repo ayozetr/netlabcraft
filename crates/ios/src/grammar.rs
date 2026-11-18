@@ -352,6 +352,10 @@ pub enum Id {
     CopyHttpRun,
     CopyHttpStart,
     CopyHttpFlash,
+    ShowUsb,
+    DirUsb,
+    CopyFlashUsb,
+    CopyUsbFlash,
     DhcpLease,
     NoDhcpLease,
     DhcpDomain,
@@ -1178,6 +1182,13 @@ pub enum Id {
     ShowIpBgpReceived,
     BgpTimers,
     NoBgpTimers,
+    BgpDampening,
+    NoBgpDampening,
+    RmSetDampening,
+    NoRmSetDampening,
+    ShowIpBgpDampened,
+    ShowIpBgpFlapStatistics,
+    ClearIpBgpDampening,
     ShowIpBgpAdvertised,
     ShowIpBgpNeighborRoutes,
     ShowIpBgpRegexp,
@@ -2550,6 +2561,8 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash:")], "Files in flash memory"),
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash")], "Files in flash memory"),
     spec!(ShowFlash, Modes::EXEC, Modes::BOTH, [K("dir"), K("flash:")], "Files in flash memory"),
+    spec!(ShowUsb, EXECS, Modes::BOTH, [K("show"), K("usb")], "The USB port and what is plugged into it"),
+    spec!(DirUsb, Modes::EXEC, Modes::BOTH, [K("dir"), K("usbflash0:")], "Files on the USB stick"),
     spec!(
         ServiceTimestamps,
         Modes::CONFIG,
@@ -2701,6 +2714,20 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("copy"), K("ftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
         "Copy a file from an FTP server into flash"
+    ),
+    spec!(
+        CopyFlashUsb,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("usbflash0:"), Rest("<file> [name on the stick]")],
+        "Copy a flash file onto the USB stick"
+    ),
+    spec!(
+        CopyUsbFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("usbflash0:"), K("flash:"), Rest("<file> [name in flash]")],
+        "Copy a file of the USB stick into flash"
     ),
     spec!(
         CopyHttpRun,
@@ -4520,6 +4547,78 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(NoBgpTimers, Modes::BGP, Modes::BOTH, [K("no"), K("timers"), K("bgp")], "Keepalive 60 and hold time 180 again"),
     spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening")],
+        "Penalise flapping external routes and hold them down (half-life 15 minutes, reuse 750, suppress 2000, at most 60 minutes)"
+    ),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening"), Arg("<1-45>"), Arg("<1-20000>"), Arg("<1-20000>"), Arg("<1-255>")],
+        "Dampen with a half-life (minutes), a reuse limit, a suppress limit and a longest suppression (minutes)"
+    ),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening"), K("route-map"), Arg("NAME")],
+        "Dampen only the routes this route map permits, with its set dampening values"
+    ),
+    spec!(NoBgpDampening, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("dampening")], "Stop dampening and forget the penalties"),
+    spec!(
+        NoBgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("dampening"), Rest("<1-45> <1-20000> <1-20000> <1-255> | route-map NAME")],
+        "Stop dampening and forget the penalties"
+    ),
+    spec!(
+        RmSetDampening,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("dampening"), Arg("<1-45>"), Arg("<1-20000>"), Arg("<1-20000>"), Arg("<1-255>")],
+        "Dampen the matched routes with a half-life, a reuse limit, a suppress limit and a longest suppression"
+    ),
+    spec!(NoRmSetDampening, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("dampening")], "Dampen the matched routes with the default values"),
+    spec!(
+        ShowIpBgpDampened,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("dampened-paths")],
+        "The routes dampening holds down, with the penalty and when they are used again"
+    ),
+    spec!(
+        ShowIpBgpFlapStatistics,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("flap-statistics")],
+        "The routes that flapped: how often, the penalty and whether they are held down"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening")],
+        "Forget every penalty and use the held-down routes again"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening"), Arg("A.B.C.D")],
+        "Forget the penalty of the route to this network"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening"), Arg("A.B.C.D"), Arg("MASK")],
+        "Forget the penalty of the route to this network and mask"
+    ),
+    spec!(
         ShowIpBgpAdvertised,
         EXECS,
         Modes::BOTH,
@@ -5029,7 +5128,8 @@ pub static SPECS: &[Spec] = &[
     spec!(NoLinePassword, Modes::LINE, Modes::BOTH, [K("no"), K("password")], "Remove the line password"),
     spec!(Login, Modes::LINE, Modes::BOTH, [K("login")], "Ask for the line password"),
     spec!(NoLogin, Modes::LINE, Modes::BOTH, [K("no"), K("login")], "Don't ask for a password"),
-    spec!(Accepted, Modes::LINE, Modes::BOTH, [K("exec-timeout"), Rest("<minutes> [<seconds>]")], "Idle timeout (accepted, not simulated)"),
+    spec!(Knob, Modes::LINE, Modes::BOTH, [K("exec-timeout"), Rest("<minutes> [<seconds>]")], "Minutes of silence after which the session is closed"),
+    spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("exec-timeout")], "Return this setting to its default"),
     spec!(Accepted, Modes::LINE, Modes::BOTH, [K("logging"), K("synchronous")], "Keep messages from breaking your typing (accepted)"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("service"), K("sequence-numbers")], "Number every log message"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("service"), K("sequence-numbers")], "Return this setting to its default"),
@@ -5369,7 +5469,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("modem"), Arg("{inout|in|out}")], "Return this setting to its default"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("exec")], "Start an EXEC session on this line (on)"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("exec")], "Turn this off (it is on by default)"),
-    spec!(Knob, Modes::LINE, Modes::BOTH, [K("session-timeout"), Arg("<0-35791>")], "Minutes an outgoing session may sit idle"),
+    spec!(Knob, Modes::LINE, Modes::BOTH, [K("session-timeout"), Arg("<0-35791>")], "Minutes an outgoing session may sit idle before it is closed"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("session-timeout")], "Return this setting to its default"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("absolute-timeout"), Arg("<0-35791>")], "Minutes after which the line logs out"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("absolute-timeout")], "Return this setting to its default"),

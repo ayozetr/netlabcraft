@@ -11,6 +11,7 @@ mod acl_icmp;
 mod archive;
 mod bgp;
 mod bgp_communities;
+mod bgp_dampening;
 mod bgp_extcommunities;
 mod bgp_leftovers;
 mod bgp_local_as;
@@ -40,6 +41,7 @@ mod knobs;
 mod knobs_routing;
 mod leftovers;
 mod line_protocol;
+mod line_timeouts;
 mod mst;
 mod name_resolution;
 mod nat_timeouts;
@@ -73,6 +75,7 @@ mod system_commands;
 mod system_show;
 mod track;
 mod troubleshoot;
+mod usb_stick;
 
 struct Lab {
     t: Topology,

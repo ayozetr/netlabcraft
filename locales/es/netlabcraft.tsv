@@ -1346,6 +1346,8 @@
 	Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.	Diez objetos Wi-Fi se unen a la pasarela doméstica: un termostato maneja un calefactor y un aire acondicionado, la humedad y el monóxido de carbono abren una ventana, un sensor del suelo riega el césped.
 	Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.	Diez objetos Wi-Fi se unieron a la red de la pasarela Home (HomeNetwork), tomaron dirección por DHCP e informan a su servicio IoT cada 5 s. Baja Thermo1 por debajo de 18: Heater1 calienta; súbelo por encima de 26: AC1 enfría. Humid1 por encima de 70 o CO1 por encima de 50 abre Window1; CO1 por encima de 50 abre también Garage1; Soil1 por debajo de 30 riega el césped. Enciende Plug1 a mano en Home > IoT.
 	Board SBC	Placa SBC
+	USB Storage	Memoria USB
+	USB stick with a small list of files: plug it into a PC, laptop, server, router or switch with a USB cable and copy files to and from it	Memoria USB con una pequeña lista de archivos: conéctala con un cable USB a un PC, portátil, servidor, router o switch y copia archivos desde y hacia ella
 	Board MCU	Placa MCU
 	Single-board computer with one Fast Ethernet port, 8 digital and 4 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	Ordenador de placa única con un puerto Fast Ethernet, 8 pines digitales y 4 analógicos: ejecuta un programa BoardScript que lee y conmuta los objetos inteligentes cableados a sus pines
 	Microcontroller board with Wi-Fi, 6 digital and 2 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins	Placa de microcontrolador con Wi-Fi, 6 pines digitales y 2 analógicos: ejecuta un programa BoardScript que lee y conmuta los objetos inteligentes cableados a sus pines
@@ -1875,10 +1877,10 @@ event	no APN	sin APN
 	Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here	Fibra monomodo: une puertos de fibra cuyos transceptores son monomodo; aquí lleva una señal gigabit hasta 10 km
 	Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here	Fibra multimodo: une puertos de fibra (enlaces SFP y tarjetas de fibra); aquí lleva una señal gigabit hasta 550 m
 	Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access	Octal: une una línea de la tarjeta octal de un router (Card-8A) con el puerto Console de otro router o switch, para acceso de consola inverso
-	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal	USB: del puerto USB de un PC o portátil al puerto de consola USB de un router o switch, para el Terminal del PC
+	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal; or a host's USB port to a printer, a board or a USB stick	USB: del puerto USB de un PC o portátil al puerto de consola USB de un router o switch, para el Terminal del PC; o del puerto USB de un anfitrión a una impresora, una placa o una memoria USB
 	8-line async card	Tarjeta asíncrona de 8 líneas
 	Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)	Ocho líneas asíncronas para un cable octal: cada línea llega al puerto Console de otro router o switch (son líneas, no interfaces)
-	USB cable: click a PC or laptop (USB) and a router or switch (USB console).	Cable USB: pulsa un PC o portátil (USB) y un router o switch (consola USB).
+	USB cable: click a PC or laptop (USB) and a router or switch (USB console), or a host and a printer, board or USB stick.	Cable USB: pulsa un PC o portátil (USB) y un router o switch (consola USB), o un anfitrión y una impresora, placa o memoria USB.
 	Octal cable: click a router with an octal card, then a router or switch (Console).	Cable octal: pulsa un router con tarjeta octal y después un router o switch (Console).
 	{} has no octal card or Console port.	{} no tiene tarjeta octal ni puerto Console.
 	{} has no USB port.	{} no tiene puerto USB.
@@ -1909,6 +1911,12 @@ event	no APN	sin APN
 	{} (rear)	{} (trasera)
 	{}, {} levels	{}, {} niveles
 	{}, on {}	{}, en {}
+	to {}	a {}
+	Backbone	Cableado troncal
+	Backbone to	Cable troncal a
+	Remove Backbone	Quitar cable troncal
+	No panel or wall mount with a free port in another place.	Ningún panel ni roseta con un puerto libre en otro lugar.
+	{} in {} to {} in {}	{} en {} a {} en {}
 	Other devices	Otros dispositivos
 	Rack	Bastidor
 	Shelf	Estante

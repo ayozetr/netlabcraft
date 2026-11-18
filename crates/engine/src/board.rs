@@ -181,6 +181,18 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
         }
         "board.program" => {
             let d = board_param(s, p)?;
+            // Programmed from a host through its USB cable: the cable has to be there and sound.
+            if p.get("from").is_some_and(|v| !v.is_null()) {
+                let host = crate::cmd::device_param(s, p, "from")?;
+                let cable = s.topology.usb_of_device(d).copied().filter(|c| c.host == host);
+                let Some(cable) = cable else {
+                    let n = |id| s.topology.device(id).map_or(String::new(), |x| x.name.clone());
+                    return Err(EngineError::Failed(format!("{} has no USB cable to {}", n(host), n(d))));
+                };
+                if let Some(why) = s.topology.usb_problem(&cable) {
+                    return Err(EngineError::Failed(why));
+                }
+            }
             let current = s.topology.device(d).map(|x| (x.board.language, x.catalogue_model().id)).unwrap_or_default();
             let language = match p.get("language") {
                 None => None,

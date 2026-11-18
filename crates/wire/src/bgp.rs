@@ -8,9 +8,9 @@
 //!
 //! Decoders treat their input as hostile: lengths are checked, counts are bounded.
 
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
-use netlabcraft_core::Ipv4Net;
+use netlabcraft_core::{Ipv4Net, Ipv6Net};
 
 use crate::{Result, WireError, be16, ip_at};
 
@@ -47,6 +47,12 @@ const ATTR_LOCAL_PREF: u8 = 5;
 const ATTR_COMMUNITIES: u8 = 8;
 const ATTR_ORIGINATOR_ID: u8 = 9;
 const ATTR_CLUSTER_LIST: u8 = 10;
+const ATTR_MP_REACH: u8 = 14;
+const ATTR_MP_UNREACH: u8 = 15;
+/// The address family and the subsequent address family of IPv6 unicast (RFC 4760).
+pub const AFI_IPV6: u16 = 2;
+pub const SAFI_UNICAST: u8 = 1;
+const CAP_MULTIPROTOCOL: u8 = 1;
 const ATTR_EXT_COMMUNITIES: u8 = 16;
 /// Most extended communities read from, or written to, one attribute (hostile input).
 pub const MAX_EXT_COMMUNITIES: usize = 32;
@@ -191,12 +197,25 @@ pub fn ext_text(c: u64) -> String {
     }
 }
 
-/// An OPEN message: the sender's AS number, hold time and BGP identifier.
+/// An OPEN message: the sender's AS number, hold time and BGP identifier, and whether it announces the
+/// multiprotocol capability (RFC 4760) for IPv6 unicast.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Open {
     pub asn: u32,
     pub hold_secs: u16,
     pub bgp_id: Ipv4Addr,
+    pub ipv6_unicast: bool,
+}
+
+/// MP_REACH_NLRI for IPv6 unicast (RFC 4760 with the next hop of RFC 2545): the prefixes announced and
+/// the next hop that reaches them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MpReach6 {
+    /// The global next hop (`::` when the route has only a link-local one).
+    pub next_hop: Ipv6Addr,
+    /// The link-local next hop that follows the global one when the next hop field is 32 octets long.
+    pub link_local: Option<Ipv6Addr>,
+    pub nlri: Vec<Ipv6Net>,
 }
 
 /// The path attributes of the routes an UPDATE announces.
@@ -223,6 +242,11 @@ pub struct PathAttrs {
     pub confed_path: Vec<u32>,
     /// The AS_CONFED_SET segment (RFC 5065).
     pub confed_set: Vec<u32>,
+    /// MP_REACH_NLRI (RFC 4760) for IPv6 unicast. An update that carries it has no IPv4 NEXT_HOP
+    /// attribute unless `next_hop` is set.
+    pub mp_reach6: Option<MpReach6>,
+    /// MP_UNREACH_NLRI for IPv6 unicast: the prefixes withdrawn.
+    pub mp_unreach6: Vec<Ipv6Net>,
     /// The EXTENDED COMMUNITIES attribute (RFC 4360), each as eight octets in one number (see
     /// [`ext_as2`], [`ext_ipv4`] and [`ext_text`]).
     pub ext_communities: Vec<u64>,
@@ -245,6 +269,8 @@ impl Default for PathAttrs {
             confed_path: Vec::new(),
             confed_set: Vec::new(),
             ext_communities: Vec::new(),
+            mp_reach6: None,
+            mp_unreach6: Vec::new(),
         }
     }
 }
@@ -309,6 +335,44 @@ fn write_prefixes(out: &mut Vec<u8>, nets: &[Ipv4Net]) {
     }
 }
 
+fn write_prefixes6(out: &mut Vec<u8>, nets: &[Ipv6Net]) {
+    for n in nets.iter().take(MAX_PREFIXES) {
+        let n = n.network();
+        out.push(n.prefix);
+        let bytes = usize::from(n.prefix).div_ceil(8);
+        out.extend(n.addr.octets().iter().take(bytes));
+    }
+}
+
+fn read_prefixes6(b: &[u8]) -> Result<Vec<Ipv6Net>> {
+    let t = || WireError::Truncated("bgp");
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while at < b.len() {
+        if out.len() >= MAX_PREFIXES {
+            return Err(WireError::Unsupported("bgp", "too many prefixes".into()));
+        }
+        let len = *b.get(at).ok_or_else(t)?;
+        if len > 128 {
+            return Err(WireError::Unsupported("bgp", format!("prefix length {len}")));
+        }
+        let n = usize::from(len).div_ceil(8);
+        let raw = b.get(at + 1..at + 1 + n).ok_or_else(t)?;
+        let mut o = [0u8; 16];
+        for (slot, byte) in o.iter_mut().zip(raw) {
+            *slot = *byte;
+        }
+        out.push(Ipv6Net::new(Ipv6Addr::from(o), len).network());
+        at += 1 + n;
+    }
+    Ok(out)
+}
+
+fn v6_at(b: &[u8], at: usize) -> Option<Ipv6Addr> {
+    let raw: [u8; 16] = b.get(at..at + 16)?.try_into().ok()?;
+    Some(Ipv6Addr::from(raw))
+}
+
 fn read_prefixes(b: &[u8]) -> Result<Vec<Ipv4Net>> {
     let t = || WireError::Truncated("bgp");
     let mut out = Vec::new();
@@ -344,10 +408,18 @@ impl Message {
                 body.extend_from_slice(&two.to_be_bytes());
                 body.extend_from_slice(&o.hold_secs.to_be_bytes());
                 body.extend_from_slice(&o.bgp_id.octets());
-                // One optional parameter: a capability, the four-octet AS number.
-                body.push(8);
-                body.extend_from_slice(&[2, 6, CAP_FOUR_OCTET_AS, 4]);
-                body.extend_from_slice(&o.asn.to_be_bytes());
+                // One optional parameter holding the capabilities: the four-octet AS number, and the
+                // multiprotocol one for IPv6 unicast when the sender runs it.
+                let mut caps = vec![CAP_FOUR_OCTET_AS, 4];
+                caps.extend_from_slice(&o.asn.to_be_bytes());
+                if o.ipv6_unicast {
+                    caps.extend_from_slice(&[CAP_MULTIPROTOCOL, 4]);
+                    caps.extend_from_slice(&AFI_IPV6.to_be_bytes());
+                    caps.extend_from_slice(&[0, SAFI_UNICAST]);
+                }
+                body.push(u8::try_from(caps.len() + 2).unwrap_or(u8::MAX));
+                body.extend_from_slice(&[2, u8::try_from(caps.len()).unwrap_or(u8::MAX)]);
+                body.extend(caps);
                 header(TYPE_OPEN, &body)
             }
             Message::Update(u) => {
@@ -374,7 +446,9 @@ impl Message {
                         }
                     }
                     attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_AS_PATH, &path));
-                    attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_NEXT_HOP, &a.next_hop.octets()));
+                    if !(a.next_hop.is_unspecified() && a.mp_reach6.is_some()) {
+                        attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_NEXT_HOP, &a.next_hop.octets()));
+                    }
                     if let Some(m) = a.med {
                         attrs.extend(attribute(FLAG_OPTIONAL, ATTR_MED, &m.to_be_bytes()));
                     }
@@ -384,6 +458,30 @@ impl Message {
                     if !a.communities.is_empty() {
                         let value: Vec<u8> = a.communities.iter().take(MAX_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
                         attrs.extend(attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_COMMUNITIES, &value));
+                    }
+                    if let Some(mp) = &a.mp_reach6 {
+                        let mut value = AFI_IPV6.to_be_bytes().to_vec();
+                        value.push(SAFI_UNICAST);
+                        match mp.link_local {
+                            Some(ll) => {
+                                value.push(32);
+                                value.extend_from_slice(&mp.next_hop.octets());
+                                value.extend_from_slice(&ll.octets());
+                            }
+                            None => {
+                                value.push(16);
+                                value.extend_from_slice(&mp.next_hop.octets());
+                            }
+                        }
+                        value.push(0);
+                        write_prefixes6(&mut value, &mp.nlri);
+                        attrs.extend(attribute(FLAG_OPTIONAL, ATTR_MP_REACH, &value));
+                    }
+                    if !a.mp_unreach6.is_empty() {
+                        let mut value = AFI_IPV6.to_be_bytes().to_vec();
+                        value.push(SAFI_UNICAST);
+                        write_prefixes6(&mut value, &a.mp_unreach6);
+                        attrs.extend(attribute(FLAG_OPTIONAL, ATTR_MP_UNREACH, &value));
                     }
                     if !a.ext_communities.is_empty() {
                         let value: Vec<u8> = a.ext_communities.iter().take(MAX_EXT_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
@@ -441,6 +539,7 @@ impl Message {
                 let opt_len = usize::from(*body.get(9).ok_or_else(t)?);
                 let params = body.get(10..10 + opt_len).ok_or_else(t)?;
                 let mut asn = u32::from(two);
+                let mut ipv6_unicast = false;
                 let mut at = 0usize;
                 // Optional parameters: (type, length, value); type 2 holds capabilities.
                 while at + 2 <= params.len() {
@@ -457,12 +556,15 @@ impl Message {
                                 let raw: [u8; 4] = cv.try_into().map_err(|_| t())?;
                                 asn = u32::from_be_bytes(raw);
                             }
+                            if code == CAP_MULTIPROTOCOL && clen == 4 && be16(cv, 0) == Some(AFI_IPV6) && cv.get(3) == Some(&SAFI_UNICAST) {
+                                ipv6_unicast = true;
+                            }
                             c += 2 + clen;
                         }
                     }
                     at += 2 + plen;
                 }
-                Ok(Message::Open(Open { asn, hold_secs, bgp_id }))
+                Ok(Message::Open(Open { asn, hold_secs, bgp_id, ipv6_unicast }))
             }
             TYPE_UPDATE => {
                 let wd_len = usize::from(be16(body, 0).ok_or_else(t)?);
@@ -494,6 +596,8 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
         confed_path: Vec::new(),
         confed_set: Vec::new(),
         ext_communities: Vec::new(),
+        mp_reach6: None,
+        mp_unreach6: Vec::new(),
     };
     let mut at = 0usize;
     // Every attribute takes at least three bytes, so this loop is bounded by the input.
@@ -542,6 +646,27 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
                 for c in value.chunks_exact(4).take(MAX_COMMUNITIES) {
                     let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
                     a.communities.push(u32::from_be_bytes(raw));
+                }
+            }
+            ATTR_MP_REACH | ATTR_MP_UNREACH => {
+                let afi = be16(value, 0).ok_or_else(t)?;
+                let safi = *value.get(2).ok_or_else(t)?;
+                // Only IPv6 unicast is understood; another family is skipped, as an attribute of an
+                // unknown type is.
+                if afi == AFI_IPV6 && safi == SAFI_UNICAST {
+                    if kind == ATTR_MP_UNREACH {
+                        a.mp_unreach6 = read_prefixes6(value.get(3..).ok_or_else(t)?)?;
+                    } else {
+                        let nh_len = usize::from(*value.get(3).ok_or_else(t)?);
+                        if nh_len != 16 && nh_len != 32 {
+                            return Err(WireError::Unsupported("bgp", format!("next hop length {nh_len}")));
+                        }
+                        let next_hop = v6_at(value, 4).ok_or_else(t)?;
+                        let link_local = if nh_len == 32 { Some(v6_at(value, 20).ok_or_else(t)?) } else { None };
+                        // The octet after the next hop is reserved.
+                        let nlri = read_prefixes6(value.get(5 + nh_len..).ok_or_else(t)?)?;
+                        a.mp_reach6 = Some(MpReach6 { next_hop, link_local, nlri });
+                    }
                 }
             }
             ATTR_EXT_COMMUNITIES => {
@@ -631,14 +756,19 @@ mod tests {
         s.parse().unwrap()
     }
 
+    fn net6(s: &str) -> Ipv6Net {
+        let (addr, prefix) = s.split_once('/').unwrap();
+        Ipv6Net::new(addr.parse().unwrap(), prefix.parse().unwrap())
+    }
+
     #[test]
     fn open_carries_a_four_octet_as_number() {
-        let m = Message::Open(Open { asn: 4_200_000_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1) });
+        let m = Message::Open(Open { asn: 4_200_000_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false });
         let b = m.encode();
         // The two-octet field holds AS_TRANS; the capability holds the real number.
         assert_eq!(be16(&b, 20), Some(AS_TRANS));
         assert_eq!(Message::decode(&b), Ok(m));
-        let small = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(2, 2, 2, 2) });
+        let small = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(2, 2, 2, 2), ipv6_unicast: false });
         assert_eq!(Message::decode(&small.encode()), Ok(small));
     }
 
@@ -668,6 +798,8 @@ mod tests {
                 confed_path: vec![65_010, 65_011],
                 confed_set: vec![65_012],
                 ext_communities: vec![ext_as2(ExtKind::RouteTarget, 65_001, 100), ext_ipv4(ExtKind::RouteOrigin, Ipv4Addr::new(10, 0, 0, 1), 5)],
+                mp_reach6: None,
+                mp_unreach6: Vec::new(),
             }),
             nlri: vec![net("10.2.0.0/16"), net("192.168.5.0/24"), net("0.0.0.0/0"), net("203.0.113.7/32")],
         });
@@ -702,7 +834,7 @@ mod tests {
     fn decoders_survive_every_truncation_and_garbage() {
         let messages = [
             Message::Keepalive,
-            Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1) }),
+            Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false }),
             Message::Notification(Notification { code: ERR_CEASE, subcode: CEASE_RESET }),
             Message::Update(Update {
                 withdrawn: vec![net("10.1.0.0/16")],
@@ -719,6 +851,8 @@ mod tests {
                     confed_path: vec![65_003],
                     confed_set: vec![65_004],
                     ext_communities: vec![ext_as2(ExtKind::RouteTarget, 65_001, 100), ext_as4(ExtKind::RouteOrigin, 4_200_000_001, 7)],
+                    mp_reach6: None,
+                    mp_unreach6: Vec::new(),
                 }),
                 nlri: vec![net("10.2.0.0/16")],
             }),
@@ -831,6 +965,78 @@ mod tests {
     }
 
     #[test]
+    fn open_announces_the_multiprotocol_capability_for_ipv6_unicast() {
+        let m = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: true });
+        let bytes = m.encode();
+        assert_eq!(Message::decode(&bytes), Ok(m));
+        // Capability 1, length 4: AFI 2 (IPv6), a reserved octet, SAFI 1 (unicast).
+        assert!(bytes.windows(6).any(|w| w == [CAP_MULTIPROTOCOL, 4, 0, 2, 0, 1]), "{bytes:?}");
+        let plain = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false });
+        let Ok(Message::Open(back)) = Message::decode(&plain.encode()) else { panic!("did not decode") };
+        assert!(!back.ipv6_unicast);
+    }
+
+    #[test]
+    fn ipv6_prefixes_travel_in_mp_reach_and_mp_unreach_with_the_next_hop_of_rfc_2545() {
+        let nlri = vec![net6("2001:db8:1::/48"), net6("2001:db8:2::/64"), net6("::/0"), net6("2001:db8::1/128")];
+        let global: Ipv6Addr = "2001:db8:ffff::1".parse().unwrap();
+        let link: Ipv6Addr = "fe80::1".parse().unwrap();
+        for link_local in [None, Some(link)] {
+            let attrs = PathAttrs {
+                as_path: vec![65_001],
+                next_hop: Ipv4Addr::UNSPECIFIED,
+                mp_reach6: Some(MpReach6 { next_hop: global, link_local, nlri: nlri.clone() }),
+                mp_unreach6: vec![net6("2001:db8:9::/48")],
+                ..PathAttrs::default()
+            };
+            let u = Message::Update(Update { withdrawn: Vec::new(), attrs: Some(attrs.clone()), nlri: Vec::new() });
+            let bytes = u.encode();
+            // MP_REACH_NLRI is type 14 and MP_UNREACH_NLRI type 15, optional and not transitive (flags 0x80); the next
+            // hop is 16 octets, or 32 with a link-local address after the global one.
+            let want = if link_local.is_some() { 32 } else { 16 };
+            assert!(bytes.windows(7).any(|w| w == [0x80, ATTR_MP_REACH, w[2], 0, 2, 1, want]), "{bytes:?}");
+            assert!(bytes.windows(2).any(|w| w == [0x80, ATTR_MP_UNREACH]), "{bytes:?}");
+            // No IPv4 NEXT_HOP rides along with an IPv6-only update.
+            assert!(!bytes.windows(3).any(|w| w == [0x40, ATTR_NEXT_HOP, 4]), "{bytes:?}");
+            let Ok(Message::Update(back)) = Message::decode(&bytes) else { panic!("did not decode") };
+            assert_eq!(back.attrs, Some(attrs));
+        }
+    }
+
+    #[test]
+    fn a_hostile_mp_attribute_is_refused_or_skipped_and_never_read_past_its_end() {
+        let family = [0u8, 2, 1];
+        let reach = |nh_len: u8, body: &[u8]| {
+            let mut v = family.to_vec();
+            v.push(nh_len);
+            v.extend_from_slice(body);
+            attribute(FLAG_OPTIONAL, ATTR_MP_REACH, &v)
+        };
+        // A next hop that is neither 16 nor 32 octets long is an error, so is one that is cut short.
+        assert!(read_attrs(&reach(12, &[0; 20])).is_err());
+        assert!(read_attrs(&reach(16, &[0; 10])).is_err());
+        assert!(read_attrs(&reach(32, &[0; 20])).is_err());
+        // A prefix longer than 128 bits, or whose octets are missing, is an error.
+        let mut body = vec![0u8; 16];
+        body.extend_from_slice(&[0, 129]);
+        assert!(read_attrs(&reach(16, &body)).is_err());
+        let mut body = vec![0u8; 16];
+        body.extend_from_slice(&[0, 64, 0x20, 0x01]);
+        assert!(read_attrs(&reach(16, &body)).is_err(), "64 bits need eight octets");
+        // Another family (IPv4, or a subsequent family this simulator does not run) is skipped.
+        let other = attribute(FLAG_OPTIONAL, ATTR_MP_REACH, &[0, 1, 1, 4, 10, 0, 0, 1, 0, 24, 10, 1, 2]);
+        assert_eq!(read_attrs(&other).map(|a| a.mp_reach6), Ok(None));
+        let multicast = attribute(FLAG_OPTIONAL, ATTR_MP_UNREACH, &[0, 2, 2, 8, 0xFF]);
+        assert_eq!(read_attrs(&multicast).map(|a| a.mp_unreach6), Ok(Vec::new()));
+        // Every cut of a good attribute is an error.
+        let whole = reach(16, &[&[0u8; 16][..], &[0, 48, 0x20, 0x01, 0x0d, 0xb8, 0, 1]].concat());
+        assert!(read_attrs(&whole).is_ok());
+        for n in 1..whole.len() {
+            assert!(read_attrs(whole.get(..n).unwrap_or_default()).is_err(), "{n} bytes");
+        }
+    }
+
+    #[test]
     fn route_reflection_and_confederation_attributes_have_their_own_codes() {
         let attrs = PathAttrs {
             origin: ORIGIN_IGP,
@@ -878,7 +1084,7 @@ mod tests {
     #[test]
     fn describe_walks_several_messages_in_one_segment() {
         let mut data = Message::Keepalive.encode();
-        data.extend(Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1) }).encode());
+        data.extend(Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false }).encode());
         assert_eq!(describe(&data), "KEEPALIVE, OPEN (AS 65001, hold time 180 s, id 1.1.1.1)");
     }
 }

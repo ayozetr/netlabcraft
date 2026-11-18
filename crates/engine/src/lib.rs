@@ -41,6 +41,7 @@ mod pictures;
 mod pppoe;
 pub mod settings;
 mod traffic;
+mod usb;
 mod voice;
 mod vpnclient;
 
@@ -100,6 +101,8 @@ mod tests_things;
 mod tests_track;
 #[cfg(test)]
 mod tests_traffic;
+#[cfg(test)]
+mod tests_usb;
 #[cfg(test)]
 mod tests_vpnclient;
 #[cfg(test)]
