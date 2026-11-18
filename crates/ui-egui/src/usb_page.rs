@@ -31,7 +31,7 @@ fn state_word(c: &netlabcraft_model::usb::UsbCable, problem: Option<String>) -> 
 /// A stick's Files page: where it is plugged in, whether it is mounted, its files and a form to
 /// put one more on it.
 pub(crate) fn stick(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
-    let id = egui::Id::new(("usb_form", dev.id.0));
+    let id = ui.make_persistent_id(("usb_form", dev.id.0));
     let mut f: StickForm = ui.data_mut(|m| m.get_temp(id)).unwrap_or_default();
     let tk = theme::tokens(app.ui.dark);
     let t = &app.session.topology;
