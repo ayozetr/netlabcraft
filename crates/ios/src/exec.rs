@@ -298,6 +298,10 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         (false, _) => LoginStage::Password(None),
     };
     let remote_cli = Cli { vty: true, logged_in: true, ..Cli::default() };
+    if proto == RemoteProto::Ssh {
+        let from = t.device(dev).map_or_else(String::new, |d| d.name.clone());
+        sim.debug_log(target, DebugKind::Ssh, &format!("a session is opened from {from}; the key exchange is done and the login follows"));
+    }
     cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0 }));
     let banner = t.device(target).map(|d| d.access.banner_motd.clone()).unwrap_or_default();
     let mut out = format!("Trying {dst} ... Open");
@@ -386,6 +390,11 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
                     (_, _) => target.access.vty.password.as_deref() == Some(line),
                 }
             };
+            if r.proto == RemoteProto::Ssh {
+                let who = user.as_deref().unwrap_or("(no name)");
+                let line = if ok { format!("user {who} is logged in") } else { format!("login of {who} is refused: wrong password or unknown user") };
+                sim.debug_log(target.id, DebugKind::Ssh, &line);
+            }
             if ok {
                 r.stage = LoginStage::Ready;
                 r.cli.user.clone_from(&user);

@@ -52,6 +52,8 @@ mod tests_cell;
 #[cfg(test)]
 mod tests_closet;
 #[cfg(test)]
+mod tests_debug;
+#[cfg(test)]
 mod tests_dialup;
 #[cfg(test)]
 mod tests_envs;
