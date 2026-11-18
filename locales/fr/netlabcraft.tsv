@@ -2432,3 +2432,4 @@ furniture	Table	Table
 	The lab holds no images yet: set one with the Set Background Image button.	Le labo ne contient pas encore d'images : ajoutez-en une avec le bouton Définir l'image d'arrière-plan.
 	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Réduite de {} × {} à {} × {} pour respecter les limites d'un labo
 	Pictures are stored inside the lab, so there is nothing to reload.	Les images sont enregistrées dans le labo, il n'y a donc rien à recharger.
+	{} × {} px, {}	{} × {} px, {}

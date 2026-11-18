@@ -2432,3 +2432,4 @@ furniture	Table	Tavolo
 	The lab holds no images yet: set one with the Set Background Image button.	Il laboratorio non contiene ancora immagini: impostane una con il pulsante Imposta immagine di sfondo.
 	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Ridotta da {} × {} a {} × {} per rispettare i limiti di un laboratorio
 	Pictures are stored inside the lab, so there is nothing to reload.	Le immagini sono salvate nel laboratorio, quindi non c'è nulla da ricaricare.
+	{} × {} px, {}	{} × {} px, {}

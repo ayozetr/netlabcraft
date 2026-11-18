@@ -2432,3 +2432,4 @@ furniture	Table	桌子
 	The lab holds no images yet: set one with the Set Background Image button.	实验尚不包含图片：请使用设置背景图片按钮添加。
 	Scaled down from {} × {} to {} × {} to fit the limits of a lab	已从 {} × {} 缩小到 {} × {}，以符合实验的限制
 	Pictures are stored inside the lab, so there is nothing to reload.	图片保存在实验文件内，因此无需重新加载。
+	{} × {} px, {}	{} × {} 像素，{}
