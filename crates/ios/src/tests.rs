@@ -24,6 +24,7 @@ mod ipsec_crypto;
 mod ipv6_ra;
 mod leftovers;
 mod line_protocol;
+mod name_resolution;
 mod nat_timeouts;
 mod nat_verbose;
 mod ospf6_auth;

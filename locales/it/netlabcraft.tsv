@@ -219,6 +219,11 @@
 	cable	cavo
 	Cable Length	Lunghezza cavo
 	Cable Length…	Lunghezza cavo…
+	Resize…	Ridimensiona…
+	Resize	Ridimensiona
+	Units ({} to {}):	Unità ({} a {}):
+	Levels ({} to {}):	Livelli ({} a {}):
+	Enter a whole number	Inserisci un numero intero
 	Cable Modem	Cable Modem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Cable modem: collega in bridge la porta coassiale (Coaxial0) alla porta Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	cavo troppo lungo: {} m in rame, max 100 m
@@ -2447,3 +2452,10 @@ furniture	Table	Tavolo
 	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
 	Each place has its own physics	Ogni luogo ha la sua fisica
 	Parts change the place they stand in by rates, and the place settles back when they stop	Le parti cambiano il luogo con una velocità e il luogo torna al valore quando si fermano
+	Pairing code:	Codice di abbinamento:
+	Profile:	Profilo:
+	Music (A2DP)	Musica (A2DP)
+	Headset	Cuffia
+	Card id (hex):	Id della scheda (hex):
+	Report crossings of the wire	Segnala gli attraversamenti del filo
+	Wire angle (degrees):	Angolo del filo (gradi):

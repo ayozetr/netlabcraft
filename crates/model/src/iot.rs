@@ -178,9 +178,64 @@ pub struct Iot {
     /// Smart LEDs: the colour it shines, red, green, blue (`None`: warm white).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub colour: Option<[u8; 3]>,
-    /// Signal generators: the frequency it outputs, in hertz.
+    /// Signal generators: the frequency it outputs, in hertz. A speaker, a player, a buzzer or an
+    /// alarm: the pitch it plays (0: its own). A sound detector: the pitch it is tuned to (0: any).
     #[serde(skip_serializing_if = "is_zero_u32")]
     pub frequency: u32,
+    /// Bluetooth speakers and music players: the four-digit code they pair with (0 is 0000).
+    #[serde(skip_serializing_if = "is_zero_u16")]
+    pub pairing_code: u16,
+    /// Bluetooth speakers: what they speak.
+    #[serde(skip_serializing_if = "BtProfile::is_default")]
+    pub profile: BtProfile,
+    /// RFID cards: the id typed in (0: the one the card has by itself).
+    #[serde(skip_serializing_if = "is_zero_u32")]
+    pub tag: u32,
+    /// Trip sensors: report a crossing of the wire (true) instead of anything near.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub crossing: bool,
+    /// Trip sensors: the direction of the wire, in degrees (0 to 359).
+    #[serde(skip_serializing_if = "is_zero_u16")]
+    pub angle: u16,
+}
+
+/// What a Bluetooth speaker speaks: a music player streams music (A2DP) and pairs only with a
+/// speaker that takes it; a headset takes calls and pairs with no player.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BtProfile {
+    #[default]
+    A2dp,
+    Headset,
+}
+
+impl BtProfile {
+    pub fn id(self) -> &'static str {
+        match self {
+            BtProfile::A2dp => "a2dp",
+            BtProfile::Headset => "headset",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<BtProfile> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "a2dp" => Some(BtProfile::A2dp),
+            "headset" | "hfp" => Some(BtProfile::Headset),
+            _ => None,
+        }
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == BtProfile::A2dp
+    }
+}
+
+/// The highest pairing code and the highest typed-in RFID id.
+pub const MAX_PAIRING_CODE: u16 = 9_999;
+pub const MAX_TAG: u32 = 0x7fff_ffff;
+
+fn is_zero_u16(v: &u16) -> bool {
+    *v == 0
 }
 
 /// The highest frequency a signal generator outputs (Hz).
@@ -208,6 +263,9 @@ impl Iot {
         }
         self.interval = self.interval.min(MAX_INTERVAL);
         self.frequency = self.frequency.min(MAX_FREQUENCY);
+        self.pairing_code = self.pairing_code.min(MAX_PAIRING_CODE);
+        self.tag = self.tag.min(MAX_TAG);
+        self.angle %= 360;
         self.brightness = self.brightness.map(|b| b.min(100));
         self.rules.truncate(MAX_RULES);
         for r in &mut self.rules {
