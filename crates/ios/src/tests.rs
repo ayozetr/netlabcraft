@@ -20,6 +20,7 @@ mod debug_framework;
 mod debug_topics;
 mod error_counters;
 mod families;
+mod igmp;
 mod ike_rsa;
 mod inspections;
 mod interface_counters;

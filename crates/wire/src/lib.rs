@@ -29,6 +29,7 @@ pub mod dns;
 pub mod ec;
 pub mod eigrp;
 pub mod http;
+pub mod igmp;
 pub mod ike;
 pub mod ikev2;
 pub mod ipfrag;
@@ -601,6 +602,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
             Ok(ip) => {
                 let route = format!("{} → {}", ip.src, ip.dst);
                 match ip.protocol {
+                    igmp::PROTO_IGMP => match igmp::Igmp::decode(&ip.payload) {
+                        Ok(m) => (Protocol::Other, format!("{} {route}{tag}", m.describe())),
+                        Err(e) => (Protocol::Other, format!("IGMP ({e}) {route}{tag}")),
+                    },
                     PROTO_ICMP => {
                         let what = match Icmp::decode(&ip.payload) {
                             Ok(Icmp::EchoRequest { seq, .. }) => format!("echo request seq {seq}"),

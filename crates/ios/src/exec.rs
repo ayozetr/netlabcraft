@@ -21,6 +21,7 @@ pub(crate) mod eigrp6;
 pub(crate) mod families;
 pub(crate) mod fhrp;
 pub(crate) mod firewall;
+pub(crate) mod igmp;
 pub(crate) mod ikev2;
 pub(crate) mod keychain;
 pub(crate) mod knobs;
@@ -2263,6 +2264,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::IgmpSnooping
+        | Id::NoIgmpSnooping
+        | Id::IgmpSnoopingVlan
+        | Id::NoIgmpSnoopingVlan
+        | Id::IgmpQuerier
+        | Id::NoIgmpQuerier
+        | Id::IgmpQuerierAddress
+        | Id::NoIgmpQuerierAddress
+        | Id::ShowIgmpSnooping
+        | Id::ShowIgmpGroups
+        | Id::ShowIgmpMrouter
+        | Id::ShowIgmpQuerier
+        | Id::ClearIgmpSnooping => igmp::command(&mut c, spec.id, &args),
         Id::KeyChain
         | Id::NoKeyChain
         | Id::KeyChainKey

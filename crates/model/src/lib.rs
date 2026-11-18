@@ -32,6 +32,7 @@ pub mod furniture;
 pub mod hardware;
 pub mod hostfw;
 pub mod ifname;
+pub mod igmp;
 pub mod iot;
 pub mod keychain;
 pub mod knobs;
@@ -950,6 +951,9 @@ pub struct Device {
     /// and learning for 30 s).
     #[serde(default)]
     pub rapid_stp: bool,
+    /// IGMP snooping on switches, joined groups on hosts.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub igmp: igmp::Igmp,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -2228,6 +2232,7 @@ impl Device {
             vlans: BTreeMap::new(),
             vtp: Vtp::default(),
             rapid_stp: false,
+            igmp: igmp::Igmp::default(),
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
@@ -2351,6 +2356,7 @@ impl Device {
         self.mgmt = mgmt::Mgmt::default();
         self.access = Access::default();
         self.stp_priority.clear();
+        self.igmp = igmp::Igmp::default();
         self.svis.clear();
         self.ospf = None;
         self.rip = None;

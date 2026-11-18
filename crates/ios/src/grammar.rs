@@ -318,6 +318,19 @@ pub enum Id {
     StpRoot,
     Portfast,
     NoPortfast,
+    IgmpSnooping,
+    NoIgmpSnooping,
+    IgmpSnoopingVlan,
+    NoIgmpSnoopingVlan,
+    IgmpQuerier,
+    NoIgmpQuerier,
+    IgmpQuerierAddress,
+    NoIgmpQuerierAddress,
+    ShowIgmpSnooping,
+    ShowIgmpGroups,
+    ShowIgmpMrouter,
+    ShowIgmpQuerier,
+    ClearIgmpSnooping,
     // ---- switch edge protection and tuning (exec/l2sec.rs) ----
     L2Snooping,
     L2NoSnooping,
@@ -5262,6 +5275,73 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
+    spec!(
+        IgmpSnooping,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping")],
+        "Listen to IGMP and send multicast only where it is wanted"
+    ),
+    spec!(NoIgmpSnooping, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("igmp"), K("snooping")], "Flood multicast again"),
+    spec!(
+        IgmpSnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Snoop these VLANs (all of them are snooped unless turned off)"
+    ),
+    spec!(
+        NoIgmpSnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("igmp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Do not snoop these VLANs: multicast floods in them"
+    ),
+    spec!(
+        IgmpQuerier,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping"), K("querier")],
+        "Send an IGMP general query every minute in each snooped VLAN"
+    ),
+    spec!(NoIgmpQuerier, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("igmp"), K("snooping"), K("querier")], "Stop sending queries"),
+    spec!(
+        IgmpQuerierAddress,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping"), K("querier"), K("address"), Arg("A.B.C.D")],
+        "Source address of the queries in a VLAN that has no interface address"
+    ),
+    spec!(
+        NoIgmpQuerierAddress,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("igmp"), K("snooping"), K("querier"), K("address")],
+        "No query source address"
+    ),
+    spec!(ShowIgmpSnooping, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("igmp"), K("snooping")], "IGMP snooping settings and the VLANs it watches"),
+    spec!(
+        ShowIgmpGroups,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("igmp"), K("snooping"), K("groups")],
+        "The groups learned and the ports that joined them"
+    ),
+    spec!(
+        ShowIgmpMrouter,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("igmp"), K("snooping"), K("mrouter")],
+        "Ports that lead to a multicast router"
+    ),
+    spec!(ShowIgmpQuerier, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("igmp"), K("snooping"), K("querier")], "The queries this switch sends"),
+    spec!(
+        ClearIgmpSnooping,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("clear"), K("ip"), K("igmp"), K("snooping")],
+        "Forget the groups and router ports learned"
+    ),
     // ---- switch edge protection and tuning (exec/l2sec.rs) ----
     spec!(L2Snooping, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping on (then name its VLANs)"),
     spec!(L2NoSnooping, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping off"),

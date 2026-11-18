@@ -47,6 +47,7 @@ pub mod fhrp;
 pub mod firewall;
 pub mod hostfw;
 pub mod hsrp;
+pub mod igmp;
 pub mod ikev1;
 pub mod ikev2;
 pub mod iot;
@@ -1286,6 +1287,8 @@ pub struct Sim {
     iot: iot::IotState,
     /// DHCP snooping bindings, ARP inspection, rate limits, errdisable timers, port counters.
     l2: l2sec::L2State,
+    /// IGMP snooping: groups, member ports and ports that lead to multicast routers.
+    igmp: igmp::State,
     /// Log stamps and severity filters of devices that changed them.
     log_cfg: BTreeMap<DeviceId, logcfg::LogCfg>,
     /// Decisions about the frame being received now (see [`explain`]).
@@ -2645,6 +2648,7 @@ impl Sim {
         let (f, cos) = self.mls_qos_in(t, d, in_port, f, pcp);
         self.psec_age(d, in_port, f.src);
         self.port_security(d, in_port, f.src)?;
+        self.igmp_learn(t, d, in_port, vlan, &f);
         self.switch_forward_cos(t, d, Some(in_port), vlan, f, hops, cos)
     }
 
@@ -2721,6 +2725,8 @@ impl Sim {
         if handled {
             return Ok(());
         }
+        // IGMP snooping: multicast data and IGMP reports go only to member and router ports.
+        let snooped = if known.is_none() { self.igmp_outs(d, vlan, &f) } else { None };
         let outs: Vec<usize> = match known {
             // An access point relays between hosts on its radio.
             Some(p) if Some(p) == in_port && !is_ap_radio(t, End { device: d.id, port: p }) => {
@@ -2734,6 +2740,7 @@ impl Sim {
                         && !chm.suspended(p)
                         && carries(t, d, p, vlan)
                         && !vtp::pruned(t, d, p, vlan)
+                        && snooped.as_ref().is_none_or(|s| s.contains(&p))
                 })
                 .collect(),
         };
@@ -2758,7 +2765,7 @@ impl Sim {
                 sent += 1;
             }
         }
-        if sent == 0 && !tunnelled { Err(format!("no up port in VLAN {vlan} to forward to")) } else { Ok(()) }
+        if sent == 0 && !tunnelled && snooped.is_none() { Err(format!("no up port in VLAN {vlan} to forward to")) } else { Ok(()) }
     }
 
     /// Sends a frame out of a layer-3 interface: a port, or a switch's VLAN interface.
@@ -3153,6 +3160,12 @@ impl Sim {
                 from_outside = true;
             }
         }
+        if ip.dst.is_multicast()
+            && d.kind.is_host()
+            && let Some(r) = self.host_multicast_in(t, d, ifc, ip.clone())
+        {
+            return r;
+        }
         let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst)
             || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst)
             || self.ra_owns(d, ip.dst);
@@ -3370,7 +3383,7 @@ impl Sim {
                 if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Icmp)) {
                     self.log(d.id, &format!("ICMP debug: echo request from {} to {} (id {id}, seq {seq})", ip.src, ip.dst));
                 }
-                let src = if ip.dst == Ipv4Addr::BROADCAST || ip.dst == ifc.net.broadcast() { ifc.net.addr } else { ip.dst };
+                let src = if ip.dst == Ipv4Addr::BROADCAST || ip.dst == ifc.net.broadcast() || ip.dst.is_multicast() { ifc.net.addr } else { ip.dst };
                 let reply = Ipv4 {
                     id: self.ip_id(),
                     ttl: default_ttl(d.kind),
@@ -3438,6 +3451,10 @@ impl Sim {
         self.bump(d.id, "sent");
         if let Some(r) = self.ra_out(t, d, &ip, df) {
             return r;
+        }
+        // A host sends to a group straight out of its interface, with the group's own address.
+        if ip.dst.is_multicast() && d.kind.is_host() {
+            return self.send_multicast(t, d, &ip);
         }
         let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
         self.note_sends(ip.dst, &out, nh, ip.ttl);
@@ -4150,6 +4167,13 @@ impl Sim {
         // A PC with its VPN Client connected sends what goes through the tunnel from its VPN address.
         if let Some(a) = self.ra_source(d, dst) {
             return Ok(a);
+        }
+        // A group is reached out of the host's first interface.
+        if dst.is_multicast()
+            && d.kind.is_host()
+            && let Some(i) = self.host_multicast_iface(t, d)
+        {
+            return Ok(i.net.addr);
         }
         let ifs = l3_ifaces(d);
         // A host with two radios (Wi-Fi and cellular) uses the one that is up, Wi-Fi first.

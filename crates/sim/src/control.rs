@@ -61,6 +61,7 @@ impl Sim {
             (EIGRP6_HELLO_EVERY_US, 9),
             (VRRP_EVERY_US, 10),
             (self.bgp_tick_us(t), 11),
+            (crate::igmp::QUERY_EVERY_US, 12),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -76,6 +77,7 @@ impl Sim {
                     9 => self.send_eigrp6_hellos(t, at),
                     10 => self.send_vrrp(t, at),
                     11 => self.send_bgp_keepalives(t, at),
+                    12 => self.send_igmp_queries(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;
@@ -83,7 +85,7 @@ impl Sim {
         }
     }
 
-    fn queue_at(&mut self, t: &Topology, from: End, frame: Vec<u8>, at: u64) {
+    pub(crate) fn queue_at(&mut self, t: &Topology, from: End, frame: Vec<u8>, at: u64) {
         if !port_up(t, from) {
             return;
         }
