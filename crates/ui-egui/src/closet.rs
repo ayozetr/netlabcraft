@@ -910,8 +910,12 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
                     sc.ports.push((Pole::Device(End { device: d, port }), sr));
                 }
                 // Stored on an inventory shelf: dimmed.
-                if furniture.and_then(|f| kinds.get(&f)).is_some_and(|k| *k == FurnitureKind::InventoryShelf) {
+                let stored = furniture.and_then(|f| kinds.get(&f)).is_some_and(|k| *k == FurnitureKind::InventoryShelf);
+                if stored {
                     p.rect_filled(panel, 2.0, Color32::from_black_alpha(90));
+                } else if dev.powered_off {
+                    // Switched off, or cut by a power strip: the front panel is dimmed too.
+                    p.rect_filled(panel, 2.0, Color32::from_black_alpha(70));
                 }
                 panels.insert(d, panel);
             }
