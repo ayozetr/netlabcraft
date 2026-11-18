@@ -678,6 +678,38 @@
 	New File	Nuovo file
 	New from sample	Nuovo da esempio
 	New Wiring Closet	Nuovo armadio di cablaggio
+	Container	Container
+	New Container	Nuovo container
+	Inventory Shelf	Scaffale d'inventario
+	Cable Pegboard	Pannello a ganci per cavi
+	Industrial Control Panel	Quadro di controllo industriale
+	{}, {} DIN slots	{}, {} posizioni DIN
+	{}, {} rows of hooks	{}, {} file di ganci
+	Hang on a Peg	Appendi a un gancio
+	Take off the Peg	Stacca dal gancio
+	Create New…	Crea nuovo…
+	Create New City	Crea nuova città
+	Create New Building	Crea nuovo edificio
+	Create New Closet	Crea nuovo armadio
+	Create New Generic Container	Crea nuovo container generico
+	Create New Rack	Crea nuovo rack
+	Create New Table	Crea nuovo tavolo
+	Create New Shelf	Crea nuovo scaffale
+	Create New Inventory Shelf	Crea nuovo scaffale d'inventario
+	Create New Cable Pegboard	Crea nuovo pannello a ganci per cavi
+	Create New Industrial Control Panel (ICP)	Crea nuovo quadro di controllo industriale (ICP)
+	Switch to the Physical view first.	Passa prima alla vista fisica.
+	Go to the Intercity map to create a city.	Vai alla mappa Intercity per creare una città.
+	Open a city first.	Apri prima una città.
+	Open a building first.	Apri prima un edificio.
+	Open a city or a building first.	Apri prima una città o un edificio.
+	Open a wiring closet or a container first.	Apri prima un armadio di cablaggio o un container.
+	No wiring closet yet: create one with +	Nessun armadio di cablaggio: creane uno con +
+	Go to Working Closet	Vai all'armadio di lavoro
+	Go to Working Closet ({})	Vai all'armadio di lavoro ({})
+	Added {}.	Aggiunto {}.
+	Set as Working Closet	Imposta come armadio di lavoro
+	New Generic Container	Nuovo container generico
 	Next Hop	Next hop
 	No	No
 	No adding or removing devices	Niente aggiunta o rimozione di dispositivi
@@ -2373,15 +2405,7 @@ furniture	Table	Tavolo
 	Backup written to {}	Backup scritto in {}
 	Application size	Dimensione dell'applicazione
 	Enter the password first: some tabs are locked.	Inserisci prima la password: alcune schede sono bloccate.
-	Container	Container
-	New Container	Nuovo container
-	Inventory Shelf	Scaffale d'inventario
-	Cable Pegboard	Pannello a ganci per cavi
-	Industrial Control Panel	Quadro di controllo industriale
-	{}, {} DIN slots	{}, {} posizioni DIN
-	{}, {} rows of hooks	{}, {} file di ganci
-	Hang on a Peg	Appendi a un gancio
-	Take off the Peg	Stacca dal gancio
+	Port, {}	Porta, {}
 	Up	Attivo
 	Down	Inattivo
 	Properties…	Proprietà…
@@ -2409,26 +2433,3 @@ furniture	Table	Tavolo
 	no clock rate on the DCE end	nessun clock rate sull'estremità DCE
 	the two ends use different encapsulations	le due estremità usano incapsulamenti diversi
 	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
-	Create New…	Crea nuovo…
-	Create New City	Crea nuova città
-	Create New Building	Crea nuovo edificio
-	Create New Closet	Crea nuovo armadio
-	Create New Generic Container	Crea nuovo container generico
-	Create New Rack	Crea nuovo rack
-	Create New Table	Crea nuovo tavolo
-	Create New Shelf	Crea nuovo scaffale
-	Create New Inventory Shelf	Crea nuovo scaffale d'inventario
-	Create New Cable Pegboard	Crea nuovo pannello a ganci per cavi
-	Create New Industrial Control Panel (ICP)	Crea nuovo quadro di controllo industriale (ICP)
-	Switch to the Physical view first.	Passa prima alla vista fisica.
-	Go to the Intercity map to create a city.	Vai alla mappa Intercity per creare una città.
-	Open a city first.	Apri prima una città.
-	Open a building first.	Apri prima un edificio.
-	Open a city or a building first.	Apri prima una città o un edificio.
-	Open a wiring closet or a container first.	Apri prima un armadio di cablaggio o un container.
-	No wiring closet yet: create one with +	Nessun armadio di cablaggio: creane uno con +
-	Go to Working Closet	Vai all'armadio di lavoro
-	Go to Working Closet ({})	Vai all'armadio di lavoro ({})
-	Added {}.	Aggiunto {}.
-	Set as Working Closet	Imposta come armadio di lavoro
-	New Generic Container	Nuovo container generico

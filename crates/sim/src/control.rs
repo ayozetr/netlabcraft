@@ -262,9 +262,14 @@ impl Sim {
                     neighbors: heard.clone(),
                     options: crate::ospf::hello_options(d, &ifc),
                 };
-                let payload = control::ospf_authenticate(hello.encode(), &crate::ospf::auth_send(d, &ifc, at));
-                let ip = Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload };
-                self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at);
+                // One copy per key while several message-digest keys are held (a key rollover).
+                let now = self.clock(d.id).0;
+                let encoded = hello.encode();
+                for (n, sign) in (0u64..).zip(crate::ospf::auth_sends(d, &ifc, at, now)) {
+                    let payload = control::ospf_authenticate(encoded.clone(), &sign);
+                    let ip = Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload };
+                    self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + n * 100);
+                }
             }
         }
         self.ospf_exchanges(t, &st, at);
@@ -387,6 +392,8 @@ impl Sim {
             if let Some(l) = theirs {
                 packets.push(OspfDb::Ack(vec![l.header()]));
             }
+            let clock = self.clock(id).0;
+            let sign = crate::ospf::auth_sends(d, &ifc, at, clock).into_iter().next().unwrap_or(netlabcraft_wire::control::OspfAuthSend::Null);
             for (k, p) in (1u64..).zip(packets) {
                 let ip = Ipv4 {
                     id: 0,
@@ -394,7 +401,7 @@ impl Sim {
                     protocol: control::PROTO_OSPF,
                     src: ifc.net.addr,
                     dst: control::OSPF_ALL_ROUTERS,
-                    payload: control::ospf_authenticate(p.encode(rid, area), &crate::ospf::auth_send(d, &ifc, at)),
+                    payload: control::ospf_authenticate(p.encode(rid, area), &sign),
                 };
                 // A millisecond apart, so the event list shows them in order.
                 self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + k * 1_000);
@@ -514,8 +521,8 @@ impl Sim {
 
     /// OSPFv3 hellos from every interface of every OSPFv3 router (passive ones excepted).
     fn send_ospf6_hellos(&mut self, t: &Topology, at: u64) {
-        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
-        use netlabcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6, PROTO_OSPF};
+        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, multicast_mac};
+        use netlabcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6};
         if !t.devices.iter().any(|d| d.ospf6.is_some()) {
             return;
         }
@@ -535,13 +542,10 @@ impl Sim {
                     bdr: Ipv4Addr::UNSPECIFIED,
                     neighbors: heard,
                 };
-                let ip = Ipv6 {
-                    hop_limit: 1,
-                    next_header: PROTO_OSPF,
-                    src: ifc.link_local,
-                    dst: ALL_SPF_ROUTERS6,
-                    payload: hello.encode(ifc.link_local, ALL_SPF_ROUTERS6),
-                };
+                // An interface with `ospfv3 authentication ipsec` puts an AH header on every packet.
+                let seq = u32::try_from(at / 1_000_000).unwrap_or(u32::MAX).max(1);
+                let payload = hello.encode(ifc.link_local, ALL_SPF_ROUTERS6);
+                let ip = crate::ospf6::wrap(ifc.link_local, payload, crate::ospf6::auth_of(d, ifc, *area), seq);
                 let frame =
                     Frame { dst: multicast_mac(ALL_SPF_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
                 self.queue_frame(t, d, ifc.port, frame, at);

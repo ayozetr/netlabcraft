@@ -678,6 +678,38 @@
 	New File	Novo arquivo
 	New from sample	Novo a partir de exemplo
 	New Wiring Closet	Novo armário de fiação
+	Container	Contêiner
+	New Container	Novo contêiner
+	Inventory Shelf	Prateleira de estoque
+	Cable Pegboard	Painel de ganchos para cabos
+	Industrial Control Panel	Painel de controle industrial
+	{}, {} DIN slots	{}, {} posições DIN
+	{}, {} rows of hooks	{}, {} fileiras de ganchos
+	Hang on a Peg	Pendurar em um gancho
+	Take off the Peg	Tirar do gancho
+	Create New…	Criar novo…
+	Create New City	Criar nova cidade
+	Create New Building	Criar novo prédio
+	Create New Closet	Criar novo armário
+	Create New Generic Container	Criar novo contêiner genérico
+	Create New Rack	Criar novo rack
+	Create New Table	Criar nova mesa
+	Create New Shelf	Criar nova prateleira
+	Create New Inventory Shelf	Criar nova prateleira de estoque
+	Create New Cable Pegboard	Criar novo painel de ganchos para cabos
+	Create New Industrial Control Panel (ICP)	Criar novo painel de controle industrial (ICP)
+	Switch to the Physical view first.	Mude primeiro para a visão física.
+	Go to the Intercity map to create a city.	Vá para o mapa Intercity para criar uma cidade.
+	Open a city first.	Abra primeiro uma cidade.
+	Open a building first.	Abra primeiro um prédio.
+	Open a city or a building first.	Abra primeiro uma cidade ou um prédio.
+	Open a wiring closet or a container first.	Abra primeiro um armário de cabeamento ou um contêiner.
+	No wiring closet yet: create one with +	Ainda não há armário de cabeamento: crie um com +
+	Go to Working Closet	Ir para o armário de trabalho
+	Go to Working Closet ({})	Ir para o armário de trabalho ({})
+	Added {}.	{} adicionado.
+	Set as Working Closet	Definir como armário de trabalho
+	New Generic Container	Novo contêiner genérico
 	Next Hop	Próximo salto
 	No	Não
 	No adding or removing devices	Sem adicionar nem remover dispositivos
@@ -2373,15 +2405,7 @@ furniture	Table	Mesa
 	Backup written to {}	Backup gravado em {}
 	Application size	Tamanho do aplicativo
 	Enter the password first: some tabs are locked.	Digite antes a senha: algumas abas estão bloqueadas.
-	Container	Contêiner
-	New Container	Novo contêiner
-	Inventory Shelf	Prateleira de estoque
-	Cable Pegboard	Painel de ganchos para cabos
-	Industrial Control Panel	Painel de controle industrial
-	{}, {} DIN slots	{}, {} posições DIN
-	{}, {} rows of hooks	{}, {} fileiras de ganchos
-	Hang on a Peg	Pendurar em um gancho
-	Take off the Peg	Tirar do gancho
+	Port, {}	Porta, {}
 	Up	Ativo
 	Down	Inativo
 	Properties…	Propriedades…
@@ -2409,26 +2433,3 @@ furniture	Table	Mesa
 	no clock rate on the DCE end	sem clock rate na ponta DCE
 	the two ends use different encapsulations	as duas pontas usam encapsulamentos diferentes
 	PPP authentication failed (check the usernames and passwords)	falha na autenticação PPP (confira os usuários e as senhas)
-	Create New…	Criar novo…
-	Create New City	Criar nova cidade
-	Create New Building	Criar novo prédio
-	Create New Closet	Criar novo armário
-	Create New Generic Container	Criar novo contêiner genérico
-	Create New Rack	Criar novo rack
-	Create New Table	Criar nova mesa
-	Create New Shelf	Criar nova prateleira
-	Create New Inventory Shelf	Criar nova prateleira de estoque
-	Create New Cable Pegboard	Criar novo painel de ganchos para cabos
-	Create New Industrial Control Panel (ICP)	Criar novo painel de controle industrial (ICP)
-	Switch to the Physical view first.	Mude primeiro para a visão física.
-	Go to the Intercity map to create a city.	Vá para o mapa Intercity para criar uma cidade.
-	Open a city first.	Abra primeiro uma cidade.
-	Open a building first.	Abra primeiro um prédio.
-	Open a city or a building first.	Abra primeiro uma cidade ou um prédio.
-	Open a wiring closet or a container first.	Abra primeiro um armário de cabeamento ou um contêiner.
-	No wiring closet yet: create one with +	Ainda não há armário de cabeamento: crie um com +
-	Go to Working Closet	Ir para o armário de trabalho
-	Go to Working Closet ({})	Ir para o armário de trabalho ({})
-	Added {}.	{} adicionado.
-	Set as Working Closet	Definir como armário de trabalho
-	New Generic Container	Novo contêiner genérico

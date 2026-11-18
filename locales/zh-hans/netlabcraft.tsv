@@ -678,6 +678,38 @@
 	New File	新建文件
 	New from sample	从示例新建
 	New Wiring Closet	新建配线间
+	Container	容器
+	New Container	新建容器
+	Inventory Shelf	库存货架
+	Cable Pegboard	线缆挂板
+	Industrial Control Panel	工业控制面板
+	{}, {} DIN slots	{}，{} 个 DIN 槽位
+	{}, {} rows of hooks	{}，{} 排挂钩
+	Hang on a Peg	挂到挂钩上
+	Take off the Peg	从挂钩上取下
+	Create New…	新建…
+	Create New City	新建城市
+	Create New Building	新建建筑
+	Create New Closet	新建配线间
+	Create New Generic Container	新建通用容器
+	Create New Rack	新建机架
+	Create New Table	新建桌子
+	Create New Shelf	新建货架
+	Create New Inventory Shelf	新建库存货架
+	Create New Cable Pegboard	新建线缆挂板
+	Create New Industrial Control Panel (ICP)	新建工业控制面板 (ICP)
+	Switch to the Physical view first.	请先切换到物理视图。
+	Go to the Intercity map to create a city.	请到城际地图上新建城市。
+	Open a city first.	请先打开一个城市。
+	Open a building first.	请先打开一栋建筑。
+	Open a city or a building first.	请先打开一个城市或一栋建筑。
+	Open a wiring closet or a container first.	请先打开一个配线间或容器。
+	No wiring closet yet: create one with +	还没有配线间：用 + 新建一个
+	Go to Working Closet	转到工作配线间
+	Go to Working Closet ({})	转到工作配线间 ({})
+	Added {}.	已添加 {}。
+	Set as Working Closet	设为工作配线间
+	New Generic Container	新建通用容器
 	Next Hop	下一跳
 	No	否
 	No adding or removing devices	不能添加或移除设备
@@ -2373,15 +2405,7 @@ furniture	Table	桌子
 	Backup written to {}	备份已写入 {}
 	Application size	程序字号
 	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。
-	Container	容器
-	New Container	新建容器
-	Inventory Shelf	库存货架
-	Cable Pegboard	线缆挂板
-	Industrial Control Panel	工业控制面板
-	{}, {} DIN slots	{}，{} 个 DIN 槽位
-	{}, {} rows of hooks	{}，{} 排挂钩
-	Hang on a Peg	挂到挂钩上
-	Take off the Peg	从挂钩上取下
+	Port, {}	端口，{}
 	Up	正常
 	Down	断开
 	Properties…	属性…
@@ -2409,26 +2433,3 @@ furniture	Table	桌子
 	no clock rate on the DCE end	DCE 端没有时钟速率
 	the two ends use different encapsulations	两端使用不同的封装
 	PPP authentication failed (check the usernames and passwords)	PPP 认证失败（请检查用户名和密码）
-	Create New…	新建…
-	Create New City	新建城市
-	Create New Building	新建建筑
-	Create New Closet	新建配线间
-	Create New Generic Container	新建通用容器
-	Create New Rack	新建机架
-	Create New Table	新建桌子
-	Create New Shelf	新建货架
-	Create New Inventory Shelf	新建库存货架
-	Create New Cable Pegboard	新建线缆挂板
-	Create New Industrial Control Panel (ICP)	新建工业控制面板 (ICP)
-	Switch to the Physical view first.	请先切换到物理视图。
-	Go to the Intercity map to create a city.	请到城际地图上新建城市。
-	Open a city first.	请先打开一个城市。
-	Open a building first.	请先打开一栋建筑。
-	Open a city or a building first.	请先打开一个城市或一栋建筑。
-	Open a wiring closet or a container first.	请先打开一个配线间或容器。
-	No wiring closet yet: create one with +	还没有配线间：用 + 新建一个
-	Go to Working Closet	转到工作配线间
-	Go to Working Closet ({})	转到工作配线间 ({})
-	Added {}.	已添加 {}。
-	Set as Working Closet	设为工作配线间
-	New Generic Container	新建通用容器

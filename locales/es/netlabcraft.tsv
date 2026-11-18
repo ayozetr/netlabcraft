@@ -638,6 +638,38 @@
 	New City	Nueva ciudad
 	New Building	Nuevo edificio
 	New Wiring Closet	Nuevo armario de cableado
+	Container	Contenedor
+	New Container	Nuevo contenedor
+	Inventory Shelf	Estantería de inventario
+	Cable Pegboard	Panel de ganchos para cables
+	Industrial Control Panel	Panel de control industrial
+	{}, {} DIN slots	{}, {} posiciones DIN
+	{}, {} rows of hooks	{}, {} filas de ganchos
+	Hang on a Peg	Colgar de un gancho
+	Take off the Peg	Quitar del gancho
+	Create New…	Crear nuevo…
+	Create New City	Crear ciudad nueva
+	Create New Building	Crear edificio nuevo
+	Create New Closet	Crear armario nuevo
+	Create New Generic Container	Crear contenedor genérico nuevo
+	Create New Rack	Crear rack nuevo
+	Create New Table	Crear mesa nueva
+	Create New Shelf	Crear estante nuevo
+	Create New Inventory Shelf	Crear estantería de inventario nueva
+	Create New Cable Pegboard	Crear panel de ganchos para cables nuevo
+	Create New Industrial Control Panel (ICP)	Crear panel de control industrial (ICP) nuevo
+	Switch to the Physical view first.	Cambia primero a la vista física.
+	Go to the Intercity map to create a city.	Ve al mapa Intercity para crear una ciudad.
+	Open a city first.	Abre primero una ciudad.
+	Open a building first.	Abre primero un edificio.
+	Open a city or a building first.	Abre primero una ciudad o un edificio.
+	Open a wiring closet or a container first.	Abre primero un armario de cableado o un contenedor.
+	No wiring closet yet: create one with +	Aún no hay armario de cableado: crea uno con +
+	Go to Working Closet	Ir al armario de trabajo
+	Go to Working Closet ({})	Ir al armario de trabajo ({})
+	Added {}.	Se ha añadido {}.
+	Set as Working Closet	Definir como armario de trabajo
+	New Generic Container	Nuevo contenedor genérico
 	Back to the enclosing place (Intercity is the top)	Volver al lugar que lo contiene (Interurbano es lo más alto)
 	Intercity	Interurbano
 	Back to the Intercity map	Volver al mapa interurbano
@@ -2376,15 +2408,7 @@ furniture	Table	Mesa
 	Backup written to {}	Copia guardada en {}
 	Application size	Tamaño de la aplicación
 	Enter the password first: some tabs are locked.	Escribe antes la contraseña: algunas pestañas están bloqueadas.
-	Container	Contenedor
-	New Container	Nuevo contenedor
-	Inventory Shelf	Estantería de inventario
-	Cable Pegboard	Panel de ganchos para cables
-	Industrial Control Panel	Panel de control industrial
-	{}, {} DIN slots	{}, {} posiciones DIN
-	{}, {} rows of hooks	{}, {} filas de ganchos
-	Hang on a Peg	Colgar de un gancho
-	Take off the Peg	Quitar del gancho
+	Port, {}	Puerto, {}
 	Up	Activo
 	Down	Inactivo
 	Properties…	Propiedades…
@@ -2412,26 +2436,3 @@ furniture	Table	Mesa
 	no clock rate on the DCE end	sin velocidad de reloj en el extremo DCE
 	the two ends use different encapsulations	los dos extremos usan encapsulaciones distintas
 	PPP authentication failed (check the usernames and passwords)	falló la autenticación PPP (revisa los usuarios y las contraseñas)
-	Create New…	Crear nuevo…
-	Create New City	Crear ciudad nueva
-	Create New Building	Crear edificio nuevo
-	Create New Closet	Crear armario nuevo
-	Create New Generic Container	Crear contenedor genérico nuevo
-	Create New Rack	Crear rack nuevo
-	Create New Table	Crear mesa nueva
-	Create New Shelf	Crear estante nuevo
-	Create New Inventory Shelf	Crear estantería de inventario nueva
-	Create New Cable Pegboard	Crear panel de ganchos para cables nuevo
-	Create New Industrial Control Panel (ICP)	Crear panel de control industrial (ICP) nuevo
-	Switch to the Physical view first.	Cambia primero a la vista física.
-	Go to the Intercity map to create a city.	Ve al mapa Intercity para crear una ciudad.
-	Open a city first.	Abre primero una ciudad.
-	Open a building first.	Abre primero un edificio.
-	Open a city or a building first.	Abre primero una ciudad o un edificio.
-	Open a wiring closet or a container first.	Abre primero un armario de cableado o un contenedor.
-	No wiring closet yet: create one with +	Aún no hay armario de cableado: crea uno con +
-	Go to Working Closet	Ir al armario de trabajo
-	Go to Working Closet ({})	Ir al armario de trabajo ({})
-	Added {}.	Se ha añadido {}.
-	Set as Working Closet	Definir como armario de trabajo
-	New Generic Container	Nuevo contenedor genérico
