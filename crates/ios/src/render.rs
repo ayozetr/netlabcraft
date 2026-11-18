@@ -1893,6 +1893,12 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         if let Some(h) = o.dead {
             let _ = writeln!(s, " ip ospf dead-interval {h}");
         }
+        if let Some(h) = o.retransmit {
+            let _ = writeln!(s, " ip ospf retransmit-interval {h}");
+        }
+        if let Some(h) = o.transmit_delay {
+            let _ = writeln!(s, " ip ospf transmit-delay {h}");
+        }
         if o.p2p {
             s.push_str(" ip ospf network point-to-point\n");
         }

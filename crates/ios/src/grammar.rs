@@ -480,6 +480,10 @@ pub enum Id {
     NoIpOspfHello,
     IpOspfDead,
     NoIpOspfDead,
+    IpOspfRetransmit,
+    NoIpOspfRetransmit,
+    IpOspfTransmitDelay,
+    NoIpOspfTransmitDelay,
     IpOspfNetwork,
     NoIpOspfNetwork,
     IpOspfAuth,
@@ -1731,6 +1735,22 @@ pub static SPECS: &[Spec] = &[
     spec!(NoIpOspfHello, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("hello-interval")], "Hellos every 10 seconds again"),
     spec!(IpOspfDead, OSPF_IFS, Modes::BOTH, [K("ip"), K("ospf"), K("dead-interval"), Arg("<1-65535>")], "Silence before a neighbour is dropped"),
     spec!(NoIpOspfDead, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("dead-interval")], "Four hello intervals again"),
+    spec!(
+        IpOspfRetransmit,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("retransmit-interval"), Arg("<1-65535>")],
+        "Seconds before an unacknowledged update is sent again (5)"
+    ),
+    spec!(NoIpOspfRetransmit, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("retransmit-interval")], "Five seconds again"),
+    spec!(
+        IpOspfTransmitDelay,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("transmit-delay"), Arg("<1-65535>")],
+        "Seconds added to the age of every LSA sent (1)"
+    ),
+    spec!(NoIpOspfTransmitDelay, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("transmit-delay")], "One second again"),
     spec!(
         IpOspfNetwork,
         OSPF_IFS,

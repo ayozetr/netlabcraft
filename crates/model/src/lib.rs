@@ -1637,6 +1637,13 @@ pub struct OspfIf {
     /// `ip ospf dead-interval N` (seconds; four hello intervals when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub dead: Option<u16>,
+    /// `ip ospf retransmit-interval N` (seconds; 5 when not set): how long an update waits for its
+    /// acknowledgement before it is sent again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub retransmit: Option<u16>,
+    /// `ip ospf transmit-delay N` (seconds; 1 when not set): added to the age of every LSA sent.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transmit_delay: Option<u16>,
     /// `ip ospf network point-to-point`: no DR or BDR on the link, and a loopback advertises
     /// its subnet instead of a host route.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]

@@ -492,6 +492,16 @@ pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             each_ospf_if(c, |e| e.dead = Some(s))
         }
         Id::NoIpOspfDead => each_ospf_if(c, |e| e.dead = None),
+        Id::IpOspfRetransmit => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.retransmit = Some(s))
+        }
+        Id::NoIpOspfRetransmit => each_ospf_if(c, |e| e.retransmit = None),
+        Id::IpOspfTransmitDelay => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.transmit_delay = Some(s))
+        }
+        Id::NoIpOspfTransmitDelay => each_ospf_if(c, |e| e.transmit_delay = None),
         Id::IpOspfAuth => {
             let kind = auth_kind_word(arg(0), true)?;
             each_ospf_if(c, |e| e.auth = Some(kind))

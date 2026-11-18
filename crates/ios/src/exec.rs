@@ -2057,6 +2057,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpOspfHello
         | Id::IpOspfDead
         | Id::NoIpOspfDead
+        | Id::IpOspfRetransmit
+        | Id::NoIpOspfRetransmit
+        | Id::IpOspfTransmitDelay
+        | Id::NoIpOspfTransmitDelay
         | Id::IpOspfNetwork
         | Id::NoIpOspfNetwork
         | Id::IpOspfAuth
