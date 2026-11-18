@@ -42,7 +42,7 @@ const KEPT: &str = "Accepted: kept in the configuration; it does not change what
 
 /// A value checked against its placeholder: `{a|b}` is one of the words, `<lo-hi>` a number in the
 /// range, anything else one word. Returns the value as it is kept.
-fn check(placeholder: &str, value: &str) -> Result<String, String> {
+pub(super) fn check(placeholder: &str, value: &str) -> Result<String, String> {
     let v = value.trim();
     if v.is_empty() {
         return Err("% Incomplete command.".into());
