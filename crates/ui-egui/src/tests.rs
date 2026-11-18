@@ -2089,7 +2089,7 @@ fn a_native_window_with_no_geometry_this_session_opens_where_its_device_was_last
 }
 
 #[test]
-fn cables_are_accessible_nodes_found_by_label_and_open_their_first_device() {
+fn cables_are_accessible_nodes_found_by_label_and_open_their_window() {
     let mut h = harness(Some("vlans"));
     h.run_steps(3);
     let (label, first) = {
@@ -2104,13 +2104,14 @@ fn cables_are_accessible_nodes_found_by_label_and_open_their_first_device() {
         (format!("Cable, {}, {} - {}", t.resolved_cable(l).label(), end(l.a), end(l.b)), l.a.device)
     };
     assert!(h.query_by_label(&label).is_some(), "no node labelled {label}");
-    // Focus on a cable node highlights it, and Enter opens the device at its first end.
+    // Focus on a cable node highlights it, and Enter opens the cable's window.
     h.get_by_label(&label).focus();
     h.run_steps(2);
     assert_eq!(h.state().ui.cable_focus.map(|e| e.device), Some(first));
     key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
-    assert_eq!(h.state().ui.selected, Some(first));
-    assert!(h.state().ui.windows.contains_key(&first));
+    assert_eq!(h.state().ui.selected, None);
+    assert_eq!(h.state().ui.cable_window.map(|e| e.device), Some(first));
+    assert_eq!(h.state().ui.selected_cable.map(|e| e.device), Some(first));
     // Mouse use is unchanged: clicking empty workspace still deselects.
     let at = canvas_origin(&h) + egui::vec2(30.0, 30.0);
     click_at(&mut h, at);
