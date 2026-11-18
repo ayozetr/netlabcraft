@@ -124,12 +124,12 @@ An environment can be exported from the Environments window (`environment.export
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-18 | minor | `access.async_transport`: what a reverse Telnet to a line of an octal card may use. Additive; the file version is unchanged. |
-| 2026-11-18 | minor | A power strip's `rating_w` and `tripped`. Additive; the file version is unchanged. |
 | 2026-11-18 | minor | `board.language` (`python` or `javascript`) for the language of a board's program. Left out for BoardScript and older files read as before, so the file version stays 12. |
 | 2026-11-18 | minor | File version 12: top-level `images` (PNG and JPEG pictures keyed by the hash of their bytes) and `background` (the logical workspace's), and `physical.scenes` (each place's background, icon and size). All are left out when empty; files of versions 1 to 11 open unchanged. |
 | 2026-11-18 | minor | `environments.physics` (the places' own physics); left out when off, older files read as before and the file version is unchanged. |
 | 2026-11-18 | minor | `iot` gains optional `pairing_code`, `profile`, `tag`, `crossing` and `angle`, and `frequency` also for speakers, players, buzzers, alarms, sirens and sound detectors; all left out when default, older files read as before and the file version is unchanged. |
 | 2026-11-18 | minor | `environments.places[]` gain optional `name`, `custom`, `hidden` and `interpolation` (custom environments, shows, keyframe interpolation); all are left out when empty and older files read as before, so the file version is unchanged. |
+| 2026-11-18 | minor | A power strip's `rating_w` and `tripped`. Additive; the file version is unchanged. |
 | 2026-11-17 | minor | Optional `fire` and `co2` in the lab-level `environment`, optional `brightness`, `colour` and `frequency` in `iot`. All are left out when default, older files read as before and the file version stays 11. |
 | 2026-11-17 | minor | `iot.second` and `iot.variable` for the new components; both are left out when empty and older files read as before, so the file version stays 11. |
 | 2026-11-17 | trivial | Revision rows in date order; file version 11 checked against `VERSION` in `crates/model/src/file.rs`. |
