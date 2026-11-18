@@ -27,6 +27,9 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `dialup.status` | Dial-up status |  |  | `{"device": Dial-up PC} → {"state": "disconnected"\|"connected"\|"lost", "connected", "number", "carrier": true while the call's circuit is up, "called": the number the circuit goes to, "cloud", "username", "server", "address", "mask", "gateway", "auth"}` |
 | `vpnclient.connect` | VPN Client connect |  |  | `{"device": PC, laptop or server, "host"?: the VPN concentrator's address, "group"?: group name, "key"?: group key, "username"?: text, "password"?: text (each defaults to the one last used)} → {"state", "connected", "server", "address", "transforms", "esp", …}: sends a request to UDP port 10000 of the concentrator, a router set up as a remote-access server (a client group with its key and pool, a dynamic map, a crypto map with its authentication and authorization lists on the interface the host reaches). The router checks the group key and the user and gives the first free address of the group's pool; from then on the device's traffic beyond its own subnet goes through an ESP tunnel to the router. Fails when nothing answers or the router refuses; the simulator's own exchange, not IKE with Xauth and mode-config` |
 | `vpnclient.disconnect` | VPN Client disconnect |  |  | `{"device": PC, laptop or server} → the status: the router is told and the tunnel and the VPN address are gone` |
+| `aaa.certificate` | Server certificate (802.1X) |  |  | `{"device": Server, "ca"?: "a router running `crypto pki server` that issues it", "self_signed"?: true, "subject"?: "CN=radius.lab.test, O=NetLab", "fqdn"?: "radius.lab.test", "days"?: 1-36500 (365), "clear"?: true (back to no certificate)} → {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}: the certificate the RADIUS service presents in the PEAP tunnel, for a 1024-bit key pair the simulator makes; a host whose login validates the server checks it` |
+| `dot1x.trust` | Login: validate the server certificate |  |  | `{"device": host, "port"?: "Wireless0", "validate"?: true\|false (refuse a RADIUS server whose certificate does not chain to a trusted CA), "ca"?: "a lab device whose CA certificate to trust: a router running a certificate authority or holding a trustpoint, or a Server with a certificate", "ca_pem"?: "a CA certificate in PEM", "server_name"?: "the name the certificate must be for", "clear"?: true (forget the trusted CAs first)} → {"validate", "server_name", "trusted_cas": [subjects]}: for a host that has a login (device.wireless user and password)` |
+| `dot1x.status` | Login: 802.1X status |  |  | `{"device": host, "port"?: "Wireless0"} → {"login": user or null, "validate", "server_name", "trusted_cas": [subjects], "associated": bool (through the login and the handshake), "server_certificate": null \| {"presented", "subject", "issuer", "not_after", "chain_length", "verified", "error", "suite"}}: what the host saw of the RADIUS server's certificate in its PEAP tunnel (run `sim.advance` first: the login takes simulated time)` |
 | `vpnclient.status` | VPN Client status |  |  | `{"device": PC, laptop or server} → {"state": "disconnected"\|"connected", "connected", "host", "group", "username", "server", "address", "transforms", "esp", "encapsulated", "decapsulated"} (the key and the password are never returned)` |
 | `netflow.listen` | Netflow Collector start |  |  | `{"device": PC, laptop or server, "port"?: 1-65535 (default: the one last used, else 2055)} → the collector's state as netflow.flows: opens the UDP port; routers set up with `ip flow-export destination` send it NetFlow version 5 or 9 datagrams. The port is saved with the lab, what was received is not` |
 | `netflow.stop` | Netflow Collector stop |  |  | `{"device": PC, laptop or server} → the collector's state as netflow.flows: closes the port (what was received stays until cleared); fails when it is not listening` |
@@ -281,6 +284,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
 | `show interfaces` | user, privileged | router, switch, firewall | Interface details |
 | `show interfaces trunk` | user, privileged | switch | Trunk ports |
+| `show interfaces switchport` | user, privileged | switch | Switchport settings of every port |
 | `show interfaces <interface>` | user, privileged | router, switch, firewall | One interface's details |
 | `show vlan` | user, privileged | switch | VLAN database |
 | `show vlan brief` | user, privileged | switch | VLAN database |
@@ -582,6 +586,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no clock rate` | interface | router | Remove the clock rate |
 | `show controllers <interface>` | user, privileged | router, switch | Cable type at an interface (DCE or DTE) |
 | `show clock` | user, privileged | router, switch | The device's date and time |
+| `show clock detail` | user, privileged | router, switch | The date and time, where it came from and the uptime |
 | `clock set hh:mm:ss <day> <month> <year>` | privileged | router, switch | Set the date and time |
 | `show flash:` | user, privileged | router, switch | Files in flash memory |
 | `show flash` | user, privileged | router, switch | Files in flash memory |
@@ -641,6 +646,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show lldp entry *` | user, privileged | router, switch | LLDP neighbours with everything they advertise |
 | `show processes` | user, privileged | router, switch | What the device is busy with |
 | `show processes cpu` | user, privileged | router, switch | What the device is busy with |
+| `show processes cpu sorted` | user, privileged | router, switch | Tasks ordered by run time |
+| `show processes cpu history` | user, privileged | router, switch | Processor use over time |
+| `show processes memory` | user, privileged | router, switch | Memory held by each task |
 | `show memory` | user, privileged | router, switch | Memory in use |
 | `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
@@ -1696,6 +1704,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show tech-support` | privileged | router, switch | Everything for a support request |
 | `show boot` | user, privileged | router, switch | What the device starts from |
 | `show environment` | user, privileged | router, switch | Power and temperature |
+| `show environment all` | user, privileged | router, switch | Power and temperature |
+| `show environment power` | user, privileged | router, switch | Power supplies |
+| `show environment temperature` | user, privileged | router, switch | Temperatures and fans |
 | `show inventory` | user, privileged | router, switch | Hardware |
 | `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |

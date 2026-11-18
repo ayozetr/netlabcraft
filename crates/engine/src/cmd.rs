@@ -59,6 +59,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::dialup::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::dot1x::run(s, id, p) {
+        return r;
+    }
     if let Some(r) = crate::vpnclient::run(s, id, p) {
         return r;
     }
@@ -557,6 +560,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 "mode": now.map(|w| w.mode().name()),
                 "encryption": now.filter(|w| w.mode().is_wpa()).map(|w| w.security.encryption.name()),
                 "coverage_m": now.filter(|_| !s.topology.device(d).is_some_and(|x| x.kind.is_host())).map(|w| w.coverage_m()),
+                "server_certificate": s.sim.association(end).and_then(|a| a.peap_report()).map(crate::dot1x::report_json),
             }))
         }
                 "activity.show" => {

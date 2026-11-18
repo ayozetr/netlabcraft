@@ -107,6 +107,12 @@ impl Assoc {
     pub fn protected(&self) -> bool {
         self.tk.is_some()
     }
+
+    /// What the host saw of the RADIUS server's certificate in its 802.1X login, when it made
+    /// one.
+    pub fn peap_report(&self) -> Option<&crate::peap::Report> {
+        self.peap.as_ref().map(|p| &p.report)
+    }
 }
 
 /// A WPA2-Enterprise login the controller asked its RADIUS server about.
@@ -430,6 +436,13 @@ impl Sim {
         }
     }
 
+    /// Forgets every host's association, so that the next refresh starts each login again (for a
+    /// change of a server's certificate or of what a host trusts, which the attempt's key does
+    /// not show).
+    pub fn forget_associations(&mut self) {
+        self.assoc.clear();
+    }
+
     fn start_association(&mut self, t: &Topology, client: End, a: &Attempt, key: String) {
         let old = self.assoc.get(&client).filter(|x| x.done).and_then(|x| x.ap.filter(|ap| *ap != a.ap).map(|ap| (ap, x.ssid.clone())));
         let old = old.filter(|(ap, _)| t.device(ap.device).is_some());
@@ -741,12 +754,31 @@ impl Sim {
                 let login = mine.login.unwrap_or_default();
                 let start = q.data.first().is_some_and(|f| f & PEAP_START != 0);
                 let seed = format!("peap{}{}{:?}", self.now, self.seq, client);
+                let trust = crate::pki::login_trust(&login, self.clock(client.device).0);
                 let st = self.assoc.get_mut(&client).ok_or("no association under way")?;
                 if start || st.peap.is_none() {
-                    st.peap = Some(crate::peap::ClientTunnel::new(seed.as_bytes()));
+                    st.peap = Some(crate::peap::ClientTunnel::new(seed.as_bytes(), trust));
                 }
                 let tunnel = st.peap.as_mut().ok_or("no tunnel")?;
-                let data = tunnel.answer(&q.data, &login.user, &login.password)?;
+                let before = tunnel.report.clone();
+                let answered = tunnel.answer(&q.data, &login.user, &login.password);
+                let report = tunnel.report.clone();
+                if report != before && (report.presented || !report.error.is_empty()) {
+                    let seen = if report.presented {
+                        format!("the server showed the certificate of {} (issued by {})", report.subject, report.issuer)
+                    } else {
+                        "the server showed no certificate".to_string()
+                    };
+                    let checked = if !report.error.is_empty() {
+                        format!("the tunnel is refused: {}", report.error)
+                    } else if report.verified {
+                        "it chains to a CA this host trusts".to_string()
+                    } else {
+                        "it was not checked".to_string()
+                    };
+                    self.debug_log(client.device, DebugKind::Dot1x, &format!("{seen}; {checked}"));
+                }
+                let data = answered?;
                 self.send_eapol(t, client, ap, Eapol::Eap(Eap { code: EAP_RESPONSE, id: q.id, kind: Some(EAP_PEAP), data }));
                 Ok(())
             }
