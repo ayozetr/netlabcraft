@@ -2958,6 +2958,19 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::L2RelayTrustAll
         | Id::L2NoRelayTrustAll
         | Id::L2RelayTrusted
+        | Id::StormLevel
+        | Id::NoStormLevel
+        | Id::StormAction
+        | Id::NoStormAction
+        | Id::ShowStormControl
+        | Id::UdldGlobal
+        | Id::NoUdldGlobal
+        | Id::UdldMessageTime
+        | Id::UdldReset
+        | Id::UdldPort
+        | Id::UdldPortAggressive
+        | Id::NoUdldPort
+        | Id::ShowUdld
         | Id::L2NoRelayTrusted => l2sec::command(&mut c, spec.id, &args),
         Id::MonitorSource
         | Id::MonitorSourceVlan
