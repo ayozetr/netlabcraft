@@ -1917,6 +1917,7 @@ event	write request for	richiesta di scrittura di
 	{} of {} bytes used	{} di {} byte usati
 	No files on the stick.	Nessun file sulla chiavetta.
 	Save to stick	Salva sulla chiavetta
+	Delete file	Elimina file
 	USB {}	USB {}
 	Print test page	Stampa pagina di prova
 	This device has no USB port.	Questo dispositivo non ha porte USB.

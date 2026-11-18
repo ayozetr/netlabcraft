@@ -71,7 +71,7 @@ pub(crate) fn stick(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
             if dev.usb.files.is_empty() {
                 ui.label(RichText::new(tl("No files on the stick.")).color(tk.muted));
             }
-            delete = ui.add_enabled(usable && f.current.is_some(), egui::Button::new(tl("Delete"))).clicked();
+            delete = ui.add_enabled(usable && f.current.is_some(), egui::Button::new(tl("Delete file"))).clicked();
         });
         ui.separator();
         ui.vertical(|ui| {

@@ -1917,6 +1917,7 @@ event	write request for	写请求
 	{} of {} bytes used	已用 {} / {} 字节
 	No files on the stick.	U 盘上没有文件。
 	Save to stick	保存到 U 盘
+	Delete file	删除文件
 	USB {}	USB {}
 	Print test page	打印测试页
 	This device has no USB port.	此设备没有 USB 端口。

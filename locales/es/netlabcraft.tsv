@@ -1920,6 +1920,7 @@ event	no APN	sin APN
 	{} of {} bytes used	{} de {} bytes usados
 	No files on the stick.	No hay archivos en la memoria.
 	Save to stick	Guardar en la memoria
+	Delete file	Eliminar archivo
 	USB {}	USB {}
 	Print test page	Imprimir página de prueba
 	This device has no USB port.	Este dispositivo no tiene puerto USB.

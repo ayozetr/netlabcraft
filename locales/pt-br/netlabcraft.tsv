@@ -1917,6 +1917,7 @@ event	write request for	requisição de escrita de
 	{} of {} bytes used	{} de {} bytes usados
 	No files on the stick.	Nenhum arquivo no pendrive.
 	Save to stick	Salvar no pendrive
+	Delete file	Excluir arquivo
 	USB {}	USB {}
 	Print test page	Imprimir página de teste
 	This device has no USB port.	Este dispositivo não tem porta USB.

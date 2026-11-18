@@ -38,7 +38,7 @@ mod t {
         // Select the file and delete it through the command.
         h.query_all_by_label("readme.txt").next().unwrap().click();
         h.run_steps(2);
-        h.query_all_by_label("Delete").next().unwrap().click();
+        h.query_all_by_label("Delete file").next().unwrap().click();
         h.run_steps(3);
         assert!(h.state().session.topology.device(stick).unwrap().usb.files.is_empty());
         assert!(h.query_all_by_label("No files on the stick.").next().is_some());
