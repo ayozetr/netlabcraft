@@ -33,6 +33,7 @@ pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
 pub(crate) mod span;
+pub(crate) mod sweep;
 pub(crate) mod swroute;
 pub(crate) mod voice;
 mod vpn;
@@ -4534,6 +4535,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::Accepted => Ok("Accepted (not simulated yet).".into()),
         Id::Knob | Id::NoKnob => knobs::command(&mut c, spec, &args),
+        Id::ShowTerminal
+        | Id::ShowLine
+        | Id::ShowCdpInterface
+        | Id::ShowMacAging
+        | Id::More
+        | Id::Pwd
+        | Id::ShowSnmpCommunity
+        | Id::ShowSnmpHost
+        | Id::ShowSnmpGroup
+        | Id::ShowSnmpUser => sweep::command(&mut c, spec.id, &args),
         Id::BannerMotd => {
             let text = arg(0);
             let mut chars = text.chars();
