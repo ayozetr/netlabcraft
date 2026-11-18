@@ -2518,6 +2518,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpsecSaLifetime
         | Id::CryptoSetSaLifetime
         | Id::NoCryptoSetSaLifetime
+        | Id::CryptoSetPfs
+        | Id::NoCryptoSetPfs
         | Id::CryptoMatchAddress
         | Id::NoCryptoMatchAddress
         | Id::CryptoMapIf
