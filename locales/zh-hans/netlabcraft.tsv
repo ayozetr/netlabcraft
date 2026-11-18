@@ -220,6 +220,14 @@
 	cable	线缆
 	Cable Length	线缆长度
 	Cable Length…	线缆长度…
+	Loss budget	损耗预算
+	within the budget	在预算之内
+	degraded: little margin left	性能下降：余量不多
+	over the budget	超出预算
+	{} dB lost of {} dB ({} connectors, {} splices)	损耗 {} dB，预算 {} dB（{} 个连接器，{} 个熔接点）
+	More splices	增加熔接点
+	Fewer splices	减少熔接点
+	fiber loses {} dB, over the {} dB the transceivers tolerate	光纤损耗 {} dB，超过收发器可承受的 {} dB
 	Cable Modem	线缆调制解调器
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	线缆调制解调器：将其同轴口 (Coaxial0) 桥接到以太网口 (Ethernet1)
 	cable too long: {} m copper, max 100 m	线缆过长：铜缆 {} 米，最长 100 米

@@ -220,6 +220,14 @@
 	cable	câble
 	Cable Length	Longueur du câble
 	Cable Length…	Longueur du câble…
+	Loss budget	Bilan de pertes
+	within the budget	dans le bilan
+	degraded: little margin left	dégradé : peu de marge
+	over the budget	au-delà du bilan
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdus sur {} dB ({} connecteurs, {} épissures)
+	More splices	Plus d'épissures
+	Fewer splices	Moins d'épissures
+	fiber loses {} dB, over the {} dB the transceivers tolerate	la fibre perd {} dB, au-delà des {} dB que tolèrent les transceivers
 	Cable Modem	Modem câble
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Modem câble : relie son port coaxial (Coaxial0) à son port Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	câble trop long : {} m de cuivre, 100 m maximum

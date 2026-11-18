@@ -220,6 +220,14 @@
 	cable	Kabel
 	Cable Length	Kabellänge
 	Cable Length…	Kabellänge…
+	Loss budget	Dämpfungsbudget
+	within the budget	innerhalb des Budgets
+	degraded: little margin left	eingeschränkt: kaum Reserve
+	over the budget	über dem Budget
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB verloren von {} dB ({} Steckverbinder, {} Spleiße)
+	More splices	Mehr Spleiße
+	Fewer splices	Weniger Spleiße
+	fiber loses {} dB, over the {} dB the transceivers tolerate	die Faser verliert {} dB, mehr als die {} dB, die die Transceiver vertragen
 	Cable Modem	Kabelmodem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Kabelmodem: verbindet seinen Koaxial-Port (Coaxial0) mit seinem Ethernet-Port (Ethernet1)
 	cable too long: {} m copper, max 100 m	Kabel zu lang: {} m Kupfer, max. 100 m
