@@ -2,7 +2,7 @@
 //! authentication server's, with the controller passing EAP between them inside RADIUS
 //! (EAP-Message and Message-Authenticator, RFC 3579) as a pass-through authenticator.
 //!
-//! The tunnel is [`netlabcraft_wire::peap`]'s small TLS-like protocol (a real, if toy-sized,
+//! The tunnel is [`netlabcraft_wire::peap`]'s small TLS-like protocol (a real 2048-bit
 //! Diffie-Hellman exchange and AES-CBC records; no certificates). Inside it the server asks for
 //! the identity, then the password with EAP-GTC, checks them against its AAA users and says how
 //! it went with a Result TLV; the host's password is only ever on the wire encrypted. The
@@ -43,7 +43,7 @@ fn iv(seed: &[u8]) -> [u8; 16] {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ClientTunnel {
     random: [u8; 32],
-    secret: u64,
+    secret: Vec<u8>,
     server_random: [u8; 32],
     transcript: Vec<u8>,
     keys: Option<Keys>,
@@ -70,7 +70,7 @@ impl ClientTunnel {
     pub fn answer(&mut self, data: &[u8], user: &str, password: &str) -> Result<Vec<u8>, String> {
         let (flags, records) = peap::parse_peap(data).map_err(|e| e.to_string())?;
         if flags & FLAG_START != 0 {
-            let hello = Hello { random: self.random, public: peap::dh_public(self.secret), name: String::new() };
+            let hello = Hello { random: self.random, public: peap::dh_public(&self.secret), name: String::new() };
             let hs = peap::handshake(HS_CLIENT_HELLO, &hello.encode());
             self.transcript = hs.clone();
             self.keys = None;
@@ -87,11 +87,8 @@ impl ClientTunnel {
                 let hello = Hello::decode(sh).map_err(|e| e.to_string())?;
                 self.server_random = hello.random;
                 self.transcript.extend(peap::handshake(HS_SERVER_HELLO, sh));
-                let shared = peap::dh_shared(hello.public, self.secret);
-                if shared == 0 {
-                    return Err("the server's key share is not in the group".into());
-                }
-                let keys = Keys::derive(shared, &self.random, &self.server_random);
+                let shared = peap::dh_shared(&hello.public, &self.secret).ok_or("the server's key share is not valid in the group")?;
+                let keys = Keys::derive(&shared, &self.random, &self.server_random);
                 if keys.finished(false, &self.transcript) != *fin {
                     return Err("the server's Finished doesn't check out: not the tunnel this host started".into());
                 }
@@ -189,14 +186,11 @@ impl ServerSession {
                 self.client_random = hello.random;
                 self.random = seeded(seed);
                 let secret = peap::dh_secret(&[&self.random[..], seed].concat());
-                let shared = peap::dh_shared(hello.public, secret);
-                if shared == 0 {
-                    return Err("the host's key share is not in the group".into());
-                }
-                let keys = Keys::derive(shared, &self.client_random, &self.random);
+                let shared = peap::dh_shared(&hello.public, &secret).ok_or("the host's key share is not valid in the group")?;
+                let keys = Keys::derive(&shared, &self.client_random, &self.random);
                 let sh = peap::handshake(
                     HS_SERVER_HELLO,
-                    &Hello { random: self.random, public: peap::dh_public(secret), name: server.name.clone() }.encode(),
+                    &Hello { random: self.random, public: peap::dh_public(&secret), name: server.name.clone() }.encode(),
                 );
                 self.transcript = [peap::handshake(HS_CLIENT_HELLO, ch), sh.clone()].concat();
                 let fin = peap::handshake(HS_FINISHED, &keys.finished(false, &self.transcript));
