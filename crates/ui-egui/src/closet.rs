@@ -1265,6 +1265,10 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, sc: &Scene, pla
             Some(Item::Device(d)) => Some(d),
             _ => None,
         };
+        match app.ui.physical.closet.cable {
+            Some(end) => crate::cable_window::select(app, end),
+            None => app.ui.selected_cable = None,
+        }
     }
 }
 
@@ -1454,11 +1458,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
                 ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
             }
-            if ui.button(tl("Cable Length…")).clicked() {
-                let m = t.cable_length(&l).meters;
-                app.ui.physical.length = Some((l.a, m.to_string()));
-                ui.close();
-            }
+            crate::cable_window::menu_items(app, ui, l.a, true);
         }
         Target::Empty(x, y) => {
             ui.menu_button(tl("Add to this closet"), |ui| {
