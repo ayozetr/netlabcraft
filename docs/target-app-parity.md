@@ -17,7 +17,7 @@ to end is in [`labs/`](labs/README.md).
 | Console grammar entries | **2030** across 47 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
-| Lab-book labs | **77** (+1 unnumbered: the cellular lab) | measured: numbered files in `docs/labs/` (the course column of the table in `docs/labs/README.md` has the split) |
+| Lab-book labs | **78** (+1 unnumbered: the cellular lab) | measured: numbered files in `docs/labs/` (the course column of the table in `docs/labs/README.md` has the split) |
 | Tests | **770** | measured: sum of "passed" from the CI run on `main` after the last of the nine M9 merges (`cargo test --workspace --lib --bins --tests`, 22 result lines); not re-measured since |
 | **Ready for real work** (weighted) | **~92%** | estimated; written weights below (92.5 computed, re-scored 2026-11-13) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
@@ -158,7 +158,7 @@ first estimate) counted topics as present without weighing their depth or the un
 ## Stage
 
 **Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
-watch frames, grade an activity, save), and the 63-lab book (and the cellular lab) runs as written, by the engine and
+watch frames, grade an activity, save), and the 78-lab book (and the cellular lab) runs as written, by the engine and
 over MCP. Every alpha gate and every beta gate is met; packages are built by `release.yml`.
 Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
@@ -193,6 +193,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1347 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1426 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | Cables are objects (see [ui-parity.md](ui-parity.md)): `link.info` reports a cable's ends, kind, length, state and why it is down; the Summary counts 205 `c!(` entries. |
+| 2026-11-18 | minor | Multiple spanning tree, IGMP snooping, IP source guard, `errdisable detect cause` and the configuration archive (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) item 17): counts measured again, 2030 grammar entries and 78 numbered lab files; percentages not re-scored. |
 | 2026-11-17 | minor | Consistency pass after the Preferences, closet, device-box and model rounds: the Summary said 202 engine commands (it is 204); every other count was measured again from the code and holds. Percentages not re-scored. |
 | 2026-11-18 | minor | Set Background Image and Image Cleanup (see [ui-parity.md](ui-parity.md)): 11 engine commands added (`place.scene.set`, `place.background.set` and `.clear`, `place.icon.set` and `.clear`, `place.size.set` and `.clear`, `workspace.background.set` and `.clear`, `image.list`, `image.remove`); one keyboard shortcut; lab file version 12; 35 rows in each catalog. Not re-scored. |
 | 2026-11-18 | minor | Counts measured again: 230 `c!(` entries in `crates/engine/src/catalog.rs` (it said 205: the commands of several changes had not been counted), 91 keyboard shortcuts, lab file version 13 (containers, inventory shelves, cable pegboards, industrial control panels, hung cables, the working closet). Percentages not re-scored. |
