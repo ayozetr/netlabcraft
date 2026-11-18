@@ -12,6 +12,7 @@
 //! length, identification, protocol (51), source and destination are covered. This simulator's
 //! IPv4 header has no options, so the 20-byte header is all there is.
 
+use crate::ipv6::Ipv6;
 use crate::suite::Integ;
 use crate::{Ipv4, Result, WireError};
 
@@ -78,6 +79,58 @@ impl Ah {
             }
         }
         integ.mac(key, &image)
+    }
+
+    /// The ICV over an IPv6 packet whose payload is this AH header with a zero ICV followed by
+    /// the protected data (§3.3.3.1.2): the traffic class, the flow label and the hop limit are
+    /// mutable and count as zero; the version, payload length, next header, source and
+    /// destination are covered. The simulator's IPv6 header has no extension headers.
+    fn icv_over6(integ: Integ, key: &[u8], ip: &Ipv6) -> Vec<u8> {
+        let mut image = ip.encode();
+        if let Some(b) = image.first_mut() {
+            *b &= 0xf0;
+        }
+        for at in [1usize, 2, 3, 7] {
+            if let Some(b) = image.get_mut(at) {
+                *b = 0;
+            }
+        }
+        integ.mac(key, &image)
+    }
+
+    /// Transport mode over IPv6 (§3.1.1): AH goes between the IPv6 header and its payload, and
+    /// its next header is the packet's. The header is a multiple of 64 bits long for the 96-bit
+    /// ICVs of HMAC-MD5-96 and HMAC-SHA1-96 (RFC 4302 §3.3.3.2.2 asks for it on IPv6).
+    pub fn protect_transport6(integ: Integ, key: &[u8], packet: &Ipv6, spi: u32, seq: u32) -> Ipv6 {
+        let mut ah = Ah { next: packet.next_header, spi, seq, icv: vec![0; integ.icv_len()], payload: packet.payload.clone() };
+        let mut out = Ipv6 { next_header: PROTO_AH, payload: ah.encode(), ..packet.clone() };
+        ah.icv = Ah::icv_over6(integ, key, &out);
+        out.payload = ah.encode();
+        out
+    }
+
+    /// Checks the ICV of a received IPv6 AH packet (next header 51) with `key`.
+    pub fn verify6(&self, integ: Integ, key: &[u8], ip: &Ipv6) -> bool {
+        if ip.next_header != PROTO_AH || self.icv.len() != integ.icv_len() {
+            return false;
+        }
+        let zeroed = Ah { icv: vec![0; self.icv.len()], ..self.clone() };
+        let image = Ipv6 { payload: zeroed.encode(), ..ip.clone() };
+        let want = Ah::icv_over6(integ, key, &image);
+        want.len() == self.icv.len() && want.iter().zip(&self.icv).fold(0u8, |acc, (a, b)| acc | (a ^ b)) == 0
+    }
+
+    /// Opens a received transport-mode IPv6 AH packet: the packet it wraps, with the next
+    /// header as its own, once the ICV checks out and the SPI is the one expected.
+    pub fn open_transport6(ip: &Ipv6, integ: Integ, key: &[u8], want_spi: u32) -> Result<Ipv6> {
+        let ah = Ah::decode(&ip.payload)?;
+        if ah.spi != want_spi {
+            return Err(WireError::Unsupported("ah", format!("SPI {}, expected {want_spi}", ah.spi)));
+        }
+        if !ah.verify6(integ, key, ip) {
+            return Err(WireError::Checksum("ah integrity"));
+        }
+        Ok(Ipv6 { next_header: ah.next, payload: ah.payload, ..ip.clone() })
     }
 
     /// Tunnel mode (§3.1.1): `outer` is the new IPv4 header (its protocol is set to 51 and its
@@ -295,5 +348,45 @@ mod tests {
         assert!(Ah::decode(&reserved).is_err(), "reserved SPI");
         // A header whose length claims more than the packet holds.
         assert!(Ah::decode(&[4, 4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 2]).is_err());
+    }
+    #[test]
+    fn ipv6_transport_mode_covers_the_addresses_and_ignores_the_hop_limit() {
+        let key = [7u8; 20];
+        let packet = Ipv6 {
+            hop_limit: 1,
+            next_header: 89,
+            src: "fe80::1".parse().unwrap(),
+            dst: "ff02::5".parse().unwrap(),
+            payload: vec![3, 1, 0, 4, 1, 1, 1, 1],
+        };
+        for integ in [Integ::HmacSha1_96, Integ::HmacMd5_96] {
+            let k = &key[..integ.key_len()];
+            let p = Ah::protect_transport6(integ, k, &packet, 0x100, 9);
+            assert_eq!(p.next_header, 51);
+            // 24 bytes of header (a multiple of 8, as IPv6 wants), then the OSPFv3 packet.
+            assert_eq!(&p.payload[..12], &[89, 4, 0, 0, 0, 0, 1, 0, 0, 0, 0, 9]);
+            assert_eq!(&p.payload[24..], &packet.payload[..]);
+            let back = Ipv6::decode(&p.encode()).unwrap();
+            assert_eq!(Ah::open_transport6(&back, integ, k, 0x100).unwrap(), packet);
+            // Mutable fields: the hop limit, the traffic class and the flow label.
+            let mut raw = p.encode();
+            raw[7] = 0;
+            raw[0] = 0x6f;
+            raw[1] = 0xff;
+            assert!(Ah::open_transport6(&Ipv6::decode(&raw).unwrap(), integ, k, 0x100).is_ok());
+            // Covered: the source, the key, the SPI the receiver expects, the payload.
+            let spoofed = Ipv6 { src: "fe80::2".parse().unwrap(), ..back.clone() };
+            assert!(Ah::open_transport6(&spoofed, integ, k, 0x100).is_err());
+            assert!(Ah::open_transport6(&back, integ, &vec![8; integ.key_len()], 0x100).is_err());
+            assert!(Ah::open_transport6(&back, integ, k, 0x101).is_err());
+            let mut bad = back.clone();
+            *bad.payload.last_mut().unwrap() ^= 1;
+            assert!(Ah::open_transport6(&bad, integ, k, 0x100).is_err());
+            // A truncated packet is an error, never a panic.
+            for n in 0..p.payload.len() {
+                let cut = Ipv6 { payload: p.payload[..n].to_vec(), ..p.clone() };
+                let _ = Ah::open_transport6(&cut, integ, k, 0x100);
+            }
+        }
     }
 }

@@ -979,6 +979,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 router ospf <1-65535>` | config | router, switch | Stop OSPFv3 |
 | `ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Run OSPFv3 on this interface |
 | `no ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Stop OSPFv3 on this interface |
+| `ospfv3 authentication ipsec spi <256-4294967295> {md5\|sha1} [0] KEY` | interface, subinterface | router, switch | Protect OSPFv3 packets here with an AH header (the key is 32 hex digits for md5, 40 for sha1) |
+| `ospfv3 authentication null` | interface, subinterface | router, switch | No AH header here, whatever the area says |
+| `no ospfv3 authentication` | interface, subinterface | router, switch | Use the area's protection again |
+| `area <0-4294967295> authentication ipsec spi <256-4294967295> {md5\|sha1} [0] KEY` |  | router, switch | Protect the OSPFv3 packets of every interface in the area with an AH header |
+| `area <0-4294967295> authentication null` |  | router, switch | No AH header in this area unless an interface sets one |
+| `no area <0-4294967295> authentication` |  | router, switch | Take the area's OSPFv3 protection off |
 | `show ipv6 ospf neighbor` | user, privileged | router, switch | OSPFv3 neighbours |
 | `ipv6 router eigrp <1-65535>` | config | router, switch | Start or configure EIGRP for IPv6 |
 | `no ipv6 router eigrp <1-65535>` | config | router, switch | Stop EIGRP for IPv6 |
