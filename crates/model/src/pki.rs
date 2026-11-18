@@ -21,6 +21,14 @@ pub const MAX_PEM: usize = 16 * 1024;
 /// Certificate lifetime limits of the CA, in days.
 pub const MAX_DAYS: u32 = 36_500;
 pub const DEFAULT_DAYS: u32 = 365;
+/// Hours a CRL the CA publishes is good for, and the range `lifetime crl` takes.
+pub const DEFAULT_CRL_HOURS: u32 = 168;
+pub const MAX_CRL_HOURS: u32 = 8760;
+/// Most serial numbers a CA revokes, and the longest one in hex digits.
+pub const MAX_REVOKED: usize = 128;
+pub const MAX_SERIAL_HEX: usize = 40;
+/// Longest CRL in PEM text.
+pub const MAX_CRL_PEM: usize = 16 * 1024;
 
 /// An RSA key pair: its label and its two primes (big-endian hex).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -40,6 +48,8 @@ pub enum Enrollment {
     SelfSigned,
     /// `enrollment url http://ADDRESS`: the address of a CA, as written.
     Url(String),
+    /// `enrollment terminal`: requests and certificates are copied by hand.
+    Terminal,
 }
 
 /// `crypto pki trustpoint NAME`.
@@ -52,8 +62,17 @@ pub struct Trustpoint {
     pub subject_name: String,
     /// `rsakeypair LABEL`.
     pub rsakeypair: String,
-    /// `revocation-check none` (revocation is never checked; the line records the choice).
+    /// `revocation-check … none`: a certificate whose revocation status cannot be found is
+    /// accepted (alone: revocation is never checked).
     pub revocation_none: bool,
+    /// `revocation-check crl …`: certificates of this trustpoint's CA are checked against its CRL.
+    pub revocation_crl: bool,
+    /// `fqdn NAME`: a DNS name the trustpoint's certificate is also for.
+    pub fqdn: String,
+    /// `ip-address A.B.C.D`: an address the trustpoint's certificate is also for.
+    pub ip_address: String,
+    /// The CA's revocation list (PEM), once fetched or pasted.
+    pub crl: String,
     /// The device's own certificate (PEM), once enrolled.
     pub certificate: String,
     /// The CA's certificate (PEM), once authenticated, or the certificate itself when
@@ -76,6 +95,12 @@ pub struct CaServer {
     pub enabled: bool,
     /// The CA's own certificate (PEM), made when it was first enabled.
     pub certificate: String,
+    /// Serial numbers revoked (`crypto pki server NAME revoke`), upper-case hex.
+    pub revoked: Vec<String>,
+    /// `lifetime crl HOURS`.
+    pub crl_hours: u32,
+    /// The number of the last CRL it published, counted up at every revocation.
+    pub crl_number: u32,
 }
 
 impl Default for CaServer {
@@ -87,6 +112,9 @@ impl Default for CaServer {
             grant_auto: false,
             enabled: false,
             certificate: String::new(),
+            revoked: Vec::new(),
+            crl_hours: DEFAULT_CRL_HOURS,
+            crl_number: 0,
         }
     }
 }
@@ -166,6 +194,16 @@ impl Pki {
             }
             pem(&mut t.certificate);
             pem(&mut t.ca_certificate);
+            text(&mut t.fqdn);
+            if !t.fqdn.chars().all(|c| c.is_ascii_graphic()) {
+                t.fqdn.clear();
+            }
+            if t.ip_address.parse::<std::net::Ipv4Addr>().is_err() {
+                t.ip_address.clear();
+            }
+            if t.crl.len() > MAX_CRL_PEM || (!t.crl.is_empty() && !t.crl.starts_with("-----BEGIN X509 CRL-----")) {
+                t.crl.clear();
+            }
         }
         if let Some(s) = &mut self.server {
             if !name_ok(&s.name) {
@@ -173,6 +211,13 @@ impl Pki {
             } else {
                 text(&mut s.issuer_name);
                 s.lifetime_days = s.lifetime_days.clamp(1, MAX_DAYS);
+                s.crl_hours = s.crl_hours.clamp(1, MAX_CRL_HOURS);
+                s.revoked.retain(|r| !r.is_empty() && r.len() <= MAX_SERIAL_HEX && r.bytes().all(|b| b.is_ascii_hexdigit()));
+                for r in &mut s.revoked {
+                    r.make_ascii_uppercase();
+                }
+                s.revoked.dedup();
+                s.revoked.truncate(MAX_REVOKED);
                 pem(&mut s.certificate);
                 if s.certificate.is_empty() {
                     s.enabled = false;
@@ -239,5 +284,37 @@ mod tests {
         let json = serde_json::to_string(&p).unwrap();
         assert_eq!(serde_json::from_str::<Pki>(&json).unwrap(), p);
         assert_eq!(serde_json::from_str::<Pki>("{}").unwrap(), Pki::default());
+    }
+
+    #[test]
+    fn sanitize_bounds_the_revocation_and_name_fields() {
+        let pem_crl = "-----BEGIN X509 CRL-----\nAA\n";
+        let mut p = Pki {
+            trustpoints: vec![
+                Trustpoint { name: "T".into(), fqdn: "bad name".into(), ip_address: "x".into(), crl: "junk".into(), ..Trustpoint::default() },
+                Trustpoint { name: "U".into(), fqdn: "r1.lab".into(), ip_address: "10.0.0.1".into(), crl: pem_crl.into(), ..Trustpoint::default() },
+            ],
+            server: Some(CaServer {
+                name: "CA".into(),
+                revoked: vec!["0a".into(), "zz".into(), String::new(), "F".repeat(41)],
+                crl_hours: 0,
+                certificate: "-----BEGIN CERTIFICATE-----\nAA\n".into(),
+                enabled: true,
+                ..CaServer::default()
+            }),
+            ..Pki::default()
+        };
+        p.sanitize();
+        let t = &p.trustpoints;
+        assert!(t[0].fqdn.is_empty() && t[0].ip_address.is_empty() && t[0].crl.is_empty());
+        assert_eq!((t[1].fqdn.as_str(), t[1].ip_address.as_str(), t[1].crl.as_str()), ("r1.lab", "10.0.0.1", pem_crl));
+        let s = p.server.as_ref().unwrap();
+        assert_eq!((s.revoked.as_slice(), s.crl_hours), (&["0A".to_string()][..], 1));
+        let mut many = Pki { server: p.server.clone(), ..Pki::default() };
+        if let Some(sv) = many.server.as_mut() {
+            sv.revoked = (0..300).map(|i| format!("{i:X}")).collect();
+        }
+        many.sanitize();
+        assert_eq!(many.server.unwrap().revoked.len(), MAX_REVOKED);
     }
 }
