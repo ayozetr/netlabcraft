@@ -35,6 +35,9 @@ pub const FIBER_MULTI_MAX_M: u32 = 550;
 pub const FIBER_SINGLE_MAX_M: u32 = 10_000;
 /// The id of the octal asynchronous card of a modular router.
 pub const OCTAL_CARD: &str = "Card-8A";
+/// Reverse Telnet to line N of an octal card uses TCP port 2000 plus N (the public convention for
+/// asynchronous lines): 2001 is line 1, the first line of the first card.
+pub const ASYNC_BASE_PORT: u16 = 2000;
 /// The asynchronous lines of one octal card.
 pub const OCTAL_LINES: u8 = 8;
 /// The name of a router's or switch's USB console port.
@@ -635,6 +638,17 @@ impl Topology {
     /// The octal cable that reaches a device's Console port.
     pub fn octal_at_device(&self, id: DeviceId) -> Option<&OctalCable> {
         self.octals.iter().find(|o| o.device == id)
+    }
+
+    /// The octal cable a reverse Telnet to TCP port `port` (2001 to 2000 plus the lines of the
+    /// card) reaches, with its line number (1-based, the number `line 1 8` and `clear line` use).
+    pub fn octal_at_port(&self, router: DeviceId, port: u16) -> Option<(u8, &OctalCable)> {
+        let n = u8::try_from(port.checked_sub(ASYNC_BASE_PORT)?).ok().filter(|n| *n >= 1)?;
+        let lines = self.device(router)?.octal_lines();
+        if n > lines {
+            return None;
+        }
+        self.octal_at_line(router, n - 1).map(|o| (n, o))
     }
 
     /// The octal cable plugged into line `line` of a router's octal cards.

@@ -195,7 +195,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
 | `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
 | `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
-| `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)` |
+| `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (from a router's own console it is reached by reverse Telnet: telnet to the router's address and port 2000 plus the line number)` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |
 | `cli.script` | Run commands |  |  | `{"device", "lines": ["…"] or "text"} → {"outputs"}` |
 | `cli.help` | Command help (?) |  |  | `{"device", "line"} → {"help"}` |
@@ -385,6 +385,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf hello-interval` | interface, subinterface | router, switch | Hellos every 10 seconds again |
 | `ip ospf dead-interval <1-65535>` | interface, subinterface | router, switch | Silence before a neighbour is dropped |
 | `no ip ospf dead-interval` | interface, subinterface | router, switch | Four hello intervals again |
+| `ip ospf retransmit-interval <1-65535>` | interface, subinterface | router, switch | Seconds before an unacknowledged update is sent again (5) |
+| `no ip ospf retransmit-interval` | interface, subinterface | router, switch | Five seconds again |
+| `ip ospf transmit-delay <1-65535>` | interface, subinterface | router, switch | Seconds added to the age of every LSA sent (1) |
+| `no ip ospf transmit-delay` | interface, subinterface | router, switch | One second again |
 | `ip ospf network {point-to-point\|broadcast}` | interface, subinterface | router, switch | Link type: point-to-point elects no DR |
 | `no ip ospf network` | interface, subinterface | router, switch | The link type its medium has |
 | `ip ospf authentication` | interface, subinterface | router, switch | Authenticate OSPF packets here with a clear-text password |
@@ -412,7 +416,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no send-lifetime` |  | router, switch | Sign with the key at any time again |
 | `show key chain` | user, privileged | router, switch | Every key chain, its keys and when they are valid |
 | `show key chain NAME` | user, privileged | router, switch | One key chain |
-| `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [tag <0-4294967295>] [subnets] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
+| `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [tag <0-4294967295>] [subnets] [nssa-only] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
 | `no redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
 | `clear ip ospf <1-65535> process` | privileged | router, switch | Restart this OSPF process |
@@ -690,8 +694,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
-| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Stop one kind of OSPF report |
+| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet\|retransmission` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again |
+| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet\|retransmission` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
@@ -735,9 +739,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no area <0-4294967295> stub` |  | router, switch | A normal area again |
 | `no area <0-4294967295> stub no-summary` |  | router, switch | Let routes from other areas in again |
 | `area <1-4294967295> nssa` |  | router, switch | Not-so-stubby area: its routers' external routes travel as type 7 LSAs, and none come in |
-| `area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate] [translate type7 always]` |  | router, switch | Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area |
+| `area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]` |  | router, switch | Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area |
 | `no area <1-4294967295> nssa` |  | router, switch | A normal area again |
-| `no area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate] [translate type7 always]` |  | router, switch | Undo only those options of the NSSA |
+| `no area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]` |  | router, switch | Undo only those options of the NSSA |
 | `area <1-4294967295> default-cost <0-16777215>` |  | router, switch | Border router: the metric of the default route it sends into a stub area or NSSA |
 | `no area <1-4294967295> default-cost` |  | router, switch | Default route metric 1 again |
 | `area <1-4294967295> virtual-link A.B.C.D` |  | router, switch | Join the backbone through this area to the border router with that router ID |
@@ -1160,6 +1164,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no enable password` | config | router, switch, firewall | Remove the enable password |
 | `line console 0` | config | router, switch | Configure the console line |
 | `line vty <first> [<last>]` | config | router, switch | Configure the remote-access lines |
+| `line <1-16>` | config | router | Configure one asynchronous line of an octal card |
+| `line <first> <last>` | config | router | Configure a range of asynchronous lines of an octal card |
 | `password [0\|7] PASSWORD` |  | router, switch | Set the line password |
 | `no password` |  | router, switch | Remove the line password |
 | `login` |  | router, switch | Ask for the line password |
@@ -1392,6 +1398,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no nrzi-encoding` | interface, subinterface | router | Return this setting to its default |
 | `loopback` | interface, subinterface | router | Loop the serial line back on itself |
 | `no loopback` | interface, subinterface | router | Return this setting to its default |
+| `modem {inout\|in\|out}` |  | router, switch | Let a modem or a reverse Telnet use this line (kept, not simulated) |
+| `no modem {inout\|in\|out}` |  | router, switch | Return this setting to its default |
 | `exec` |  | router, switch | Start an EXEC session on this line (on) |
 | `no exec` |  | router, switch | Turn this off (it is on by default) |
 | `session-timeout <0-35791>` |  | router, switch | Minutes an outgoing session may sit idle |
@@ -1567,6 +1575,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
 | `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
+| `telnet A.B.C.D <port>` | user, privileged | router | Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it) |
+| `clear line <1-16>` | privileged | router | End the reverse Telnet session held on a line of an octal card |
 | `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |

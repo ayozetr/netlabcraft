@@ -59,6 +59,7 @@ pub mod mgmt;
 pub mod netflow;
 pub mod ospf;
 pub mod ospf6;
+pub mod ospf_flood;
 pub mod ospf_lsdb;
 pub mod parts;
 pub mod pdu;
@@ -1226,9 +1227,8 @@ pub struct Sim {
     last_ra_flags: u8,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
     ctl_until: u64,
-    /// OSPF adjacencies already announced on the wire: (router, interface, neighbour's router
-    /// ID). A new one gets its database exchange.
-    ospf_adjacent: std::collections::BTreeSet<(DeviceId, String, Ipv4Addr)>,
+    /// OSPF's neighbour state machines, databases and flooding on the wire.
+    ospf_rt: ospf_flood::Runtime,
     /// Server files FTP changed, for the lab to apply (see [`Sim::take_ftp_changes`]).
     ftp_changes: Vec<(DeviceId, String, Option<String>)>,
     /// FTP data connections: (server, data port) → the client's port.
@@ -1258,6 +1258,8 @@ pub struct Sim {
     vrrp_acting: BTreeMap<String, fhrp::Acting>,
     /// GLBP round-robin: the forwarder the next ARP answer names, by (gateway, group).
     glbp_next: BTreeMap<(DeviceId, u16), usize>,
+    /// Reverse Telnet sessions: (router, async line 1-based) to the device whose console opened it.
+    async_sessions: BTreeMap<(DeviceId, u8), DeviceId>,
     /// Last known link state of every router and switch port, for link messages.
     links_seen: BTreeMap<(DeviceId, usize), bool>,
     /// Lab changes waiting for the engine.
@@ -1380,6 +1382,39 @@ impl Sim {
         if let Some(s) = self.state.get_mut(&d) {
             s.log.clear();
         }
+    }
+
+    /// Who holds line `line` (1-based) of a router's octal card with a reverse Telnet session.
+    pub fn async_owner(&self, router: DeviceId, line: u8) -> Option<DeviceId> {
+        self.async_sessions.get(&(router, line)).copied()
+    }
+
+    /// Takes a line for a session of `owner`; false when the line is already in use.
+    pub fn async_claim(&mut self, router: DeviceId, line: u8, owner: DeviceId) -> bool {
+        if self.async_sessions.contains_key(&(router, line)) || self.async_sessions.len() >= 4_096 {
+            return false;
+        }
+        self.async_sessions.insert((router, line), owner);
+        true
+    }
+
+    /// Frees a line (the session ended or `clear line` cut it).
+    pub fn async_release(&mut self, router: DeviceId, line: u8) {
+        self.async_sessions.remove(&(router, line));
+    }
+
+    /// The lines of a router that have a session, with the device that opened each.
+    pub fn async_in_use(&self, router: DeviceId) -> Vec<(u8, DeviceId)> {
+        self.async_sessions.iter().filter(|((r, _), _)| *r == router).map(|((_, l), o)| (*l, *o)).collect()
+    }
+
+    /// Whether a TCP connection to `port` of router `d` reaches a free asynchronous line that was
+    /// set to take Telnet (`transport input telnet`) and has an octal cable.
+    fn async_accepts(&self, t: &Topology, d: &Device, port: u16) -> bool {
+        let Some((line, _)) = t.octal_at_port(d.id, port) else { return false };
+        d.kind == DeviceKind::Router
+            && d.access.async_transport.get(&line).is_some_and(|l| l.contains(&netlabcraft_model::RemoteProto::Telnet))
+            && !self.async_sessions.contains_key(&(d.id, line))
     }
 
     /// Seconds left of a `login block-for` quiet period on a device (`None`: logins allowed).
@@ -1621,6 +1656,7 @@ impl Sim {
         self.flush_traps(t);
         self.voice_tick(t);
         self.bgp_refresh(t);
+        self.ospf_sync(t);
         self.schedule_control(t, deadline);
         self.schedule_beacons(t, deadline);
         let mut count = 0usize;
@@ -1678,6 +1714,12 @@ impl Sim {
                         x.hold_done |= x.holddown_until <= h;
                     }
                 }
+                continue;
+            }
+            // OSPF's hellos, retransmissions, refreshes and ageing.
+            if let Some(h) = self.ospf_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                self.ospf_fire(t);
                 continue;
             }
             // So is a VRRP group's master down interval.
@@ -2981,7 +3023,8 @@ impl Sim {
         let udp_port = if ip.protocol == PROTO_UDP { Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| u.dst_port) } else { None };
         let rip = udp_port == Some(netlabcraft_wire::control::RIP_PORT);
         let hsrp = udp_port == Some(netlabcraft_wire::control::HSRP_PORT);
-        if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) {
+        let ospf_unicast = ip.protocol == netlabcraft_wire::control::PROTO_OSPF && ip.dst == ifc.net.addr;
+        if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) || ospf_unicast {
             if d.kind.is_host() {
                 return Ok(());
             }
@@ -3029,6 +3072,9 @@ impl Sim {
                     return Ok(());
                 }
                 self.st(d.id).ospf_seq.insert(key, seq);
+            }
+            if ip.protocol == netlabcraft_wire::control::PROTO_OSPF && d.ospf.is_some() {
+                self.ospf_rx(t, d, ifc, &ip);
             }
             if (debug.1 || debug.2 || debug.3)
                 && ip.protocol == netlabcraft_wire::control::PROTO_OSPF
@@ -3875,6 +3921,9 @@ impl Sim {
         if matches!(seg.dst_port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) {
             return self.login_server_in(t, d, ip, &seg);
         }
+        if d.kind == DeviceKind::Router && t.octal_at_port(d.id, seg.dst_port).is_some() {
+            return self.async_server_in(t, d, ip, &seg);
+        }
         let st = self.st(d.id);
         if !st.tcp_wait.contains(&(seg.dst_port, seg.src_port)) {
             if seg.flags & tcp::RST == 0 {
@@ -3967,6 +4016,36 @@ impl Sim {
         Ok(())
     }
 
+    /// Reverse Telnet to an asynchronous line: SYN-ACK when the line has an octal cable, takes
+    /// Telnet and is free, RST otherwise (the session itself runs in the console layer).
+    fn async_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &Tcp) -> Result<(), String> {
+        let reply = |flags: u8, seq: u32, ack: u32| Tcp {
+            src_port: seg.dst_port,
+            dst_port: seg.src_port,
+            seq,
+            ack,
+            flags,
+            window: 4128,
+            payload: Vec::new(),
+        };
+        if seg.flags & tcp::SYN != 0 {
+            if self.async_accepts(t, d, seg.dst_port) {
+                self.note_tcp(d.id, (ip.dst, seg.dst_port), (ip.src, seg.src_port));
+                return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::SYN | tcp::ACK, 7_000, seg.seq.wrapping_add(1)));
+            }
+            self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::RST | tcp::ACK, 0, seg.seq.wrapping_add(1)))?;
+            return Err(format!(
+                "line {} does not accept a reverse Telnet now",
+                seg.dst_port.saturating_sub(netlabcraft_model::cable::ASYNC_BASE_PORT)
+            ));
+        }
+        if seg.flags & tcp::FIN != 0 || !seg.payload.is_empty() {
+            let len = (seg.payload.len() as u32).max(u32::from(seg.flags & tcp::FIN != 0));
+            return self.tcp_send(t, d, ip.dst, ip.src, &reply(tcp::ACK, seg.ack, seg.seq.wrapping_add(len)));
+        }
+        Ok(())
+    }
+
     /// Remote logins: SYN-ACK when the vty lines accept the protocol, RST otherwise; data and
     /// FINs are acknowledged (the session itself runs in the console layer).
     fn login_server_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4, seg: &Tcp) -> Result<(), String> {
@@ -4019,7 +4098,8 @@ impl Sim {
         // A connection to one of our own addresses never touches a cable.
         if l3_ifaces(d).iter().any(|i| i.net.addr == dst) {
             let proto = if port == 22 { netlabcraft_model::RemoteProto::Ssh } else { netlabcraft_model::RemoteProto::Telnet };
-            let open = matches!(port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) && d.access.accepts(proto);
+            let open = (matches!(port, 22 | 23) && matches!(d.kind, DeviceKind::Router | DeviceKind::Switch) && d.access.accepts(proto))
+                || self.async_accepts(t, d, port);
             return if open { Ok(()) } else { Err(SimError::NoSource(format!("{dst} refused the connection"))) };
         }
         let src = self.source_for(t, d, dst)?;

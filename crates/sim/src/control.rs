@@ -9,11 +9,10 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{DeviceId, MacAddr, VlanId};
 use netlabcraft_model::{DeviceKind, End, Topology};
-use netlabcraft_wire::control::{self, Bpdu, BridgeId, OspfHello};
-use netlabcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
+use netlabcraft_wire::control::{self, Bpdu, BridgeId};
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{DebugKind, Sim, l3_ifaces, port_up};
+use crate::{Sim, l3_ifaces, port_up};
 
 /// Hello time of spanning tree.
 pub const BPDU_EVERY_US: u64 = 2_000_000;
@@ -237,176 +236,16 @@ impl Sim {
         }
     }
 
+    /// OSPF hellos are due on every interface that is not passive. They are built when they are
+    /// due (`ospf_hello`), so they list the neighbours as they are then.
     fn send_ospf_hellos(&mut self, t: &Topology, at: u64) {
         if !t.devices.iter().any(|d| d.ospf.is_some()) {
             return;
         }
         let st = self.ospf_state(t);
         for (id, ifs) in &st.interfaces {
-            let (Some(d), Some(rid)) = (t.device(*id), st.router_ids.get(id)) else { continue };
             for (name, ..) in ifs.iter().filter(|x| !x.3) {
-                let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == *name) else { continue };
-                let heard: Vec<Ipv4Addr> = st.neighbors.get(id).into_iter().flatten().filter(|n| n.iface == *name).map(|n| n.router_id).collect();
-                let seg = st.segments.get(&(*id, name.clone())).copied();
-                let area = seg.map_or(0, |s| s.area);
-                let (hello_secs, dead) = crate::ospf::timers(d, name);
-                // DR and BDR are only announced once there is someone to elect with.
-                let elected = |a: Option<Ipv4Addr>| a.filter(|_| !heard.is_empty()).unwrap_or(Ipv4Addr::UNSPECIFIED);
-                let hello = OspfHello {
-                    router_id: *rid,
-                    area,
-                    mask: ifc.net.mask(),
-                    hello_secs,
-                    dead_secs: u32::from(dead),
-                    priority: seg.map_or(1, |s| s.priority),
-                    dr: elected(seg.and_then(|s| s.dr)),
-                    bdr: elected(seg.and_then(|s| s.bdr)),
-                    neighbors: heard.clone(),
-                    options: crate::ospf::hello_options(d, &ifc),
-                };
-                // One copy per key while several message-digest keys are held (a key rollover).
-                let now = self.clock(d.id).0;
-                let encoded = hello.encode();
-                for (n, sign) in (0u64..).zip(crate::ospf::auth_sends(d, &ifc, at, now)) {
-                    let payload = control::ospf_authenticate(encoded.clone(), &sign);
-                    let ip = Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload };
-                    self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + n * 100);
-                }
-            }
-        }
-        self.ospf_exchanges(t, &st, at);
-    }
-
-    /// A router-LSA as the computed state describes the router in one area: a stub link per
-    /// OSPF network, a point-to-point link per neighbour.
-    fn router_lsa(st: &crate::ospf::OspfState, stamps: &crate::ospf_lsdb::Stamps, at: u64, id: DeviceId, area: u32) -> Option<RouterLsa> {
-        let rid = *st.router_ids.get(&id)?;
-        let mut links = Vec::new();
-        for (name, net, cost, _) in st.interfaces.get(&id).into_iter().flatten() {
-            if st.segments.get(&(id, name.clone())).is_some_and(|s| s.area != area) {
-                continue;
-            }
-            let metric = u16::try_from(*cost).unwrap_or(u16::MAX);
-            for n in st.neighbors.get(&id).into_iter().flatten().filter(|n| n.iface == *name) {
-                links.push(RouterLink { kind: 1, id: n.router_id, data: net.addr, metric });
-            }
-            links.push(RouterLink { kind: 3, id: net.network().addr, data: net.mask(), metric });
-        }
-        Some(RouterLsa { router_id: rid, seq: crate::ospf_lsdb::router_lsa_seq(stamps, at, area, rid), links })
-    }
-
-    /// What `debug ip ospf adj` and `debug ip ospf events` report when adjacencies come or go:
-    /// the adjacency states a neighbour walks through, the DR election, and the SPF run.
-    fn ospf_debug_changes(
-        &mut self,
-        t: &Topology,
-        st: &crate::ospf::OspfState,
-        fresh: &[(DeviceId, String, Ipv4Addr)],
-        gone: &[(DeviceId, String, Ipv4Addr)],
-    ) {
-        let flags =
-            |s: &Self, id: DeviceId| s.state.get(&id).map_or((false, false), |x| (x.debug_on(DebugKind::OspfAdj), x.debug_on(DebugKind::OspfEvents)));
-        for (id, iface, nbr) in fresh {
-            let (adj, events) = flags(self, *id);
-            let Some(d) = t.device(*id) else { continue };
-            let seg = st.segments.get(&(*id, iface.clone())).copied();
-            let mine = st.router_ids.get(id).copied();
-            if adj {
-                let master = mine.is_some_and(|m| m > *nbr);
-                let steps = [
-                    "Down -> Init: first hello heard".to_string(),
-                    "Init -> 2-Way: this router is listed in the neighbour's hello".to_string(),
-                    format!(
-                        "2-Way -> ExStart: {}",
-                        if seg.is_some_and(|s| s.dr.is_none()) {
-                            "point-to-point link, adjacency is always needed"
-                        } else {
-                            "adjacency is needed with the DR or BDR"
-                        }
-                    ),
-                    format!(
-                        "ExStart -> Exchange: master is {} (higher router ID), database descriptions follow",
-                        if master { "this router" } else { "the neighbour" }
-                    ),
-                    "Exchange -> Loading: requesting the neighbour's router LSA".to_string(),
-                    "Loading -> Full: databases are synchronised".to_string(),
-                ];
-                for s in steps {
-                    self.log(*id, &format!("OSPF adjacency: neighbour {nbr} on {iface}: {s}"));
-                }
-            }
-            if events {
-                if let Some(g) = seg.filter(|g| g.dr.is_some()) {
-                    let a = |x: Option<Ipv4Addr>| x.map_or("none".to_string(), |x| x.to_string());
-                    self.log(*id, &format!("OSPF event: neighbour change on {iface}: DR election gives DR {}, BDR {}", a(g.dr), a(g.bdr)));
-                }
-                let routes = st.routes.get(id).map_or(0, Vec::len);
-                self.log(
-                    *id,
-                    &format!("OSPF event: SPF run after the adjacency with {nbr} came up: {routes} OSPF route{}", if routes == 1 { "" } else { "s" }),
-                );
-            }
-            let _ = d;
-        }
-        for (id, iface, nbr) in gone {
-            let (adj, events) = flags(self, *id);
-            let Some(d) = t.device(*id) else { continue };
-            let (_, dead) = crate::ospf::timers(d, iface);
-            if adj {
-                self.log(*id, &format!("OSPF adjacency: neighbour {nbr} on {iface}: Full -> Down: no hello within {dead} s, or the link is gone"));
-            }
-            if events {
-                self.log(*id, &format!("OSPF event: neighbour {nbr} on {iface} removed; its LSAs are no longer used"));
-                let routes = st.routes.get(id).map_or(0, Vec::len);
-                self.log(*id, &format!("OSPF event: SPF run after the loss: {routes} OSPF route{}", if routes == 1 { "" } else { "s" }));
-            }
-        }
-    }
-
-    /// Database exchange for adjacencies that weren't there at the last hello: each side sends
-    /// its first description, its LSA headers, a request for the neighbour's router-LSA, an
-    /// update with its own, and an acknowledgement.
-    fn ospf_exchanges(&mut self, t: &Topology, st: &crate::ospf::OspfState, at: u64) {
-        let now: std::collections::BTreeSet<(DeviceId, String, Ipv4Addr)> =
-            st.neighbors.iter().flat_map(|(id, ns)| ns.iter().map(|n| (*id, n.iface.clone(), n.router_id))).collect();
-        let fresh: Vec<_> = now.difference(&self.ospf_adjacent).cloned().collect();
-        let gone: Vec<_> = self.ospf_adjacent.difference(&now).cloned().collect();
-        self.ospf_adjacent = now;
-        self.ospf_debug_changes(t, st, &fresh, &gone);
-        for (id, iface, nbr) in fresh {
-            let (Some(d), Some(rid)) = (t.device(id), st.router_ids.get(&id).copied()) else { continue };
-            let Some(ifc) = l3_ifaces(d).into_iter().find(|i| i.name == iface) else { continue };
-            let area = st.segments.get(&(id, iface.clone())).map_or(0, |s| s.area);
-            let in_area: Vec<DeviceId> =
-                st.router_ids.keys().copied().filter(|r| st.segments.iter().any(|((dev, _), s)| dev == r && s.area == area)).collect();
-            let headers: Vec<_> = in_area.iter().filter_map(|r| Self::router_lsa(st, &self.lsa_stamps, at, *r, area)).map(|l| l.header()).collect();
-            let theirs = st.router_ids.iter().find(|(_, r)| **r == nbr).and_then(|(dev, _)| Self::router_lsa(st, &self.lsa_stamps, at, *dev, area));
-            let master = if rid > nbr { DBD_MASTER } else { 0 };
-            let seq = u32::from(rid) & 0xffff;
-            let mut packets = vec![
-                OspfDb::Dbd { flags: DBD_INIT | DBD_MORE | DBD_MASTER, seq, headers: Vec::new() },
-                OspfDb::Dbd { flags: master, seq: seq + 1, headers },
-                OspfDb::Request(vec![(1, nbr, nbr)]),
-            ];
-            if let Some(mine) = Self::router_lsa(st, &self.lsa_stamps, at, id, area) {
-                packets.push(OspfDb::Update(vec![mine]));
-            }
-            if let Some(l) = theirs {
-                packets.push(OspfDb::Ack(vec![l.header()]));
-            }
-            let clock = self.clock(id).0;
-            let sign = crate::ospf::auth_sends(d, &ifc, at, clock).into_iter().next().unwrap_or(netlabcraft_wire::control::OspfAuthSend::Null);
-            for (k, p) in (1u64..).zip(packets) {
-                let ip = Ipv4 {
-                    id: 0,
-                    ttl: 1,
-                    protocol: control::PROTO_OSPF,
-                    src: ifc.net.addr,
-                    dst: control::OSPF_ALL_ROUTERS,
-                    payload: control::ospf_authenticate(p.encode(rid, area), &sign),
-                };
-                // A millisecond apart, so the event list shows them in order.
-                self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + k * 1_000);
+                self.ospf_hello_later(*id, name, at);
             }
         }
     }
