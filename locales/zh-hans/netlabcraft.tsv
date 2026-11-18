@@ -220,6 +220,11 @@
 	cable	线缆
 	Cable Length	线缆长度
 	Cable Length…	线缆长度…
+	Resize…	调整大小…
+	Resize	调整大小
+	Units ({} to {}):	机架单元（{} 至 {}）：
+	Levels ({} to {}):	层数（{} 至 {}）：
+	Enter a whole number	请输入整数
 	Cable Modem	线缆调制解调器
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	线缆调制解调器：将其同轴口 (Coaxial0) 桥接到以太网口 (Ethernet1)
 	cable too long: {} m copper, max 100 m	线缆过长：铜缆 {} 米，最长 100 米

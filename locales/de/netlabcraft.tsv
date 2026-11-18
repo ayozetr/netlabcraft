@@ -220,6 +220,11 @@
 	cable	Kabel
 	Cable Length	Kabellänge
 	Cable Length…	Kabellänge…
+	Resize…	Größe ändern…
+	Resize	Größe ändern
+	Units ({} to {}):	Einheiten ({} bis {}):
+	Levels ({} to {}):	Ebenen ({} bis {}):
+	Enter a whole number	Gib eine ganze Zahl ein
 	Cable Modem	Kabelmodem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Kabelmodem: verbindet seinen Koaxial-Port (Coaxial0) mit seinem Ethernet-Port (Ethernet1)
 	cable too long: {} m copper, max 100 m	Kabel zu lang: {} m Kupfer, max. 100 m
