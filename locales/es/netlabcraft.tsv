@@ -177,7 +177,6 @@
 	Send every PDU in the list again	Volver a enviar todas las PDU de la lista
 	Service	Servicio
 	Services	Servicios
-	Set Background (not available yet)	Fondo (todavía no disponible)
 	Set Gateway	Fijar puerta de enlace
 	Settings	Ajustes
 	Show grid	Mostrar cuadrícula
@@ -2317,7 +2316,6 @@ furniture	Table	Mesa
 	A bar under the workspace lists the open device windows: click one to bring it to the front.	Una barra bajo el espacio de trabajo lista las ventanas abiertas: haz clic en una para traerla al frente.
 	Not applicable	No aplicable
 	Reload local image files	Recargar archivos de imagen locales
-	Labs hold no images, so there is nothing to reload.	Los laboratorios no contienen imágenes: no hay nada que recargar.
 	External network access	Acceso a la red externa
 	Use a proxy	Usar un proxy
 	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	NetLabCraft no hace conexiones de red propias, así que no hay acceso a red ni proxy que ajustar.
@@ -2365,7 +2363,6 @@ furniture	Table	Mesa
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	No aplicable: no hay módulos con scripts que firmar. Los resultados de una actividad llevan su propia firma, que comprueba Verificar resultados del instructor.
 	Images held by the lab	Imágenes del laboratorio
 	Image	Imagen
-	The lab holds no images: a lab file is only its devices, cables, places and settings.	El laboratorio no contiene imágenes: un archivo de laboratorio son solo sus dispositivos, cables, lugares y ajustes.
 	MAC address: {}	Dirección MAC: {}
 	IP address: {}	Dirección IP: {}
 	Default gateway: {}	Puerta de enlace predeterminada: {}
@@ -2373,3 +2370,38 @@ furniture	Table	Mesa
 	Backup written to {}	Copia guardada en {}
 	Application size	Tamaño de la aplicación
 	Enter the password first: some tabs are locked.	Escribe antes la contraseña: algunas pestañas están bloqueadas.
+	Set Background Image	Establecer imagen de fondo
+	Set Background Image…	Establecer imagen de fondo…
+	Background Image	Imagen de fondo
+	Place Icon	Icono del lugar
+	Remove Picture	Quitar imagen
+	Browse… picks a PNG or JPEG picture.	Examinar… elige una imagen PNG o JPEG.
+	Sizes	Tamaños
+	Picture:	Imagen:
+	Map area:	Área del mapa:
+	Recommended picture:	Imagen recomendada:
+	{} × {} px	{} × {} px
+	No picture	Sin imagen
+	Preview of the background	Vista previa del fondo
+	Layout	Disposición
+	Original size	Tamaño original
+	Tiled	En mosaico
+	Stretch to the map area	Ajustar al área del mapa
+	Custom width	Ancho personalizado
+	Custom height	Alto personalizado
+	Size of the place	Tamaño del lugar
+	Width (m):	Ancho (m):
+	Length (m):	Largo (m):
+	Height (m):	Alto (m):
+	Volume:	Volumen:
+	Scale:	Escala:
+	{} m³	{} m³
+	{} m per pixel	{} m por píxel
+	The picture this place wears on the map above it, instead of its drawn icon.	La imagen que este lugar muestra en el mapa superior, en lugar de su icono dibujado.
+	Preview of the icon	Vista previa del icono
+	Workspace background	Fondo del área de trabajo
+	Background of {}	Fondo de {}
+	Icon of {}	Icono de {}
+	The lab holds no images yet: set one with the Set Background Image button.	El laboratorio aún no contiene imágenes: añade una con el botón Establecer imagen de fondo.
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Reducida de {} × {} a {} × {} para ajustarse a los límites de un laboratorio
+	Pictures are stored inside the lab, so there is nothing to reload.	Las imágenes se guardan dentro del laboratorio, así que no hay nada que recargar.

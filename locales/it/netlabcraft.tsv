@@ -1030,7 +1030,6 @@
 	Services	Servizi
 	services run on Server devices	i servizi funzionano sui dispositivi Server
 	Session {} is open: the next operations run on it	La sessione {} è aperta: le prossime operazioni si eseguono su di essa
-	Set Background (not available yet)	Imposta sfondo (non ancora disponibile)
 	Set Gateway	Imposta gateway
 	Set its Wi-Fi network in Config > Wireless0; move it near an access point to join.	Imposta la sua rete Wi-Fi in Config > Wireless0; avvicinalo a un access point per collegarlo.
 	set up the Email app first (mail.configure)	configura prima l'app Email (mail.configure)
@@ -2314,7 +2313,6 @@ furniture	Table	Tavolo
 	A bar under the workspace lists the open device windows: click one to bring it to the front.	Una barra sotto l'area di lavoro elenca le finestre aperte: fai clic su una per portarla in primo piano.
 	Not applicable	Non applicabile
 	Reload local image files	Ricarica i file immagine locali
-	Labs hold no images, so there is nothing to reload.	I laboratori non contengono immagini: non c'è nulla da ricaricare.
 	External network access	Accesso alla rete esterna
 	Use a proxy	Usa un proxy
 	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	NetLabCraft non effettua connessioni di rete proprie, quindi non c'è accesso alla rete né proxy da impostare.
@@ -2362,7 +2360,6 @@ furniture	Table	Tavolo
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Non applicabile: non ci sono moduli con script da firmare. I risultati delle attività hanno una propria firma, controllata da Verifica risultati dell'istruttore.
 	Images held by the lab	Immagini contenute nel laboratorio
 	Image	Immagine
-	The lab holds no images: a lab file is only its devices, cables, places and settings.	Il laboratorio non contiene immagini: un file di laboratorio è solo dispositivi, cavi, luoghi e impostazioni.
 	MAC address: {}	Indirizzo MAC: {}
 	IP address: {}	Indirizzo IP: {}
 	Default gateway: {}	Gateway predefinito: {}
@@ -2370,3 +2367,38 @@ furniture	Table	Tavolo
 	Backup written to {}	Backup scritto in {}
 	Application size	Dimensione dell'applicazione
 	Enter the password first: some tabs are locked.	Inserisci prima la password: alcune schede sono bloccate.
+	Set Background Image	Imposta immagine di sfondo
+	Set Background Image…	Imposta immagine di sfondo…
+	Background Image	Immagine di sfondo
+	Place Icon	Icona del luogo
+	Remove Picture	Rimuovi immagine
+	Browse… picks a PNG or JPEG picture.	Sfoglia… sceglie un'immagine PNG o JPEG.
+	Sizes	Dimensioni
+	Picture:	Immagine:
+	Map area:	Area della mappa:
+	Recommended picture:	Immagine consigliata:
+	{} × {} px	{} × {} px
+	No picture	Nessuna immagine
+	Preview of the background	Anteprima dello sfondo
+	Layout	Disposizione
+	Original size	Dimensione originale
+	Tiled	A mosaico
+	Stretch to the map area	Adatta all'area della mappa
+	Custom width	Larghezza personalizzata
+	Custom height	Altezza personalizzata
+	Size of the place	Dimensioni del luogo
+	Width (m):	Larghezza (m):
+	Length (m):	Lunghezza (m):
+	Height (m):	Altezza (m):
+	Volume:	Volume:
+	Scale:	Scala:
+	{} m³	{} m³
+	{} m per pixel	{} m per pixel
+	The picture this place wears on the map above it, instead of its drawn icon.	L'immagine che questo luogo mostra sulla mappa superiore, al posto dell'icona disegnata.
+	Preview of the icon	Anteprima dell'icona
+	Workspace background	Sfondo dell'area di lavoro
+	Background of {}	Sfondo di {}
+	Icon of {}	Icona di {}
+	The lab holds no images yet: set one with the Set Background Image button.	Il laboratorio non contiene ancora immagini: impostane una con il pulsante Imposta immagine di sfondo.
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Ridotta da {} × {} a {} × {} per rispettare i limiti di un laboratorio
+	Pictures are stored inside the lab, so there is nothing to reload.	Le immagini sono salvate nel laboratorio, quindi non c'è nulla da ricaricare.

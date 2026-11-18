@@ -178,24 +178,45 @@ pub fn prepare(bytes: &[u8]) -> Result<Prepared, String> {
 
 /// The pixels of a stored picture: width, height and RGBA bytes.
 pub fn decode_rgba(bytes: &[u8]) -> Result<(u32, u32, Vec<u8>), String> {
+    decode_display(bytes, u32::MAX)
+}
+
+/// The pixels of a stored picture for drawing, scaled down so that no side passes `max_side` (a
+/// graphics card takes pictures only up to a side of its own): width, height and RGBA bytes.
+pub fn decode_display(bytes: &[u8], max_side: u32) -> Result<(u32, u32, Vec<u8>), String> {
     let kind = ImageKind::sniff(bytes).ok_or_else(damaged)?;
     let img = reader(bytes, kind).decode().map_err(|_| damaged())?.into_rgba8();
-    Ok((img.width(), img.height(), img.into_raw()))
+    let (w, h) = fit_within(img.width(), img.height(), max_side.max(1));
+    if (w, h) == (img.width(), img.height()) {
+        return Ok((w, h, img.into_raw()));
+    }
+    let small = image::imageops::resize(&img, w, h, FilterType::Triangle);
+    Ok((small.width(), small.height(), small.into_raw()))
+}
+
+/// A PNG of `w` by `h` pixels made in code: a colour gradient with a grid of light lines, so a
+/// background can be told from the empty map. The tests, the snapshot sheets and the examples use
+/// it, so no picture is ever downloaded. Empty when the size is 0 or past [`MAX_SOURCE_SIDE`].
+pub fn pattern_png(w: u32, h: u32) -> Vec<u8> {
+    if w == 0 || h == 0 || w > MAX_SOURCE_SIDE || h > MAX_SOURCE_SIDE {
+        return Vec::new();
+    }
+    let mut img = RgbaImage::new(w, h);
+    for (x, y, p) in img.enumerate_pixels_mut() {
+        let grid = x % 50 == 0 || y % 50 == 0 || x == y;
+        let (r, g, b) = ((x * 255 / w) as u8, (y * 255 / h) as u8, 150u8);
+        *p = if grid { image::Rgba([255, 255, 255, 255]) } else { image::Rgba([r / 2 + 90, g / 2 + 90, b, 255]) };
+    }
+    encode_png(&img).unwrap_or_default()
 }
 
 #[cfg(test)]
 pub(crate) mod fixtures {
     use super::*;
 
-    /// A PNG of `w` by `h` pixels: a gradient with a diagonal, so it neither compresses to
-    /// nothing nor looks like any real picture.
+    /// A PNG of `w` by `h` pixels.
     pub fn png(w: u32, h: u32) -> Vec<u8> {
-        let mut img = RgbaImage::new(w, h);
-        for (x, y, p) in img.enumerate_pixels_mut() {
-            let d = u8::from(x == y) * 120;
-            *p = image::Rgba([(x * 255 / w.max(1)) as u8, (y * 255 / h.max(1)) as u8, 90u8.saturating_add(d), 255]);
-        }
-        encode_png(&img).unwrap_or_default()
+        pattern_png(w, h)
     }
 
     /// The smallest JPEG there is: one grey pixel, a baseline file with one component and the
@@ -350,6 +371,15 @@ mod tests {
         let half = cut.len() / 2;
         cut.truncate(half);
         assert!(prepare(&cut).is_err());
+    }
+
+    #[test]
+    fn a_picture_for_drawing_is_scaled_to_the_side_the_card_takes() {
+        let p = png(300, 100);
+        let (w, h, px) = decode_display(&p, 150).unwrap();
+        assert_eq!((w, h, px.len()), (150, 50, 150 * 50 * 4));
+        assert_eq!(decode_display(&p, 4096).unwrap().0, 300);
+        assert!(decode_display(b"nope", 100).is_err());
     }
 
     #[test]

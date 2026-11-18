@@ -531,6 +531,9 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     };
     app.ui.pointer = resp.hover_pos().map(|p| view.world(p));
 
+    // The background picture (Set Background Image) lies under everything.
+    crate::pictures::draw_logical(app, ui.ctx(), &painter, view.origin, view.zoom);
+
     // Grid (Options ▸ Show grid).
     let step = GRID * view.zoom;
     if app.ui.show_grid && step >= 8.0 {
