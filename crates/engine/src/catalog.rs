@@ -1168,7 +1168,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Terminal (octal cable)",
         "",
         None,
-        r#"{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)"#,
+        r#"{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (from a router's own console it is reached by reverse Telnet: telnet to the router's address and port 2000 plus the line number)"#,
         false
     ),
     c!("cli.exec", "Type a command", "", None, r#"{"device", "line"} → {"output", "prompt", "clear"}"#, true),
