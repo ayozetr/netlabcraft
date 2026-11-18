@@ -69,6 +69,7 @@ pub mod qos;
 pub mod ravpn;
 
 pub mod redist;
+pub mod reload;
 pub mod rip;
 pub mod rip6;
 pub mod script;
@@ -1286,6 +1287,8 @@ pub struct Sim {
     iot: iot::IotState,
     /// DHCP snooping bindings, ARP inspection, rate limits, errdisable timers, port counters.
     l2: l2sec::L2State,
+    /// Scheduled reloads (`reload in`, `reload at`): when each device restarts.
+    reloads: BTreeMap<DeviceId, u64>,
     /// Log stamps and severity filters of devices that changed them.
     log_cfg: BTreeMap<DeviceId, logcfg::LogCfg>,
     /// Decisions about the frame being received now (see [`explain`]).
@@ -1461,6 +1464,7 @@ impl Sim {
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
         self.state.remove(&d);
+        self.reloads.remove(&d);
         self.l2.forget(d);
         self.voice.forget(d);
         self.iot.forget(d);

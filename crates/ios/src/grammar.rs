@@ -107,6 +107,8 @@ impl Modes {
     pub const KEYCHAIN: Modes = Modes(1 << 59);
     /// `key N` inside a key chain.
     pub const KEYCHAIN_KEY: Modes = Modes(1 << 60);
+    /// `archive`.
+    pub const ARCHIVE: Modes = Modes(1 << 62);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -149,7 +151,8 @@ impl Modes {
             | (1 << 57)
             | (1 << 58)
             | (1 << 59)
-            | (1 << 60),
+            | (1 << 60)
+            | (1 << 62),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -205,6 +208,24 @@ pub enum Id {
     WriteMemory,
     EraseStartup,
     Reload,
+    ReloadIn,
+    ReloadAt,
+    ReloadCancel,
+    ShowReload,
+    Archive,
+    NoArchive,
+    ArchivePath,
+    NoArchivePath,
+    ArchiveMaximum,
+    NoArchiveMaximum,
+    ArchiveTimePeriod,
+    NoArchiveTimePeriod,
+    ArchiveWriteMemory,
+    NoArchiveWriteMemory,
+    ArchiveConfig,
+    ShowArchive,
+    ConfigureReplace,
+    ConfigureRevert,
     ClearMac,
     ClearArp,
     Hostname,
@@ -1396,6 +1417,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::ROUTE_MAP)
     .or(Modes::KEYCHAIN)
     .or(Modes::KEYCHAIN_KEY)
+    .or(Modes::ARCHIVE)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1494,6 +1516,42 @@ pub static SPECS: &[Spec] = &[
     spec!(WriteMemory, Modes::EXEC, BOTH_FW, [K("write")], "Save the configuration"),
     spec!(EraseStartup, Modes::EXEC, BOTH_FW, [K("erase"), K("startup-config")], "Delete the saved configuration"),
     spec!(Reload, Modes::EXEC, BOTH_FW, [K("reload")], "Restart with the saved configuration"),
+    spec!(ReloadIn, Modes::EXEC, Modes::BOTH, [K("reload"), K("in"), Arg("<1-10080>")], "Restart in this many minutes"),
+    spec!(ReloadAt, Modes::EXEC, Modes::BOTH, [K("reload"), K("at"), Arg("HH:MM")], "Restart at this time of the device's clock"),
+    spec!(ReloadCancel, Modes::EXEC, Modes::BOTH, [K("reload"), K("cancel")], "Cancel a scheduled restart"),
+    spec!(ShowReload, EXECS, Modes::BOTH, [K("show"), K("reload")], "When the next scheduled restart is"),
+    spec!(Archive, Modes::CONFIG, Modes::BOTH, [K("archive")], "Keep copies of the running configuration"),
+    spec!(NoArchive, Modes::CONFIG, Modes::BOTH, [K("no"), K("archive")], "Stop archiving and forget the settings (the copies stay)"),
+    spec!(ArchivePath, Modes::ARCHIVE, Modes::BOTH, [K("path"), Arg("URL")], "Where the copies are named (for example flash:archive)"),
+    spec!(NoArchivePath, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("path")], "No archive path: no copy can be made"),
+    spec!(ArchiveMaximum, Modes::ARCHIVE, Modes::BOTH, [K("maximum"), Arg("<1-14>")], "Most copies kept (the oldest goes first)"),
+    spec!(NoArchiveMaximum, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("maximum")], "Keep 10 copies"),
+    spec!(
+        ArchiveTimePeriod,
+        Modes::ARCHIVE,
+        Modes::BOTH,
+        [K("time-period"), Arg("<1-525600>")],
+        "Make a copy when this many minutes have passed since the last"
+    ),
+    spec!(NoArchiveTimePeriod, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("time-period")], "No periodic copy"),
+    spec!(ArchiveWriteMemory, Modes::ARCHIVE, Modes::BOTH, [K("write-memory")], "Make a copy whenever the startup configuration is saved"),
+    spec!(NoArchiveWriteMemory, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("write-memory")], "Saving the startup configuration makes no copy"),
+    spec!(ArchiveConfig, Modes::EXEC, Modes::BOTH, [K("archive"), K("config")], "Make a copy of the running configuration now"),
+    spec!(ShowArchive, EXECS, Modes::BOTH, [K("show"), K("archive")], "The archive's settings and copies"),
+    spec!(
+        ConfigureReplace,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("configure"), K("replace"), Arg("NAME")],
+        "Replace the running configuration with a copy (startup-config, or a copy's name or number)"
+    ),
+    spec!(
+        ConfigureRevert,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("configure"), K("revert"), K("now")],
+        "Replace the running configuration with the newest copy"
+    ),
     spec!(ClearMac, Modes::EXEC, Modes::SWITCH.or(Modes::CARD), [K("clear"), K("mac"), K("address-table")], "Forget learned MAC addresses"),
     spec!(ClearArp, Modes::EXEC, Modes::ROUTER, [K("clear"), K("arp-cache")], "Forget ARP entries"),
     spec!(ShowMac, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("mac-address-table")], "Learned MAC addresses"),
@@ -7007,6 +7065,7 @@ mod tests {
                 Modes::DIALER,
                 Modes::KEYCHAIN,
                 Modes::KEYCHAIN_KEY,
+                Modes::ARCHIVE,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

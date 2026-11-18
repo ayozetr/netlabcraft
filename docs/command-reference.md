@@ -281,6 +281,24 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `write` | privileged | router, switch, firewall | Save the configuration |
 | `erase startup-config` | privileged | router, switch, firewall | Delete the saved configuration |
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
+| `reload in <1-10080>` | privileged | router, switch | Restart in this many minutes |
+| `reload at HH:MM` | privileged | router, switch | Restart at this time of the device's clock |
+| `reload cancel` | privileged | router, switch | Cancel a scheduled restart |
+| `show reload` | user, privileged | router, switch | When the next scheduled restart is |
+| `archive` | config | router, switch | Keep copies of the running configuration |
+| `no archive` | config | router, switch | Stop archiving and forget the settings (the copies stay) |
+| `path URL` |  | router, switch | Where the copies are named (for example flash:archive) |
+| `no path` |  | router, switch | No archive path: no copy can be made |
+| `maximum <1-14>` |  | router, switch | Most copies kept (the oldest goes first) |
+| `no maximum` |  | router, switch | Keep 10 copies |
+| `time-period <1-525600>` |  | router, switch | Make a copy when this many minutes have passed since the last |
+| `no time-period` |  | router, switch | No periodic copy |
+| `write-memory` |  | router, switch | Make a copy whenever the startup configuration is saved |
+| `no write-memory` |  | router, switch | Saving the startup configuration makes no copy |
+| `archive config` | privileged | router, switch | Make a copy of the running configuration now |
+| `show archive` | user, privileged | router, switch | The archive's settings and copies |
+| `configure replace NAME` | privileged | router, switch | Replace the running configuration with a copy (startup-config, or a copy's name or number) |
+| `configure revert now` | privileged | router, switch | Replace the running configuration with the newest copy |
 | `clear mac address-table` | privileged | switch | Forget learned MAC addresses |
 | `clear arp-cache` | privileged | router | Forget ARP entries |
 | `show mac-address-table` | user, privileged | switch | Learned MAC addresses |

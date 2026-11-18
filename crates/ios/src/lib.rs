@@ -21,6 +21,6 @@ mod tests;
 
 pub use exec::{
     Cli, CopyPrompt, IfRef, LoginStage, MODULUS_PROMPT, Mode, Outcome, PASSWORD_PROMPT, Paste, PasteKind, Remote, apply_config, complete_line,
-    connect, execute, greeting, help_line, prompt,
+    connect, execute, greeting, help_line, prompt, run_due_reloads,
 };
 pub use render::running_config;

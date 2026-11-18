@@ -13,6 +13,7 @@ use netlabcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 
+pub(crate) mod archive;
 pub(crate) mod automation;
 pub(crate) mod bgp;
 pub(crate) mod cellular;
@@ -164,6 +165,8 @@ pub enum Mode {
     KeyChain(String),
     /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
     KeyChainKey(String, u32),
+    /// `R1(config-archive)#`: `archive`.
+    Archive,
 }
 
 impl Mode {
@@ -216,6 +219,7 @@ impl Mode {
             Mode::PkiServer(_) => Modes::PKI_SERVER,
             Mode::KeyChain(_) => Modes::KEYCHAIN,
             Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
+            Mode::Archive => Modes::ARCHIVE,
         }
     }
 }
@@ -626,6 +630,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
         Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
         Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
+        Mode::Archive => format!("{n}(config-archive)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -657,6 +662,12 @@ fn qos_map_named_like_type(words: &[&str]) -> Option<(Id, usize)> {
 
 /// Runs one line typed at a device.
 pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
+    // A scheduled reload (`reload in`, `reload at`) that has come due happens before the next command.
+    if run_due_reloads(t, sim).contains(&dev) {
+        cli.mode = Mode::User;
+        cli.logged_in = false;
+        cli.enable_prompt = None;
+    }
     let Some(d) = t.device(dev) else { return Outcome { output: "% That device no longer exists".into(), ..Outcome::default() } };
     let line = line.trim_end_matches(['\r', '\n']);
     if cli.remote.is_some() {
@@ -959,6 +970,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
                 | Mode::KeyChainKey(..)
+                | Mode::Archive
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -1039,6 +1051,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
+                | Mode::Archive
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
@@ -1409,14 +1422,39 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowHistory => Ok(c.cli.history.iter().map(|h| format!("  {h}")).collect::<Vec<_>>().join("\n")),
         Id::CopyRunStart | Id::WriteMemory => {
             let cfg = render::running_config(c.d()?);
-            c.dm()?.startup = Some(cfg);
-            Ok("Configuration saved to startup-config.".into())
+            c.dm()?.startup = Some(cfg.clone());
+            // `archive` / `write-memory`: saving also makes a copy.
+            let at = c.sim.clock(c.dev).0;
+            let d = c.dm()?;
+            let copy = if d.archive.write_memory { d.archive.push(&cfg, at) } else { None };
+            Ok(match copy {
+                Some(n) => format!("Configuration saved to startup-config and archived as copy {n}."),
+                None => "Configuration saved to startup-config.".into(),
+            })
         }
         Id::EraseStartup => {
             c.dm()?.startup = None;
             Ok("Startup configuration erased; the next reload starts from factory settings.".into())
         }
         Id::Reload => c.reload(),
+        Id::ReloadIn
+        | Id::ReloadAt
+        | Id::ReloadCancel
+        | Id::ShowReload
+        | Id::Archive
+        | Id::NoArchive
+        | Id::ArchivePath
+        | Id::NoArchivePath
+        | Id::ArchiveMaximum
+        | Id::NoArchiveMaximum
+        | Id::ArchiveTimePeriod
+        | Id::NoArchiveTimePeriod
+        | Id::ArchiveWriteMemory
+        | Id::NoArchiveWriteMemory
+        | Id::ArchiveConfig
+        | Id::ShowArchive
+        | Id::ConfigureReplace
+        | Id::ConfigureRevert => archive::command(&mut c, spec.id, &args),
         Id::ClearMac => {
             c.sim.clear_macs(c.dev);
             Ok(String::new())
@@ -5782,40 +5820,57 @@ impl Ctx<'_> {
     }
 
     fn reload(&mut self) -> R {
-        // Configuration register 0x2142 (password recovery): start without the saved
-        // configuration, which stays in NVRAM.
-        let skip = self.d()?.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
-        let startup = if skip { None } else { self.d()?.startup.clone() };
-        let d = self.dm()?;
-        if d.vlan_dat_deleted {
-            d.vlans.clear();
-            d.vlan_dat_deleted = false;
-            d.ensure_default_vlan();
-        }
-        self.dm()?.reset_config();
-        self.sim.reset_device(self.dev);
+        let out = reload_device(self.t, self.sim, self.dev)?;
         self.cli.mode = Mode::User;
         self.cli.logged_in = false;
         self.cli.enable_prompt = None;
-        match startup {
-            Some(cfg) => {
-                let failed = apply_config(self.t, self.sim, self.dev, &cfg);
-                let mut out = "Restarted with the saved configuration.".to_string();
-                for f in failed {
-                    out.push_str(&format!("\n% startup-config: {f}"));
-                }
-                Ok(out)
+        Ok(out)
+    }
+}
+
+/// Restarts a device from its saved configuration (the console's `reload` and a scheduled one).
+pub(crate) fn reload_device(t: &mut Topology, sim: &mut Sim, dev: DeviceId) -> R {
+    let d = t.device(dev).ok_or_else(|| "% That device no longer exists".to_string())?;
+    // Configuration register 0x2142 (password recovery): start without the saved
+    // configuration, which stays in NVRAM.
+    let skip = d.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
+    let startup = if skip { None } else { d.startup.clone() };
+    let d = t.device_mut(dev).ok_or_else(|| "% That device no longer exists".to_string())?;
+    if d.vlan_dat_deleted {
+        d.vlans.clear();
+        d.vlan_dat_deleted = false;
+        d.ensure_default_vlan();
+    }
+    d.reset_config();
+    sim.reset_device(dev);
+    match startup {
+        Some(cfg) => {
+            let failed = apply_config(t, sim, dev, &cfg);
+            let mut out = "Restarted with the saved configuration.".to_string();
+            for f in failed {
+                out.push_str(&format!("\n% startup-config: {f}"));
             }
-            None if skip => {
-                self.sim.topology_changed(self.t);
-                Ok("Restarted without reading the saved configuration (configuration register 0x2142); it is still in NVRAM.".into())
-            }
-            None => {
-                self.sim.topology_changed(self.t);
-                Ok("Restarted with factory settings (no saved configuration).".into())
-            }
+            Ok(out)
+        }
+        None if skip => {
+            sim.topology_changed(t);
+            Ok("Restarted without reading the saved configuration (configuration register 0x2142); it is still in NVRAM.".into())
+        }
+        None => {
+            sim.topology_changed(t);
+            Ok("Restarted with factory settings (no saved configuration).".into())
         }
     }
+}
+
+/// Restarts the devices whose scheduled reload (`reload in`, `reload at`) has come due; returns
+/// them, so a front end can reset their consoles.
+pub fn run_due_reloads(t: &mut Topology, sim: &mut Sim) -> Vec<DeviceId> {
+    let due = sim.take_due_reloads();
+    for dev in &due {
+        let _ = reload_device(t, sim, *dev);
+    }
+    due
 }
 
 /// Stores a file a device sent with TFTP on the server that has that address.

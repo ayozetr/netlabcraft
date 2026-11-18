@@ -1349,6 +1349,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let secs = p.get("seconds").and_then(Value::as_f64).filter(|v| v.is_finite()).unwrap_or(30.0).clamp(0.0, 86_400.0);
             // Scheduled and periodic PDUs go out as their time comes.
             let fired = crate::pdu::advance(s, (secs * 1_000_000.0) as u64);
+            // Reloads scheduled with `reload in` or `reload at` happen as their time comes.
+            for dev in netlabcraft_ios::run_due_reloads(&mut s.topology, &mut s.sim) {
+                if let Some(c) = s.consoles.get_mut(&dev) {
+                    c.cli = netlabcraft_ios::Cli::default();
+                    c.append("\n--- the device restarted (scheduled reload) ---\n");
+                }
+                s.revision += 1;
+            }
             Ok(json!({"time_us": s.sim.now_us(), "pdus_fired": fired}))
         }
         "sim.reset" => {
