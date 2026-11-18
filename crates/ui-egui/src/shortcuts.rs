@@ -434,7 +434,7 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::ZoomIn => app.zoom(Some(1.25)),
         Act::ZoomReset => app.reset_view(),
         Act::ZoomOut => app.zoom(Some(0.8)),
-        Act::ShowGrid => app.ui.show_grid = !app.ui.show_grid,
+        Act::ShowGrid => crate::physical_grid::toggle(app),
         Act::Simulation => app.ui.mode = Mode::Simulation,
         Act::Realtime => app.ui.mode = Mode::Realtime,
         Act::Logical => {

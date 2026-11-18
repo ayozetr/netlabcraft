@@ -2598,7 +2598,7 @@ fn a_place_opens_with_a_click_and_moves_with_a_drag() {
     // The right button drag pans the map without moving anything.
     key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
     let (pan, place) = (h.state().ui.pan, h.state().session.topology.place(1).map(|p| (p.x, p.y)));
-    let empty = h.state().ui.canvas_rect.unwrap().center() - egui::vec2(200.0, 100.0);
+    let empty = h.state().ui.canvas_rect.unwrap().center() + egui::vec2(-300.0, 150.0);
     drag_with(&mut h, empty, empty + egui::vec2(30.0, 20.0), egui::PointerButton::Secondary, egui::Modifiers::NONE);
     assert!((h.state().ui.pan - (pan + egui::vec2(30.0, 20.0))).length() < 12.0);
     assert_eq!(h.state().session.topology.place(1).map(|p| (p.x, p.y)), place);
