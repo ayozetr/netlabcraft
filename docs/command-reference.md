@@ -195,7 +195,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
 | `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
 | `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
-| `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)` |
+| `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (from a router's own console it is reached by reverse Telnet: telnet to the router's address and port 2000 plus the line number)` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |
 | `cli.script` | Run commands |  |  | `{"device", "lines": ["…"] or "text"} → {"outputs"}` |
 | `cli.help` | Command help (?) |  |  | `{"device", "line"} → {"help"}` |
@@ -1160,6 +1160,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no enable password` | config | router, switch, firewall | Remove the enable password |
 | `line console 0` | config | router, switch | Configure the console line |
 | `line vty <first> [<last>]` | config | router, switch | Configure the remote-access lines |
+| `line <1-16>` | config | router | Configure one asynchronous line of an octal card |
+| `line <first> <last>` | config | router | Configure a range of asynchronous lines of an octal card |
 | `password [0\|7] PASSWORD` |  | router, switch | Set the line password |
 | `no password` |  | router, switch | Remove the line password |
 | `login` |  | router, switch | Ask for the line password |
@@ -1392,6 +1394,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no nrzi-encoding` | interface, subinterface | router | Return this setting to its default |
 | `loopback` | interface, subinterface | router | Loop the serial line back on itself |
 | `no loopback` | interface, subinterface | router | Return this setting to its default |
+| `modem {inout\|in\|out}` |  | router, switch | Let a modem or a reverse Telnet use this line (kept, not simulated) |
+| `no modem {inout\|in\|out}` |  | router, switch | Return this setting to its default |
 | `exec` |  | router, switch | Start an EXEC session on this line (on) |
 | `no exec` |  | router, switch | Turn this off (it is on by default) |
 | `session-timeout <0-35791>` |  | router, switch | Minutes an outgoing session may sit idle |
@@ -1567,6 +1571,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
 | `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
+| `telnet A.B.C.D <port>` | user, privileged | router | Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it) |
+| `clear line <1-16>` | privileged | router | End the reverse Telnet session held on a line of an octal card |
 | `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
