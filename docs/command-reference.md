@@ -29,7 +29,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `vpnclient.disconnect` | VPN Client disconnect |  |  | `{"device": PC, laptop or server} → the status: the router is told and the tunnel and the VPN address are gone` |
 | `aaa.certificate` | Server certificate (802.1X) |  |  | `{"device": Server, "ca"?: "a router running `crypto pki server` that issues it", "self_signed"?: true, "subject"?: "CN=radius.lab.test, O=NetLab", "fqdn"?: "radius.lab.test", "days"?: 1-36500 (365), "clear"?: true (back to no certificate)} → {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}: the certificate the RADIUS service presents in the PEAP tunnel, for a 1024-bit key pair the simulator makes; a host whose login validates the server checks it` |
 | `dot1x.trust` | Login: validate the server certificate |  |  | `{"device": host, "port"?: "Wireless0", "validate"?: true\|false (refuse a RADIUS server whose certificate does not chain to a trusted CA), "ca"?: "a lab device whose CA certificate to trust: a router running a certificate authority or holding a trustpoint, or a Server with a certificate", "ca_pem"?: "a CA certificate in PEM", "server_name"?: "the name the certificate must be for", "clear"?: true (forget the trusted CAs first)} → {"validate", "server_name", "trusted_cas": [subjects]}: for a host that has a login (device.wireless user and password)` |
-| `dot1x.status` | Login: 802.1X status |  |  | `{"device": host, "port"?: "Wireless0"} → {"login": user or null, "validate", "server_name", "trusted_cas": [subjects], "associated": bool (through the login and the handshake), "server_certificate": null \| {"presented", "subject", "issuer", "not_after", "chain_length", "verified", "error", "suite"}}: what the host saw of the RADIUS server's certificate in its PEAP tunnel (run `sim.advance` first: the login takes simulated time)` |
+| `dot1x.status` | Login: 802.1X status |  |  | `{"device": host, "port"?: "Wireless0" (a wired port gives {"wired": true, "login", "authenticated", "refused", "eapol_received", "eapol_sent"} instead)} → {"login": user or null, "validate", "server_name", "trusted_cas": [subjects], "associated": bool (through the login and the handshake), "server_certificate": null \| {"presented", "subject", "issuer", "not_after", "chain_length", "verified", "error", "suite"}}: what the host saw of the RADIUS server's certificate in its PEAP tunnel (run `sim.advance` first: the login takes simulated time)` |
+| `dot1x.supplicant` | Wired 802.1X login |  |  | `{"device": PC, laptop or server, "port"?: "FastEthernet0" (default: the one that has a login, else the first wired port), "user": "login name", "password"?: text, "validate"?: true\|false (refuse a RADIUS server whose certificate is not trusted; the CAs are those of dot1x.trust), "clear"?: true (no login)} → {"port", "user"}: the login this wired port answers a switch's EAPOL identity request with (the same PEAP login a Wi-Fi client uses); a switch port with `authentication port-control auto` lets the host through once the Server's RADIUS service accepts it` |
 | `vpnclient.status` | VPN Client status |  |  | `{"device": PC, laptop or server} → {"state": "disconnected"\|"connected", "connected", "host", "group", "username", "server", "address", "transforms", "esp", "encapsulated", "decapsulated"} (the key and the password are never returned)` |
 | `netflow.listen` | Netflow Collector start |  |  | `{"device": PC, laptop or server, "port"?: 1-65535 (default: the one last used, else 2055)} → the collector's state as netflow.flows: opens the UDP port; routers set up with `ip flow-export destination` send it NetFlow version 5 or 9 datagrams. The port is saved with the lab, what was received is not` |
 | `netflow.stop` | Netflow Collector stop |  |  | `{"device": PC, laptop or server} → the collector's state as netflow.flows: closes the port (what was received stays until cleared); fails when it is not listening` |
@@ -2291,6 +2292,24 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show pppoe session all` | user, privileged | router | PPPoE sessions: the ones this router dialed and the ones it serves |
 | `show pppoe summary` | user, privileged | router | PPPoE totals and the ports that answer or dial |
 | `clear pppoe all` | privileged | router | End every PPPoE session of this router |
+| `dot1x system-auth-control` | config | switch | Turn on 802.1X port access control |
+| `no dot1x system-auth-control` | config | switch | Turn 802.1X port access control off |
+| `aaa authentication dot1x default group radius` | config | switch | The servers that check 802.1X logins |
+| `no aaa authentication dot1x default` | config | switch | No method for 802.1X logins |
+| `authentication port-control {auto\|force-authorized\|force-unauthorized}` | interface | switch | Whether the host on this port has to log in |
+| `no authentication port-control` | interface | switch | The port asks for no login |
+| `dot1x pae authenticator` | interface | switch | This port is the authenticator of the host on it |
+| `no dot1x pae authenticator` | interface | switch | Not an authenticator port |
+| `authentication event no-response action authorize vlan <1-4094>` | interface | switch | The guest VLAN for a host that never answers |
+| `no authentication event no-response action authorize vlan` | interface | switch | No guest VLAN |
+| `authentication event fail action authorize vlan <1-4094>` | interface | switch | The VLAN for a host the server refused |
+| `no authentication event fail action authorize vlan` | interface | switch | No auth-fail VLAN |
+| `dot1x timeout tx-period <1-65535>` | interface | switch | Seconds between the switch's identity requests |
+| `no dot1x timeout tx-period` | interface | switch | Back to 30 seconds |
+| `show dot1x` | user, privileged | switch | Whether 802.1X is on and how many ports it controls |
+| `show dot1x all` | user, privileged | switch | Every port 802.1X controls and who is logged in on it |
+| `show dot1x interface <interface>` | user, privileged | switch | One port's 802.1X state |
+| `dot1x re-authenticate interface <interface>` | privileged | switch | Make the host on a port log in again |
 | `ip multicast-routing` | config | router, switch | Route IPv4 multicast between the interfaces that run PIM |
 | `no ip multicast-routing` | config | router, switch | Stop routing IPv4 multicast |
 | `ip pim rp-address A.B.C.D` | config | router, switch | The rendezvous point for every group |

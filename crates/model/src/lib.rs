@@ -49,6 +49,7 @@ pub mod pim;
 pub mod pki;
 pub mod poe;
 pub mod policy;
+pub mod policy6;
 pub mod pppoe;
 pub mod proximity;
 pub mod psu;
@@ -718,6 +719,9 @@ pub struct Port {
     /// Switches: DHCP snooping, ARP inspection and spanning-tree port settings.
     #[serde(default, skip_serializing_if = "l2sec::PortL2::is_default")]
     pub l2: l2sec::PortL2,
+    /// Hosts: the 802.1X login this wired port answers a switch's EAPOL requests with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplicant: Option<wlan::WifiLogin>,
 }
 
 impl Port {
@@ -1058,6 +1062,9 @@ pub struct Device {
     /// Routers: prefix lists (`ip prefix-list`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prefix_lists: Vec<policy::PrefixList>,
+    /// Routers: IPv6 prefix lists (`ipv6 prefix-list`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prefix_lists6: Vec<policy6::PrefixList6>,
     /// Routers: route maps (`route-map`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_maps: Vec<policy::RouteMap>,
@@ -2262,6 +2269,7 @@ impl Device {
                 access: AccessGroups::default(),
                 nat: None,
                 l2: l2sec::PortL2::default(),
+                supplicant: None,
             })
             .collect();
         let mut d = Device {
@@ -2320,6 +2328,7 @@ impl Device {
             eigrp: None,
             bgp: None,
             prefix_lists: Vec::new(),
+            prefix_lists6: Vec::new(),
             route_maps: Vec::new(),
             community_lists: Vec::new(),
             ext_community_lists: Vec::new(),
@@ -2436,6 +2445,7 @@ impl Device {
         self.eigrp = None;
         self.bgp = None;
         self.prefix_lists.clear();
+        self.prefix_lists6.clear();
         self.route_maps.clear();
         self.community_lists.clear();
         self.ext_community_lists.clear();
@@ -3120,6 +3130,7 @@ impl Topology {
                     b.sanitize();
                 }
                 policy::sanitize_prefix_lists(&mut d.prefix_lists);
+                policy6::sanitize_prefix_lists6(&mut d.prefix_lists6);
                 policy::sanitize_route_maps(&mut d.route_maps);
                 policy::sanitize_community_lists(&mut d.community_lists);
                 policy::sanitize_ext_community_lists(&mut d.ext_community_lists);

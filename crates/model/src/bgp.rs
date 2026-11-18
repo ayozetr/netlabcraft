@@ -3,9 +3,9 @@
 //! simulator; nothing derived is kept here.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
-use netlabcraft_core::Ipv4Net;
+use netlabcraft_core::{Ipv4Net, Ipv6Net};
 use serde::{Deserialize, Serialize};
 
 /// Most neighbours under one BGP process.
@@ -41,6 +41,60 @@ pub struct Aggregate {
     /// Carry the AS numbers of the covered paths in an AS set.
     #[serde(default)]
     pub as_set: bool,
+}
+
+/// `aggregate-address X:X::X/LEN [summary-only] [as-set]` in the IPv6 unicast address family.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Aggregate6 {
+    pub net: Ipv6Net,
+    /// Do not advertise the more specific prefixes the aggregate covers.
+    #[serde(default)]
+    pub summary_only: bool,
+    /// Carry the AS numbers of the covered paths in an AS set.
+    #[serde(default)]
+    pub as_set: bool,
+}
+
+/// What a neighbour does in the IPv6 unicast address family (`address-family ipv6`): whether it is
+/// activated there and the settings that differ per family (policy, next hop, communities).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Family6 {
+    /// `neighbor … activate` under `address-family ipv6`: IPv6 prefixes are exchanged (the OPEN
+    /// announces the multiprotocol capability for them).
+    #[serde(default)]
+    pub activated: bool,
+    #[serde(default)]
+    pub next_hop_self: bool,
+    #[serde(default)]
+    pub send_community: bool,
+    #[serde(default)]
+    pub send_extended: bool,
+    #[serde(default)]
+    pub route_reflector_client: bool,
+    #[serde(default)]
+    pub default_originate: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub weight: Option<u16>,
+    /// `prefix-list NAME in|out`: names of `ipv6 prefix-list`s.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix_list_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prefix_list_out: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_map_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_map_out: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_list_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub filter_list_out: Option<String>,
+}
+
+impl Family6 {
+    /// Nothing is set (the neighbour is not in the family): the file leaves it out.
+    pub fn is_default(&self) -> bool {
+        *self == Family6::default()
+    }
 }
 
 /// The keepalive interval and hold time a session uses: what is configured on the neighbour, else
@@ -185,7 +239,15 @@ pub struct Dampening {
 /// One `neighbor A.B.C.D …` peer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Neighbor {
+    /// The neighbour's IPv4 address; unspecified for a neighbour reached over IPv6 (see `addr6`).
     pub addr: Ipv4Addr,
+    /// The neighbour's IPv6 address when the session runs over IPv6 (these neighbours are kept in
+    /// [`Bgp::neighbors6`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub addr6: Option<Ipv6Addr>,
+    /// The settings in the IPv6 unicast address family.
+    #[serde(default, skip_serializing_if = "Family6::is_default")]
+    pub af6: Family6,
     /// `remote-as N`; a neighbour without one stays idle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub remote_as: Option<u32>,
@@ -379,9 +441,16 @@ pub fn is_private_as(asn: u32) -> bool {
 }
 
 impl Neighbor {
+    /// A neighbour reached over IPv6.
+    pub fn new6(addr: Ipv6Addr) -> Neighbor {
+        Neighbor { addr6: Some(addr), ..Neighbor::new(Ipv4Addr::UNSPECIFIED) }
+    }
+
     pub fn new(addr: Ipv4Addr) -> Neighbor {
         Neighbor {
             addr,
+            addr6: None,
+            af6: Family6::default(),
             remote_as: None,
             update_source: None,
             next_hop_self: false,
@@ -440,6 +509,17 @@ fn sanitize_neighbor(n: &mut Neighbor) {
     ] {
         *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
     }
+    for name in [
+        &mut n.af6.prefix_list_in,
+        &mut n.af6.prefix_list_out,
+        &mut n.af6.route_map_in,
+        &mut n.af6.route_map_out,
+        &mut n.af6.filter_list_in,
+        &mut n.af6.filter_list_out,
+    ] {
+        *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
+    }
+    n.af6.weight = n.af6.weight.filter(|w| *w > 0);
     if let Some(u) = &mut n.update_source {
         *u = u.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
     }
@@ -474,6 +554,24 @@ pub struct Bgp {
     pub default_local_pref: Option<u32>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub neighbors: Vec<Neighbor>,
+    /// The neighbours reached over IPv6 (`neighbor 2001:db8::2 remote-as N`): every one has `addr6`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub neighbors6: Vec<Neighbor>,
+    /// `network X:X::X/LEN` under `address-family ipv6`: advertised while that exact prefix is in
+    /// the IPv6 routing table.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub networks6: Vec<Ipv6Net>,
+    /// `redistribute …` under `address-family ipv6` (`ospf` is OSPFv3), with the route maps by word.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub redistribute6: Vec<Source>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub redistribute_maps6: BTreeMap<String, String>,
+    /// `aggregate-address` under `address-family ipv6`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aggregates6: Vec<Aggregate6>,
+    /// `maximum-paths N` under `address-family ipv6`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_paths6: Option<u8>,
     /// `network A.B.C.D mask M`: advertised while that exact prefix is in the routing table.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub networks: Vec<Ipv4Net>,
@@ -556,6 +654,39 @@ impl Bgp {
     /// the activated ones do.
     pub fn exchanges(&self, n: &Neighbor) -> bool {
         n.activated || !self.option("no bgp default ipv4-unicast")
+    }
+
+    /// The neighbour reached over IPv6 at an address.
+    pub fn neighbor6(&self, addr: Ipv6Addr) -> Option<&Neighbor> {
+        self.neighbors6.iter().find(|n| n.addr6 == Some(addr))
+    }
+
+    /// The IPv6 neighbour for an address, added (unconfigured) when missing; `None` past
+    /// [`MAX_NEIGHBORS`] (the two kinds of neighbour count together).
+    pub fn neighbor6_mut(&mut self, addr: Ipv6Addr) -> Option<&mut Neighbor> {
+        if !self.neighbors6.iter().any(|n| n.addr6 == Some(addr)) {
+            if self.neighbors.len() + self.neighbors6.len() >= MAX_NEIGHBORS {
+                return None;
+            }
+            self.neighbors6.push(Neighbor::new6(addr));
+            self.neighbors6.sort_by_key(|n| n.addr6);
+        }
+        self.neighbors6.iter_mut().find(|n| n.addr6 == Some(addr))
+    }
+
+    /// Whether a neighbour exchanges IPv6 unicast routes: only the ones activated in that family.
+    pub fn exchanges6(&self, n: &Neighbor) -> bool {
+        n.af6.activated
+    }
+
+    /// Whether any neighbour is activated for IPv6 unicast or the router originates IPv6 prefixes.
+    pub fn uses_ipv6(&self) -> bool {
+        self.neighbors.iter().chain(&self.neighbors6).any(|n| n.af6.activated)
+    }
+
+    /// How many equal paths per prefix the IPv6 routing table takes.
+    pub fn multipath6(&self) -> usize {
+        usize::from(self.maximum_paths6.unwrap_or(1).clamp(1, MAX_MULTIPATH))
     }
 
     pub fn group(&self, name: &str) -> Option<&PeerGroup> {
@@ -680,6 +811,37 @@ impl Bgp {
         for n in &mut self.neighbors {
             n.peer_group = n.peer_group.take().filter(|g| names.contains(g));
         }
+        self.neighbors6.retain(|n| n.addr6.is_some_and(|a| !a.is_unspecified() && !a.is_multicast()));
+        self.neighbors6.sort_by_key(|n| n.addr6);
+        self.neighbors6.dedup_by_key(|n| n.addr6);
+        self.neighbors6.truncate(MAX_NEIGHBORS.saturating_sub(self.neighbors.len()));
+        for n in &mut self.neighbors6 {
+            sanitize_neighbor(n);
+            n.addr = Ipv4Addr::UNSPECIFIED;
+            n.peer_group = None;
+        }
+        for n in &mut self.neighbors {
+            n.addr6 = None;
+        }
+        self.networks6.iter_mut().for_each(|n| *n = n.network());
+        self.networks6.sort();
+        self.networks6.dedup();
+        self.networks6.truncate(MAX_NETWORKS);
+        for a in &mut self.aggregates6 {
+            a.net = a.net.network();
+        }
+        self.aggregates6.sort_by_key(|a| a.net);
+        self.aggregates6.dedup_by_key(|a| a.net);
+        self.aggregates6.truncate(MAX_AGGREGATES);
+        self.maximum_paths6 = self.maximum_paths6.map(|m| m.clamp(1, MAX_MULTIPATH)).filter(|m| *m > 1);
+        self.redistribute6.sort();
+        self.redistribute6.dedup();
+        let kept6: Vec<String> = self.redistribute6.iter().map(|r| r.word().to_string()).collect();
+        self.redistribute_maps6.retain(|k, _| kept6.contains(k));
+        for v in self.redistribute_maps6.values_mut() {
+            *v = crate::policy::clean_name(v);
+        }
+        self.redistribute_maps6.retain(|_, v| !v.is_empty());
         self.networks.iter_mut().for_each(|n| *n = n.network());
         self.networks.sort();
         self.networks.dedup();
@@ -747,6 +909,39 @@ mod tests {
         assert!(b.neighbors[0].description.as_ref().is_some_and(|d| d.chars().count() <= MAX_TEXT && !d.contains('\n')));
         assert_eq!(b.networks, vec!["10.1.0.0/16".parse::<Ipv4Net>().unwrap()]);
         assert_eq!(b.redistribute, vec![Source::Connected, Source::Static]);
+    }
+
+    #[test]
+    fn neighbours_over_ipv6_are_kept_apart_sorted_and_cleaned() {
+        let mut b = Bgp::new(65_001);
+        for last in (1..=5u16).rev() {
+            let a = Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, last);
+            let n = b.neighbor6_mut(a).unwrap();
+            n.af6.activated = true;
+            n.af6.route_map_in = Some("a b".into());
+        }
+        assert_eq!(b.neighbors6.len(), 5);
+        assert!(b.neighbors6.windows(2).all(|w| w[0].addr6 < w[1].addr6));
+        assert!(b.neighbors.is_empty(), "an IPv6 neighbour is not an IPv4 one");
+        assert!(b.uses_ipv6() && b.exchanges6(&b.neighbors6[0]));
+        assert_eq!(b.neighbor6(Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 3)).map(|n| n.af6.activated), Some(true));
+        b.neighbors6.push(Neighbor::new6(Ipv6Addr::UNSPECIFIED));
+        b.networks6 = vec![Ipv6Net::new(Ipv6Addr::new(0x2001, 0xdb8, 1, 2, 3, 0, 0, 0), 48); 2];
+        b.sanitize();
+        assert_eq!(b.neighbors6.len(), 5, "the unspecified address goes");
+        assert_eq!(b.neighbors6[0].af6.route_map_in.as_deref(), Some("ab"));
+        assert_eq!(b.networks6, vec![Ipv6Net::new(Ipv6Addr::new(0x2001, 0xdb8, 1, 0, 0, 0, 0, 0), 48)]);
+    }
+
+    #[test]
+    fn a_neighbour_with_no_ipv6_settings_leaves_the_family_out_of_the_file() {
+        let n = Neighbor::new(Ipv4Addr::new(10, 0, 0, 2));
+        let json = serde_json::to_string(&n).unwrap();
+        assert!(!json.contains("af6") && !json.contains("addr6"), "{json}");
+        let mut on = n.clone();
+        on.af6.activated = true;
+        let back: Neighbor = serde_json::from_str(&serde_json::to_string(&on).unwrap()).unwrap();
+        assert!(back.af6.activated);
     }
 
     #[test]
