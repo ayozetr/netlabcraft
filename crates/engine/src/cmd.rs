@@ -1490,16 +1490,17 @@ fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
         }
         "place.add" => {
             let kind = str_param(p, "kind")?;
-            let kind = PlaceKind::from_id(kind).ok_or_else(|| bad(format!("unknown place kind `{kind}` (city, building, closet)")))?;
+            let kind = PlaceKind::from_id(kind).ok_or_else(|| bad(format!("unknown place kind `{kind}` (city, building, closet, container)")))?;
             let parent = match p.get("parent") {
                 None | Some(Value::Null) => {
+                    let kinds = kind.parent_kinds();
                     // The place being looked at, when it is the right kind.
-                    let viewed = s.place_view.and_then(|x| s.topology.place(x)).filter(|x| Some(x.kind) == kind.parent_kind()).map(|x| x.id);
+                    let viewed = s.place_view.and_then(|x| s.topology.place(x)).filter(|x| kinds.contains(&x.kind)).map(|x| x.id);
                     // Else the only place of the right kind, if there is just one.
                     viewed.or_else(|| {
-                        kind.parent_kind().and_then(|pk| {
+                        kinds.iter().find_map(|pk| {
                             let places = s.topology.places();
-                            let mut it = places.iter().filter(|x| x.kind == pk);
+                            let mut it = places.iter().filter(|x| x.kind == *pk);
                             match (it.next(), it.next()) {
                                 (Some(only), None) => Some(only.id),
                                 _ => None,

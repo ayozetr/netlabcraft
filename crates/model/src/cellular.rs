@@ -184,7 +184,11 @@ pub(crate) fn city_position(t: &Topology, d: &Device) -> Option<(u32, f32, f32)>
     let place = t.place(h.place)?;
     match place.kind {
         PlaceKind::City => Some((place.id, h.x, h.y)),
-        PlaceKind::Building | PlaceKind::Closet => {
+        PlaceKind::Container if t.building_of(place.id).is_none() => {
+            let c = t.city_of(place.id)?;
+            Some((c.id, place.x, place.y))
+        }
+        PlaceKind::Building | PlaceKind::Closet | PlaceKind::Container => {
             let b = t.building_of(place.id)?;
             Some((b.parent?, b.x, b.y))
         }

@@ -3,7 +3,6 @@
 //! lives in `netlabcraft_model::furniture`; every change is one undo step.
 
 use netlabcraft_model::furniture::{FittingKind, FurnitureKind, Item, Pole};
-use netlabcraft_model::physical::PlaceKind;
 use netlabcraft_model::{End, Topology};
 use serde_json::{Value, json};
 
@@ -81,14 +80,12 @@ fn passive_value(s: &Session, v: &Value, key: &str) -> Result<u32> {
 fn closet_param(s: &Session, p: &Value) -> Result<u32> {
     let t = &s.topology;
     let id = match p.get("place") {
-        None | Some(Value::Null) => {
-            s.place_view.filter(|v| t.place(*v).is_some_and(|x| x.kind == PlaceKind::Closet)).unwrap_or_else(|| t.default_place())
-        }
+        None | Some(Value::Null) => s.place_view.filter(|v| t.place(*v).is_some_and(|x| x.kind.holds_things())).unwrap_or_else(|| t.default_place()),
         Some(v) => v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| bad("`place` is a place number"))?,
     };
     match t.place(id) {
-        Some(x) if x.kind == PlaceKind::Closet => Ok(id),
-        Some(_) => Err(bad("furniture and passive devices stand in a wiring closet")),
+        Some(x) if x.kind.holds_things() => Ok(id),
+        Some(_) => Err(bad("furniture and passive devices stand in a wiring closet or a container")),
         None => Err(EngineError::Failed(format!("no place {id}"))),
     }
 }
@@ -137,6 +134,10 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
         "furniture.rename" | "furniture.move" | "furniture.remove" | "furniture.resize" => furniture_edit(s, id, p),
         "furniture.mount" => mount(s, p),
         "furniture.unmount" => unmount(s, p),
+        "furniture.hang" => hang(s, p),
+        "furniture.unhang" => unhang(s, p),
+        "place.working.set" => working_set(s, p),
+        "place.working.get" => working_get(s),
         "passive.add" => passive_add(s, p),
         "passive.rename" | "passive.remove" => passive_edit(s, id, p),
         "patch.wire" => wire(s, p),
@@ -164,7 +165,9 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
                     v
                 })
                 .collect();
-            json!({"id": f.id, "kind": f.kind.id(), "name": f.name, "size": f.size, "items": items})
+            let hung: Vec<Value> =
+                t.hangs_on(f.id).iter().map(|h| json!({"peg": h.peg.saturating_add(1), "a": t.end_label(h.a), "b": t.end_label(h.b)})).collect();
+            json!({"id": f.id, "kind": f.kind.id(), "name": f.name, "size": f.size, "items": items, "hung": hung})
         })
         .collect();
     let passive: Vec<Value> = t
@@ -202,7 +205,8 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
 
 fn furniture_add(s: &mut Session, p: &Value) -> Result<Value> {
     let kind = text(p, "kind")?;
-    let kind = FurnitureKind::from_id(kind).ok_or_else(|| bad(format!("unknown furniture `{kind}` (rack, shelf, table)")))?;
+    let kind = FurnitureKind::from_id(kind)
+        .ok_or_else(|| bad(format!("unknown furniture `{kind}` (rack, shelf, table, inventory-shelf, pegboard, icp)")))?;
     let place = closet_param(s, p)?;
     let (dx, dy) = s.topology.furniture_spot(place);
     let (x, y) = (float(p, "x").unwrap_or(dx), float(p, "y").unwrap_or(dy));
@@ -241,7 +245,14 @@ fn mount(s: &mut Session, p: &Value) -> Result<Value> {
     let furniture = furniture_param(s, p, "furniture")?;
     let mut t = s.topology.clone();
     let m = t.mount_item(item, furniture, one_based(p, "slot")?, count(p, "units")?)?;
+    // A device put in storage was switched off by the model: its simulation restarts.
+    let stored =
+        matches!(item, Item::Device(d) if t.device(d).is_some_and(|x| x.powered_off) && !s.topology.device(d).is_some_and(|x| x.powered_off));
     commit(s, t, false);
+    if let (true, Item::Device(d)) = (stored, item) {
+        s.sim.reset_device(d);
+        s.consoles.remove(&d);
+    }
     Ok(json!({"furniture": furniture, "slot": m.slot.saturating_add(1), "units": m.units}))
 }
 
@@ -253,6 +264,50 @@ fn unmount(s: &mut Session, p: &Value) -> Result<Value> {
     }
     commit(s, t, false);
     Ok(Value::Null)
+}
+
+/// `{"device", "port"}`: one end of a cable.
+fn end_param(s: &Session, p: &Value) -> Result<End> {
+    let d = device_param(s, p, "device")?;
+    let name = text(p, "port")?;
+    let port = s.topology.device(d).and_then(|x| x.port_index(name)).ok_or_else(|| EngineError::Failed(format!("no port {name} on that device")))?;
+    Ok(End { device: d, port })
+}
+
+fn hang(s: &mut Session, p: &Value) -> Result<Value> {
+    let furniture = furniture_param(s, p, "furniture")?;
+    let end = end_param(s, p)?;
+    let mut t = s.topology.clone();
+    let h = t.hang_cable(furniture, end, one_based(p, "peg")?)?;
+    commit(s, t, false);
+    Ok(json!({"furniture": furniture, "peg": h.peg.saturating_add(1)}))
+}
+
+fn unhang(s: &mut Session, p: &Value) -> Result<Value> {
+    let end = end_param(s, p)?;
+    let mut t = s.topology.clone();
+    if !t.unhang_cable(end) {
+        return Err(EngineError::Failed(format!("the cable at {} is not hung on a peg", t.end_label(end))));
+    }
+    commit(s, t, false);
+    Ok(Value::Null)
+}
+
+fn working_set(s: &mut Session, p: &Value) -> Result<Value> {
+    let id = match p.get("id") {
+        None | Some(Value::Null) => s.place_view.ok_or_else(|| bad("`id` (a wiring closet number) is required"))?,
+        Some(v) => v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| bad("`id` is a place number"))?,
+    };
+    let mut t = s.topology.clone();
+    t.set_working_closet(id)?;
+    commit(s, t, false);
+    working_get(s)
+}
+
+fn working_get(s: &Session) -> Result<Value> {
+    let t = &s.topology;
+    let id = t.working_closet();
+    Ok(json!({"id": id, "name": id.and_then(|i| t.place(i)).map(|x| x.name)}))
 }
 
 fn passive_add(s: &mut Session, p: &Value) -> Result<Value> {
