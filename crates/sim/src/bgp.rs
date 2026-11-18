@@ -544,6 +544,8 @@ struct Rank {
     ignore_len: bool,
     /// `bgp bestpath as-path multipath-relax`: paths from different neighbouring ASes may share the load.
     relax: bool,
+    /// `bgp deterministic-med`: the best path of each neighbouring AS is chosen first.
+    deterministic: bool,
 }
 
 fn rank_of(ab: &conf::Bgp) -> Rank {
@@ -553,6 +555,7 @@ fn rank_of(ab: &conf::Bgp) -> Rank {
         always_med: ab.always_compare_med,
         ignore_len: ab.as_path_ignore,
         relax: ab.option("bgp bestpath as-path multipath-relax"),
+        deterministic: ab.option("bgp deterministic-med"),
     }
 }
 
@@ -619,6 +622,42 @@ fn equal_cost(a: &Path, b: &Path, o: &Rank) -> bool {
         && a.igp == b.igp
 }
 
+/// The index in `idx` of the path that beats every other one named there, comparing them one after
+/// another in that order.
+fn fold_best(g: &[Path], idx: &[usize], o: &Rank) -> Option<usize> {
+    idx.iter().copied().fold(None, |best, i| match (best, g.get(i)) {
+        (Some(b), Some(c)) if g.get(b).is_some_and(|x| !better(c, x, o)) => Some(b),
+        (best, None) => best,
+        (_, Some(_)) => Some(i),
+    })
+}
+
+/// The best path of one prefix. The MED only compares paths that come from the same neighbouring AS,
+/// so the paths compared one after another (the order the table holds them) can give a different
+/// winner for a different order. With `bgp deterministic-med` the best path of each neighbouring AS is
+/// chosen first and only those are compared with each other, so the order does not matter.
+fn best_of(g: &[Path], o: &Rank) -> usize {
+    let all: Vec<usize> = (0..g.len()).collect();
+    if !o.deterministic {
+        return fold_best(g, &all, o).unwrap_or(0);
+    }
+    let first_as = |i: usize| g.get(i).and_then(|p| p.as_path.first().copied());
+    let mut neighbours: Vec<Option<u32>> = Vec::new();
+    for i in 0..g.len() {
+        if !neighbours.contains(&first_as(i)) {
+            neighbours.push(first_as(i));
+        }
+    }
+    let winners: Vec<usize> = neighbours
+        .iter()
+        .filter_map(|k| {
+            let of_this_as: Vec<usize> = all.iter().copied().filter(|i| first_as(*i) == *k).collect();
+            fold_best(g, &of_this_as, o)
+        })
+        .collect();
+    fold_best(g, &winners, o).unwrap_or(0)
+}
+
 /// Groups paths by prefix, marks the best of each (when its next hop resolves) and puts it first;
 /// up to `multi - 1` more external paths (`multi_ibgp - 1` internal ones, when the best is internal)
 /// as good as the best, through a different first hop, are marked to share the load.
@@ -629,10 +668,7 @@ fn rank(cands: Vec<Path>, o: &Rank) -> Vec<Path> {
     }
     let mut out = Vec::new();
     for mut g in groups.into_values() {
-        let best = g.iter().enumerate().fold(0usize, |b, (i, c)| match g.get(b) {
-            Some(x) if !better(c, x, o) => b,
-            _ => i,
-        });
+        let best = best_of(&g, o);
         if best < g.len() {
             g.swap(0, best);
         }
@@ -1774,6 +1810,24 @@ mod tests {
         // A path whose next hop does not resolve loses to anything that does.
         let dead = Path { valid: false, weight: 99, ..base.clone() };
         assert!(better_std(&base, &dead));
+    }
+
+    #[test]
+    fn deterministic_med_chooses_within_each_neighbouring_as_first() {
+        // The MED is compared only inside one neighbouring AS, so one after another the paths can lose to
+        // a path that a path of the same AS beats: X beats Z (50 against 100), Y beats X (nearer), Z beats Y.
+        let base = path("10.9.0.0/16", &[100]);
+        let x = Path { med: 50, igp: 30, from: Some(Ipv4Addr::new(10, 0, 0, 1)), ..base.clone() };
+        let y = Path { as_path: vec![200], med: 0, igp: 20, from: Some(Ipv4Addr::new(10, 0, 0, 2)), ..base.clone() };
+        let z = Path { med: 100, igp: 10, from: Some(Ipv4Addr::new(10, 0, 0, 3)), ..base };
+        let winner = |o: &Rank, order: Vec<Path>| rank(order, o).iter().find(|p| p.best).map(|p| (p.as_path.clone(), p.med));
+        let plain = Rank::default();
+        let det = Rank { deterministic: true, ..Rank::default() };
+        assert_eq!(winner(&plain, vec![x.clone(), y.clone(), z.clone()]), Some((vec![100], 100)), "compared in order, Z wins");
+        assert_eq!(winner(&det, vec![x.clone(), y.clone(), z.clone()]), Some((vec![200], 0)), "X beats Z, then Y beats X");
+        // The order the paths are held in no longer matters.
+        assert_eq!(winner(&det, vec![z.clone(), y.clone(), x.clone()]), Some((vec![200], 0)));
+        assert_eq!(winner(&det, vec![y, z, x]), Some((vec![200], 0)));
     }
 
     #[test]
