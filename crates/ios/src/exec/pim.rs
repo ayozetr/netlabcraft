@@ -89,6 +89,33 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             }
             Ok(String::new())
         }
+        Id::McTtlThreshold | Id::NoMcTtlThreshold => {
+            let v: u8 = if id == Id::McTtlThreshold { arg(0).parse().map_err(|_| "% The threshold is 0-255")? } else { 0 };
+            let names = super::routing::if_names(c)?;
+            let d = c.dm()?;
+            for n in &names {
+                match d.pim.ifaces.get_mut(n) {
+                    Some(i) => i.ttl_threshold = v,
+                    None if v == 0 => {}
+                    None => return Err("% Run PIM on the interface first (`ip pim sparse-mode`)".into()),
+                }
+            }
+            Ok(String::new())
+        }
+        Id::ShowRpf => {
+            routing_on(c)?;
+            let target = parse_ip(&arg(0)).map_err(|e| format!("% {e}"))?;
+            let t = &*c.t;
+            let Some(r) = c.sim.pim_rpf(t, c.dev, target) else {
+                return Ok(format!("No route to {target}: multicast from it fails the reverse path check."));
+            };
+            if r.owner {
+                return Ok(format!("{target} is an address of this router."));
+            }
+            let via = r.neighbor.map_or("none (the address is on the link, or the next router does not run PIM)".to_string(), |n| n.to_string());
+            let pim = if r.pim { "" } else { "\n  PIM does not run on this interface, so no multicast from it is accepted" };
+            Ok(format!("Reverse path of {target}\n  Interface: {}\n  PIM neighbour: {via}{pim}", r.iface))
+        }
         Id::NoMcDrPriority => {
             let names = super::routing::if_names(c)?;
             let d = c.dm()?;
@@ -356,6 +383,9 @@ pub(crate) fn iface_lines(s: &mut String, d: &Device, name: &str) {
         let _ = writeln!(s, " ip pim {}", i.mode.word());
         if i.dr_priority != 1 {
             let _ = writeln!(s, " ip pim dr-priority {}", i.dr_priority);
+        }
+        if i.ttl_threshold != 0 {
+            let _ = writeln!(s, " ip multicast ttl-threshold {}", i.ttl_threshold);
         }
     }
     for g in d.pim.joins.get(name).into_iter().flatten() {

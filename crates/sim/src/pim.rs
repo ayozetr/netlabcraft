@@ -157,6 +157,19 @@ pub struct MrouteRow {
     pub rpf_failed: u64,
 }
 
+/// What `show ip rpf` says about an address.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RpfRow {
+    /// The interface multicast from the address must arrive on.
+    pub iface: String,
+    /// The neighbour behind it (none when the address is on the link).
+    pub neighbor: Option<Ipv4Addr>,
+    /// The router has the address itself.
+    pub owner: bool,
+    /// PIM runs on the interface.
+    pub pim: bool,
+}
+
 /// One row of `show ip igmp groups` on a router.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct IgmpRow {
@@ -373,6 +386,10 @@ impl Sim {
         let mut sent = 0;
         for name in &node.oifs {
             let Some(out) = up.iter().find(|i| i.name == *name) else { continue };
+            if d.pim.iface(name).is_some_and(|c| c.ttl_threshold > 0 && ip.ttl <= c.ttl_threshold) {
+                self.bump(d.id, "multicast held back by a TTL threshold");
+                continue;
+            }
             let fwd = Ipv4 { ttl: ip.ttl - 1, ..ip.clone() };
             let f = Frame { dst: ipv4_multicast_mac(group), src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_IPV4, payload: fwd.encode() };
             self.l3_emit(t, d, out, f);
@@ -464,6 +481,19 @@ impl Sim {
                 dr: i.dr,
             })
             .collect()
+    }
+
+    /// `show ip rpf ADDRESS`: where multicast from an address has to arrive.
+    pub fn pim_rpf(&mut self, t: &Topology, dev: DeviceId, target: Ipv4Addr) -> Option<RpfRow> {
+        let d = t.device(dev)?;
+        if l3_ifaces(d).iter().any(|i| i.net.addr == target) {
+            return Some(RpfRow { iface: String::new(), neighbor: None, owner: true, pim: true });
+        }
+        let net = pim_net(t);
+        let (out, nh) = self.route_flow(t, d, Ipv4Addr::UNSPECIFIED, target)?;
+        let info = net.iface(dev, &out.name);
+        let neighbor = info.and_then(|i| i.nbrs.iter().find(|x| x.addr == nh)).map(|x| x.addr);
+        Some(RpfRow { iface: out.name, neighbor, owner: false, pim: info.is_some() })
     }
 
     /// `show ip igmp groups` on a router: the groups with a member on each interface.

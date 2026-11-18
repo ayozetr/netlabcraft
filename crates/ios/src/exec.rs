@@ -2736,7 +2736,10 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::ShowPimInterface
         | Id::ShowPimRp
         | Id::ShowRouterIgmpGroups
-        | Id::ShowRouterIgmpInterface => pim::command(&mut c, spec.id, &args),
+        | Id::ShowRouterIgmpInterface
+        | Id::McTtlThreshold
+        | Id::NoMcTtlThreshold
+        | Id::ShowRpf => pim::command(&mut c, spec.id, &args),
         Id::IpSgOn | Id::IpSgPortSecurity | Id::IpSgOff | Id::IpSgBinding | Id::IpSgNoBinding | Id::IpSgShowVerify | Id::IpSgShowBinding => {
             srcguard::command(&mut c, spec.id, &args)
         }
