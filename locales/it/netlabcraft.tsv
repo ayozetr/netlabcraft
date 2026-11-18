@@ -1782,6 +1782,7 @@ event	write request for	richiesta di scrittura di
 	Delete Scenario	Elimina scenario
 	Device box	Riquadro dispositivi
 	Draw Freehand	Disegna a mano libera
+	Resize Shape	Ridimensiona forma
 	Fast Forward Time	Avanza veloce il tempo
 	Go Back One Level	Torna indietro di un livello
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	I tasti che digitano una lettera vengono ignorati mentre un campo di testo o la console ha la tastiera.

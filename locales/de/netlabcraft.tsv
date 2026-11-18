@@ -1782,6 +1782,7 @@ event	write request for	Schreibanfrage für
 	Delete Scenario	Szenario löschen
 	Device box	Gerätebox
 	Draw Freehand	Freihand zeichnen
+	Resize Shape	Form ändern
 	Fast Forward Time	Zeit vorspulen
 	Go Back One Level	Eine Ebene zurück
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	Tasten, die einen Buchstaben tippen, werden ignoriert, solange ein Textfeld oder die Konsole die Tastatur hat.
