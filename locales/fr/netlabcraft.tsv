@@ -2397,3 +2397,11 @@ furniture	Table	Table
 	no clock rate on the DCE end	pas de débit d'horloge côté DCE
 	the two ends use different encapsulations	les deux extrémités utilisent des encapsulations différentes
 	PPP authentication failed (check the usernames and passwords)	échec de l'authentification PPP (vérifiez les noms d'utilisateur et les mots de passe)
+	Loss budget	Bilan de pertes
+	within the budget	dans le bilan
+	degraded: little margin left	dégradé : peu de marge
+	over the budget	au-delà du bilan
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdus sur {} dB ({} connecteurs, {} épissures)
+	More splices	Plus d'épissures
+	Fewer splices	Moins d'épissures
+	fiber loses {} dB, over the {} dB the transceivers tolerate	la fibre perd {} dB, au-delà des {} dB que tolèrent les transceivers
