@@ -180,6 +180,20 @@ impl Ah {
         Ok(Ipv4 { protocol: ah.next, payload: ah.payload, ..ip.clone() })
     }
 
+    /// Opens a received transport-mode AH packet (§3.1.1) whatever it wraps (a TCP, UDP, ICMP or
+    /// GRE payload): the packet with the next header as its protocol, once the ICV checks out.
+    /// Another AH header or an ESP one is refused here; a bundle goes through [`Ah::open_transport`].
+    pub fn open_transport_any(ip: &Ipv4, integ: Integ, key: &[u8]) -> Result<Ipv4> {
+        let ah = Ah::decode(&ip.payload)?;
+        if !ah.verify(integ, key, ip) {
+            return Err(WireError::Checksum("ah integrity"));
+        }
+        if ah.next == PROTO_AH || ah.next == 50 {
+            return Err(WireError::Unsupported("ah", format!("next header {}", ah.next)));
+        }
+        Ok(Ipv4 { protocol: ah.next, payload: ah.payload, ..ip.clone() })
+    }
+
     /// Opens a received tunnel-mode AH packet: the inner packet when the ICV checks out and
     /// the next header says IPv4.
     pub fn open_tunnel(ip: &Ipv4, integ: Integ, key: &[u8]) -> Result<Vec<u8>> {
@@ -387,6 +401,30 @@ mod tests {
                 let cut = Ipv6 { payload: p.payload[..n].to_vec(), ..p.clone() };
                 let _ = Ah::open_transport6(&cut, integ, k, 0x100);
             }
+        }
+    }
+
+    #[test]
+    fn transport_mode_keeps_the_header_and_opens_whatever_it_wraps() {
+        let key = [7u8; 20];
+        let udp = Ipv4 { id: 5, ttl: 64, protocol: 17, src: [10, 0, 0, 1].into(), dst: [10, 0, 0, 2].into(), payload: vec![1, 2, 3, 4, 5, 6, 7, 8] };
+        let protected = Ah::protect_transport(Integ::HmacSha1_96, &key, &udp, 0x1234, 9);
+        // The addresses stay, the protocol says AH, the next header says what it wrapped.
+        assert_eq!((protected.src, protected.dst, protected.protocol), (udp.src, udp.dst, PROTO_AH));
+        let back = Ah::open_transport_any(&protected, Integ::HmacSha1_96, &key).unwrap();
+        assert_eq!((back.protocol, back.payload.clone(), back.src), (17, udp.payload.clone(), udp.src));
+        // Another key, another suite, a flipped byte and an AH wrapped in AH are refused.
+        assert!(Ah::open_transport_any(&protected, Integ::HmacSha1_96, &[8u8; 20]).is_err());
+        assert!(Ah::open_transport_any(&protected, Integ::HmacMd5_96, &key[..16]).is_err());
+        let mut bad = protected.clone();
+        let n = bad.payload.len() - 1;
+        bad.payload[n] ^= 1;
+        assert!(Ah::open_transport_any(&bad, Integ::HmacSha1_96, &key).is_err());
+        let double = Ah::protect_transport(Integ::HmacSha1_96, &key, &protected, 0x1234, 10);
+        assert!(Ah::open_transport_any(&double, Integ::HmacSha1_96, &key).is_err());
+        for cut in 0..protected.payload.len() {
+            let t = Ipv4 { payload: protected.payload[..cut].to_vec(), ..protected.clone() };
+            assert!(Ah::open_transport_any(&t, Integ::HmacSha1_96, &key).is_err(), "{cut}");
         }
     }
 }

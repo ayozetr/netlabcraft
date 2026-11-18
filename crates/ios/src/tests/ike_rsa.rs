@@ -181,3 +181,34 @@ fn ikev2_refuses_a_peer_that_cannot_prove_itself_with_a_certificate() {
     let sa = lab.run(r2, "show crypto ikev2 sa");
     assert!(sa.contains("wants a shared key"), "{sa}");
 }
+
+#[test]
+fn ike_refuses_a_revoked_certificate_where_the_revocation_check_is_on() {
+    let (mut lab, r1, isp, r2, a) = sites_with_certificates();
+    lab.run(r1, &v1_config(SITE1, "198.51.100.1", "rsa-sig"));
+    lab.run(r2, &v1_config(SITE2, "203.0.113.1", "rsa-sig"));
+    let leaf = netlabcraft_wire::x509::Certificate::from_pem(&lab.t.device(r2).unwrap().pki.trustpoint("T").unwrap().certificate).unwrap();
+    let serial = netlabcraft_sim::pki::serial_hex(&leaf.serial);
+    // The CA revokes r2's certificate; r1 insists on a revocation list and fetches it.
+    lab.run(isp, &format!("conf t\ncrypto pki server ROOT revoke {serial}\nend"));
+    lab.run(r1, "conf t\ncrypto pki trustpoint T\nrevocation-check crl\nexit\ncrypto pki crl request T\nend");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    let sa = lab.run(r1, "show crypto isakmp sa");
+    assert!(sa.contains("failed:") && sa.contains("was revoked by CN=Lab Root, O=NetLab"), "{sa}");
+}
+
+#[test]
+fn ike_checks_the_address_a_certificate_names_against_the_identity() {
+    let (mut lab, r1, _isp, r2, a) = sites_with_certificates();
+    lab.run(r1, &v1_config(SITE1, "198.51.100.1", "rsa-sig"));
+    lab.run(r2, &v1_config(SITE2, "203.0.113.1", "rsa-sig"));
+    // r2's new certificate is for an address that is not the one r2 identifies itself with.
+    lab.run(r2, "conf t\ncrypto pki trustpoint T\nip-address 10.9.9.9\nexit\ncrypto pki enroll T\nend");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
+    let sa = lab.run(r1, "show crypto isakmp sa");
+    assert!(sa.contains("is for 10.9.9.9, not for the address 198.51.100.1"), "{sa}");
+    // With the right address in it, the exchange works.
+    lab.run(r2, "conf t\ncrypto pki trustpoint T\nip-address 198.51.100.1\nexit\ncrypto pki enroll T\nend\nclear crypto sa");
+    lab.run(r1, "clear crypto sa");
+    assert!(ping_settled(&mut lab, a, "192.168.2.10").contains("4 answered"));
+}

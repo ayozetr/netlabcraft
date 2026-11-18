@@ -24,6 +24,7 @@ mod ike_rsa;
 mod inspections;
 mod interface_counters;
 mod ipsec_crypto;
+mod ipsec_modes;
 mod ipv6_ra;
 mod knobs;
 mod knobs_routing;
