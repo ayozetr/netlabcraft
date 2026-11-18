@@ -63,6 +63,9 @@ pub struct Mgmt {
     /// `logging console LEVEL` (default 7: everything).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logging_console: Option<u8>,
+    /// `logging monitor LEVEL`: what terminal-monitor sessions show (default 7).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub logging_monitor: Option<u8>,
     /// `logging buffered [SIZE] [LEVEL]` (default 7).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub logging_buffered: Option<u8>,
