@@ -542,7 +542,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Board program",
         "",
         None,
-        r#"{"device": programmable board, "source"?: "BoardScript program", "run"?: true|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile is refused with its line"#,
+        r#"{"device": programmable board, "source"?: "program text", "language"?: "boardscript"|"python" (Board SBC)|"javascript" (Board MCU), "run"?: true|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile in its language is refused with its line"#,
         true
     ),
     c!(
@@ -550,7 +550,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Board status",
         "",
         None,
-        r#"{"device": programmable board} → {"program", "run", "state": "not started"|"running"|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}"#,
+        r#"{"device": programmable board} → {"program", "language", "languages", "run", "state": "not started"|"running"|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}"#,
         false
     ),
     c!(
