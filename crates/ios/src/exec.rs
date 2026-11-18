@@ -33,6 +33,7 @@ pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod mst;
 pub(crate) mod netflow;
+pub(crate) mod pbr;
 pub(crate) mod pki;
 pub(crate) mod policy;
 pub(crate) mod pppoe;
@@ -1565,7 +1566,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ConfigRegister
         | Id::CopyStartRun
         | Id::CopyFlashTftp
-        | Id::CopyTftpFlash => mgmt::command(&mut c, spec.id, &args),
+        | Id::CopyTftpFlash
+        | Id::CopyRunFlash
+        | Id::CopyStartFlash
+        | Id::CopyFlashRun
+        | Id::CopyFlashStart
+        | Id::CopyFlashFtp
+        | Id::CopyFtpFlash
+        | Id::CopyHttpRun
+        | Id::CopyHttpStart
+        | Id::CopyHttpFlash => mgmt::command(&mut c, spec.id, &args),
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
@@ -4623,6 +4633,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoBgpNeighborPassword
         | Id::BgpNeighborRemovePrivate
         | Id::NoBgpNeighborRemovePrivate
+        | Id::BgpNeighborLocalAs
+        | Id::NoBgpNeighborLocalAs
         | Id::BgpNeighborSoftReconf
         | Id::NoBgpNeighborSoftReconf
         | Id::BgpAlwaysCompareMed
@@ -4936,6 +4948,22 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(rows.join("\n"))
         }
+        Id::IpPolicyRouteMap
+        | Id::NoIpPolicyRouteMap
+        | Id::IpLocalPolicy
+        | Id::NoIpLocalPolicy
+        | Id::ShowIpPolicy
+        | Id::RmMatchLength
+        | Id::NoRmMatchLength
+        | Id::RmSetDefaultNextHop
+        | Id::NoRmSetDefaultNextHop
+        | Id::RmSetInterface
+        | Id::NoRmSetInterface
+        | Id::RmSetPrecedence
+        | Id::NoRmSetPrecedence
+        | Id::RmSetDscp
+        | Id::NoRmSetDscp
+        | Id::RmSetNextHopVerify => pbr::command(&mut c, spec.id, &args),
         Id::ShowIpProtocols => {
             let st = c.sim.ospf_state(c.t);
             let rs = c.sim.rip_state(c.t);

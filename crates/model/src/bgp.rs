@@ -246,6 +246,10 @@ pub struct Neighbor {
     /// `remove-private-as all`: take every private AS number out.
     #[serde(default)]
     pub remove_private_all: bool,
+    /// `local-as N [no-prepend [replace-as [dual-as]]]`: the AS this router presents to this
+    /// external neighbour (see [`LocalAs`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub local_as: Option<LocalAs>,
     /// `soft-reconfiguration inbound`: keep what the neighbour sent before the inbound policy, so
     /// `show ip bgp neighbors A.B.C.D received-routes` can list it.
     #[serde(default)]
@@ -267,6 +271,43 @@ pub struct Neighbor {
     /// gave plus what the neighbour set itself (see [`follow`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub peer_group: Option<String>,
+}
+
+/// `neighbor … local-as N [no-prepend [replace-as [dual-as]]]`: the AS number this router presents
+/// to one external neighbour instead of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalAs {
+    /// The AS number the neighbour sees in the OPEN message and at the head of the paths.
+    pub asn: u32,
+    /// `no-prepend`: paths received from the neighbour do not get the local AS in front.
+    #[serde(default)]
+    pub no_prepend: bool,
+    /// `replace-as` (needs `no-prepend`): the paths sent carry the local AS instead of the real one.
+    #[serde(default)]
+    pub replace_as: bool,
+    /// `dual-as` (needs `replace-as`): the neighbour may also use this router's real AS number.
+    #[serde(default)]
+    pub dual_as: bool,
+}
+
+impl LocalAs {
+    /// The words after the AS number, as typed.
+    pub fn words(&self) -> String {
+        let mut s = String::new();
+        for (on, w) in [(self.no_prepend, " no-prepend"), (self.replace_as, " replace-as"), (self.dual_as, " dual-as")] {
+            if on {
+                s.push_str(w);
+            }
+        }
+        s
+    }
+
+    /// Drops the options that need one that is not there.
+    pub fn normalised(mut self) -> LocalAs {
+        self.replace_as &= self.no_prepend;
+        self.dual_as &= self.replace_as;
+        self
+    }
 }
 
 /// `neighbor NAME peer-group`: settings the neighbours that join the group take.
@@ -319,6 +360,7 @@ pub fn follow(n: &mut Neighbor, old: &Neighbor, new: &Neighbor) {
         password,
         remove_private_as,
         remove_private_all,
+        local_as,
         soft_reconfiguration_in,
         distribute_in,
         distribute_out,
@@ -357,6 +399,7 @@ impl Neighbor {
             password: None,
             remove_private_as: false,
             remove_private_all: false,
+            local_as: None,
             soft_reconfiguration_in: false,
             distribute_in: None,
             distribute_out: None,
@@ -371,6 +414,7 @@ impl Neighbor {
 fn sanitize_neighbor(n: &mut Neighbor) {
     n.remote_as = n.remote_as.filter(|a| *a >= 1);
     n.ebgp_multihop = n.ebgp_multihop.filter(|m| *m >= 1);
+    n.local_as = n.local_as.filter(|l| l.asn >= 1).map(LocalAs::normalised);
     if let Some(d) = &mut n.description {
         *d = d.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
     }
@@ -774,6 +818,27 @@ mod tests {
         b.dampening = Some(Dampening { params: wild, route_map: Some(String::new()), explicit: true });
         b.sanitize();
         assert_eq!(b.dampening.map(|x| x.route_map), Some(None));
+    }
+
+    #[test]
+    fn local_as_options_need_the_one_before_them() {
+        let mut b = Bgp::new(65_001);
+        let bad = LocalAs { asn: 65_100, no_prepend: false, replace_as: true, dual_as: true };
+        b.neighbors = vec![
+            Neighbor { local_as: Some(bad), ..Neighbor::new(Ipv4Addr::new(10, 0, 0, 2)) },
+            Neighbor { local_as: Some(LocalAs { asn: 0, ..bad }), ..Neighbor::new(Ipv4Addr::new(10, 0, 0, 3)) },
+            Neighbor {
+                local_as: Some(LocalAs { asn: 7, no_prepend: true, replace_as: false, dual_as: true }),
+                ..Neighbor::new(Ipv4Addr::new(10, 0, 0, 4))
+            },
+        ];
+        b.sanitize();
+        assert_eq!(b.neighbors[0].local_as, Some(LocalAs { asn: 65_100, no_prepend: false, replace_as: false, dual_as: false }));
+        assert_eq!(b.neighbors[1].local_as, None, "AS 0 does not exist");
+        assert_eq!(b.neighbors[2].local_as.map(|l| l.words()), Some(" no-prepend".to_string()));
+        let json = serde_json::to_string(&b).unwrap();
+        assert_eq!(serde_json::from_str::<Bgp>(&json).unwrap(), b);
+        assert!(!serde_json::to_string(&Bgp::new(1)).unwrap().contains("local_as"));
     }
 
     fn grouped() -> Bgp {

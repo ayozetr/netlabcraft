@@ -175,4 +175,90 @@ mod t {
         h.run_steps(3);
         assert_eq!(h.state().session.topology.splices_on(&h.state().session.topology.links[0]), 1);
     }
+
+    /// A PC and a router a long way apart, joined by a console cable: its name and the middle of its line.
+    fn console_lab() -> (Harness<'static, PacketApp>, CableRef, egui::Pos2) {
+        let mut s = Session::new();
+        let pc = s.topology.add_device(netlabcraft_model::DeviceKind::Pc, None, 100.0, 200.0).unwrap();
+        let r = s.topology.add_device(netlabcraft_model::DeviceKind::Router, None, 500.0, 200.0).unwrap();
+        s.topology.connect_console(pc, r).unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.run_steps(3);
+        let app = h.state();
+        let rect = app.ui.canvas_rect.unwrap();
+        let (origin, zoom) = (rect.min.to_vec2() + app.ui.pan, app.ui.zoom);
+        let scr = |id| {
+            let d = app.session.topology.device(id).unwrap();
+            egui::pos2(d.x * zoom, d.y * zoom) + origin
+        };
+        let mid = scr(pc) + (scr(r) - scr(pc)) * 0.5;
+        (h, CableRef::Console(r), mid)
+    }
+
+    #[test]
+    fn a_console_cable_is_hovered_picked_and_has_a_menu_and_a_window_like_any_cable() {
+        let (mut h, r, at) = console_lab();
+        h.input_mut().events.push(egui::Event::PointerMoved(at));
+        h.run_steps(3);
+        assert_eq!(h.state().ui.hover_cable, Some(r));
+        left_click(&mut h, at);
+        assert_eq!(h.state().ui.selected_cable, Some(r));
+        right_click(&mut h, at);
+        assert_eq!(h.state().ui.canvas.context_cable_for_tests(), Some(r));
+        for label in ["Properties…", "Open First Device", "Open Second Device", "Delete"] {
+            assert!(h.query_all_by_label(label).next().is_some(), "the menu lacks {label}");
+        }
+        assert!(h.query_all_by_label("Cable Length…").next().is_none(), "a console cable has no length of its own");
+        h.get_by_label("Properties…").click();
+        h.run_steps(3);
+        assert_eq!(h.state().ui.cable_window, Some(r));
+        assert!(h.query_all_by_label("Console").next().is_some(), "the window names the kind");
+        h.get_by_label("Delete Cable").click();
+        h.run_steps(3);
+        assert!(h.state().session.topology.consoles.is_empty());
+        assert!(h.state().ui.cable_window.is_none() && h.state().ui.selected_cable.is_none());
+    }
+
+    #[test]
+    fn the_delete_tool_and_the_delete_key_remove_a_console_cable() {
+        let (mut h, _, at) = console_lab();
+        h.state_mut().set_tool(Tool::Delete);
+        h.run_steps(2);
+        left_click(&mut h, at);
+        assert!(h.state().session.topology.consoles.is_empty());
+        let (mut h, r, _) = console_lab();
+        h.state_mut().ui.selected = None;
+        h.state_mut().ui.selected_cable = Some(r);
+        h.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::Delete,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(3);
+        assert!(h.state().session.topology.consoles.is_empty());
+        assert_eq!(h.state().ui.selected_cable, None);
+    }
+
+    #[test]
+    fn a_console_cable_is_an_accessible_node_that_opens_its_window() {
+        let (mut h, r, _) = console_lab();
+        let info = h.state().session.topology.cable_info(r).unwrap();
+        let label = format!("Cable, {}, {} - {}", info.kind.label(), info.a_label, info.b_label);
+        assert!(h.query_by_label(&label).is_some(), "no node labelled {label}");
+        h.get_by_label(&label).focus();
+        h.run_steps(2);
+        assert_eq!(h.state().ui.cable_focus, Some(r));
+        h.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
+        h.run_steps(3);
+        assert_eq!(h.state().ui.cable_window, Some(r));
+        assert_eq!(h.state().ui.selected_cable, Some(r));
+    }
 }
