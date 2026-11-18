@@ -104,11 +104,15 @@ pub struct Redist {
     /// `tag N` under OSPF: the tag the external routes get (a route map's `set tag` comes first).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<u32>,
+    /// `nssa-only` under OSPF: inside a not-so-stubby area the type 7 LSA carries a clear P bit, so
+    /// it stays in the area and no border router translates it into a type 5 LSA.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nssa_only: bool,
 }
 
 impl Redist {
     pub fn new(source: RedistSource) -> Redist {
-        Redist { source, metric: None, eigrp_metric: None, metric_type: None, route_map: None, tag: None }
+        Redist { source, metric: None, eigrp_metric: None, metric_type: None, route_map: None, tag: None, nssa_only: false }
     }
 }
 
@@ -129,6 +133,9 @@ pub fn redistribute_line(r: &Redist, ospf: bool) -> String {
             s.push_str(&format!(" tag {t}"));
         }
         s.push_str(" subnets");
+        if r.nssa_only {
+            s.push_str(" nssa-only");
+        }
     }
     if let Some(m) = &r.route_map {
         s.push_str(&format!(" route-map {m}"));

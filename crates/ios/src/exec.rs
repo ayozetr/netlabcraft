@@ -251,6 +251,9 @@ pub struct Cli {
     pub history_cap: Option<usize>,
     /// `terminal monitor` in a remote session: log and debug messages of the device appear in it.
     pub monitor: bool,
+    /// `line 1 8` in configuration: the asynchronous lines of an octal card the line mode edits
+    /// (1-based, first and last); `line console 0` and `line vty` clear it.
+    pub async_lines: Option<(u8, u8)>,
 }
 
 /// What a block of pasted PEM text is for.
@@ -297,6 +300,8 @@ pub struct Remote {
     pub stage: LoginStage,
     pub cli: Cli,
     tries: u8,
+    /// A reverse Telnet: the router and the line (1-based) of its octal card the session holds.
+    pub via: Option<(DeviceId, u8)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -342,7 +347,7 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         let from = t.device(dev).map_or_else(String::new, |d| d.name.clone());
         sim.debug_log(target, DebugKind::Ssh, &format!("a session is opened from {from}; the key exchange is done and the login follows"));
     }
-    cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0 }));
+    cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0, via: None }));
     let banner = t.device(target).map(|d| d.access.banner_motd.clone()).unwrap_or_default();
     let mut out = format!("Trying {dst} ... Open");
     if !banner.is_empty() {
@@ -352,6 +357,56 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         out.push_str("\n\nUser access over Telnet (unencrypted)");
     }
     out
+}
+
+/// Reverse Telnet: `telnet <router address> <2000 + N>` opens a session on the Console port that
+/// the octal cable of line N of that router's octal card reaches. The session is the console
+/// session of the far device (its own prompt, banner and console password), held on the line
+/// until it is closed or `clear line N` cuts it.
+pub fn connect_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, dst: Ipv4Addr, port: u16) -> String {
+    let Some(router) = t.devices.iter().find(|d| netlabcraft_sim::l3_ifaces(d).iter().any(|i| i.net.addr == dst)).map(|d| d.id) else {
+        return format!("Trying {dst}, {port} ...\n% {dst} is not an address of a device in this lab");
+    };
+    let Some((line, cable)) = t.octal_at_port(router, port).map(|(l, o)| (l, *o)) else {
+        return format!(
+            "Trying {dst}, {port} ...\n% Port {port} is no line: lines are reached at 2001, 2002 ... on a router with an octal card and a cable on that line"
+        );
+    };
+    if let Err(e) = sim.tcp_connect(t, dev, dst, port) {
+        let e = e.to_string();
+        let name = t.device(router).map_or(String::new(), |d| d.name.clone());
+        let hint = if t.device(router).is_some_and(|d| d.access.async_transport.get(&line).is_none_or(|l| l.is_empty())) {
+            format!("\n(line {line} of {name} takes no connection: `line {line}` then `transport input telnet`)")
+        } else if sim.async_owner(router, line).is_some() {
+            format!("\n(line {line} of {name} is in use: `clear line {line}` there frees it)")
+        } else {
+            String::new()
+        };
+        return if e.contains("refused") {
+            format!("Trying {dst}, {port} ...\n% Connection refused by remote host{hint}")
+        } else {
+            format!("Trying {dst}, {port} ...\n% {e}")
+        };
+    }
+    if !sim.async_claim(router, line, dev) {
+        return format!("Trying {dst}, {port} ...\n% Connection refused by remote host (line {line} is in use)");
+    }
+    let target = cable.device;
+    let secured = t.device(target).is_some_and(console_login);
+    let stage = if secured { LoginStage::Password(None) } else { LoginStage::Ready };
+    let remote_cli = Cli { vty: false, logged_in: true, ..Cli::default() };
+    cli.remote = Some(Box::new(Remote { target, proto: RemoteProto::Telnet, stage, cli: remote_cli, tries: 0, via: Some((router, line)) }));
+    let hello = greeting(t, target);
+    format!("Trying {dst}, {port} ... Open\n\n{hello}(close the session with `^^x`, or `exit` from the first level)")
+}
+
+/// Ends a Telnet or SSH session of this console, freeing the asynchronous line a reverse Telnet held.
+fn end_remote(sim: &mut Sim, cli: &mut Cli) {
+    if let Some(r) = cli.remote.take()
+        && let Some((router, line)) = r.via
+    {
+        sim.async_release(router, line);
+    }
 }
 
 /// Runs DHCP on every `ip address dhcp` port that is up and has no address yet; returns a line
@@ -410,10 +465,19 @@ fn aaa_login(t: &Topology, sim: &mut Sim, target: &netlabcraft_model::Device, us
 }
 
 /// A line typed while a remote session is open.
-fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Outcome {
+fn remote_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
+    let Some(r) = cli.remote.as_mut() else { return Outcome::default() };
+    let via = r.via;
+    // A reverse Telnet whose line was cleared (or taken by another session) is over.
+    if let Some((router, ln)) = via
+        && sim.async_owner(router, ln) != Some(dev)
+    {
+        cli.remote = None;
+        return Outcome { output: "[Connection closed by a `clear line` on the router]".into(), ..Outcome::default() };
+    }
     let Some(r) = cli.remote.as_mut() else { return Outcome::default() };
     let Some(target) = t.device(r.target).cloned() else {
-        cli.remote = None;
+        end_remote(sim, cli);
         return Outcome { output: "% The remote device is gone; connection closed".into(), ..Outcome::default() };
     };
     match r.stage.clone() {
@@ -422,7 +486,9 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
             Outcome::default()
         }
         LoginStage::Password(user) => {
-            let ok = if target.access.aaa {
+            let ok = if via.is_some() {
+                target.access.console.password.as_deref() == Some(line)
+            } else if target.access.aaa {
                 aaa_login(t, sim, &target, user.as_deref().unwrap_or(""), line)
             } else {
                 match (&user, target.access.vty.login_local) {
@@ -446,7 +512,7 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
                 return Outcome::default();
             }
             if let Some(secs) = sim.login_failed(target.id, target.access.login_block) {
-                cli.remote = None;
+                end_remote(sim, cli);
                 return Outcome {
                     output: format!("% Login invalid\n% Too many failed logins: logins are blocked for {secs} seconds"),
                     ..Outcome::default()
@@ -454,21 +520,24 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
             }
             r.tries += 1;
             if r.tries >= 3 {
-                cli.remote = None;
+                end_remote(sim, cli);
                 return Outcome { output: "% Login failed three times; connection closed".into(), ..Outcome::default() };
             }
-            r.stage = if target.access.vty.login_local || target.access.aaa { LoginStage::Username } else { LoginStage::Password(None) };
+            r.stage =
+                if via.is_none() && (target.access.vty.login_local || target.access.aaa) { LoginStage::Username } else { LoginStage::Password(None) };
             Outcome { output: "% Login invalid".into(), ..Outcome::default() }
         }
         LoginStage::Ready => {
             let word = line.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
-            let leaving = matches!(r.cli.mode, Mode::User | Mode::Exec)
-                && r.cli.enable_prompt.is_none()
-                && !word.is_empty()
-                && ["exit", "logout", "quit"].iter().any(|w| w.starts_with(&word) && word.len() >= 2);
+            let escape = via.is_some() && line.trim().eq_ignore_ascii_case("^^x");
+            let leaving = escape
+                || (matches!(r.cli.mode, Mode::User | Mode::Exec)
+                    && r.cli.enable_prompt.is_none()
+                    && !word.is_empty()
+                    && ["exit", "logout", "quit"].iter().any(|w| w.starts_with(&word) && word.len() >= 2));
             if leaving {
                 let name = target.name.clone();
-                cli.remote = None;
+                end_remote(sim, cli);
                 return Outcome { output: format!("Connection to {name} closed."), ..Outcome::default() };
             }
             let target_id = r.target;
@@ -660,12 +729,56 @@ fn qos_map_named_like_type(words: &[&str]) -> Option<(Id, usize)> {
     }
 }
 
-/// Runs one line typed at a device.
+/// Runs one line typed at a device. A reload that was scheduled (`reload in|at`) and whose time
+/// has come happens first, to this device or to any other one; the console says so.
 pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
+    let said = fire_due_reloads(t, sim, dev, cli);
+    let mut out = execute_line(t, sim, dev, cli, line);
+    if !said.is_empty() {
+        out.output = if out.output.is_empty() { said } else { format!("{said}\n{}", out.output) };
+        out.changed = true;
+    }
+    out
+}
+
+/// Restarts the devices whose scheduled reload time has come (the one typed at keeps its session).
+fn fire_due_reloads(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli) -> String {
+    let mut said: Vec<String> = Vec::new();
+    for id in sim.take_due_reloads() {
+        let Some(name) = t.device(id).map(|d| d.name.clone()) else { continue };
+        let mut other = Cli::default();
+        let mut c = Ctx { t: &mut *t, sim: &mut *sim, dev: id, cli: if id == dev { &mut *cli } else { &mut other } };
+        let how = c.reload().unwrap_or_else(|e| e);
+        if id == dev {
+            said.push(format!("The scheduled reload took place: {name} restarted. {how}"));
+        }
+    }
+    said.join("\n")
+}
+
+/// The first word of a line, replaced by what an `alias` in this mode says it stands for.
+fn expand_alias(d: &Device, mode: &Mode, command: &str) -> Option<String> {
+    if d.knobs.global.is_empty() {
+        return None;
+    }
+    let scope = match mode {
+        Mode::User | Mode::Exec => "exec",
+        Mode::Config => "configure",
+        Mode::Iface(_) | Mode::Svi(_) | Mode::Loopback(_) => "interface",
+        _ => return None,
+    };
+    let first = command.split_whitespace().next()?;
+    let line = d.knobs.get(netlabcraft_model::knobs::Scope::Global, &format!("alias {scope} {first}"))?;
+    let text = line.splitn(4, ' ').nth(3)?;
+    let rest = command.trim_start().get(first.len()..).unwrap_or("");
+    Some(format!("{text}{rest}"))
+}
+
+fn execute_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
     let Some(d) = t.device(dev) else { return Outcome { output: "% That device no longer exists".into(), ..Outcome::default() } };
     let line = line.trim_end_matches(['\r', '\n']);
     if cli.remote.is_some() {
-        return remote_line(t, sim, cli, line);
+        return remote_line(t, sim, dev, cli, line);
     }
     // Pasted certificate text: every line is kept until `quit`.
     if let Some(mut p) = cli.paste.take() {
@@ -763,6 +876,8 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         Some((c, f)) => (c, Some(f)),
         None => (trimmed, None),
     };
+    let expanded = t.device(dev).and_then(|d| expand_alias(d, &cli.mode, command));
+    let command = expanded.as_deref().unwrap_or(command);
     let output = match (dispatch(t, sim, dev, cli, command), filter) {
         (Ok(s), Some(f)) => crate::pipe::apply(&s, f).unwrap_or_else(|e| e),
         (Ok(s), None) => s,
@@ -797,6 +912,45 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
         sim.topology_changed(t);
     }
     Outcome { output, changed, clear: false }
+}
+
+/// `reload in`: minutes (`45`) or `hh:mm`, as seconds.
+fn reload_delay(text: &str) -> Result<u64, String> {
+    let bad = || "% Give the delay in minutes (`45`) or as hh:mm (`1:30`), from 1 minute to 24 days".to_string();
+    let minutes = match text.split_once(':') {
+        Some((h, m)) => {
+            let (h, m): (u64, u64) = (h.parse().map_err(|_| bad())?, m.parse().map_err(|_| bad())?);
+            if m > 59 {
+                return Err(bad());
+            }
+            h.saturating_mul(60).saturating_add(m)
+        }
+        None => text.parse().map_err(|_| bad())?,
+    };
+    if !(1..=34_560).contains(&minutes) {
+        return Err(bad());
+    }
+    Ok(minutes * 60)
+}
+
+/// `reload at hh:mm`: seconds until the device clock next shows that time of day (a whole day
+/// when it shows it now).
+fn reload_until(text: &str, now: i64) -> Result<u64, String> {
+    let bad = || "% Give the time as hh:mm (24 hours), like `reload at 23:30`".to_string();
+    let (h, m) = text.split_once(':').ok_or_else(bad)?;
+    let (h, m): (i64, i64) = (h.parse().map_err(|_| bad())?, m.parse().map_err(|_| bad())?);
+    if !(0..24).contains(&h) || !(0..60).contains(&m) {
+        return Err(bad());
+    }
+    let wait = (h * 3_600 + m * 60 - now.rem_euclid(86_400)).rem_euclid(86_400);
+    Ok(if wait == 0 { 86_400 } else { wait as u64 })
+}
+
+/// `1 day 2 hours 3 minutes 4 seconds`, leaving out what is zero.
+fn reload_span(secs: u64) -> String {
+    let parts = [(secs / 86_400, "day"), (secs / 3_600 % 24, "hour"), (secs / 60 % 60, "minute"), (secs % 60, "second")];
+    let text: Vec<String> = parts.iter().filter(|(n, _)| *n > 0).map(|(n, w)| format!("{n} {w}{}", if *n == 1 { "" } else { "s" })).collect();
+    if text.is_empty() { "0 seconds".to_string() } else { text.join(" ") }
 }
 
 fn remember(cli: &mut Cli, line: &str) {
@@ -1296,11 +1450,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
-            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet"]
+            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet", "retransmission"]
                 .into_iter()
                 .find(|w| !what.is_empty() && w.starts_with(what.as_str()));
             if !what.is_empty() && pick.is_none() {
-                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood or packet".into());
+                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood, packet or retransmission".into());
             }
             let on = spec.id == Id::DebugIpOspf;
             let (kinds, note): (&[DebugKind], &str) = match pick {
@@ -1309,6 +1463,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Some("lsa-generation") => (&[DebugKind::OspfLsa], "the LSAs this router originates and flushes are reported"),
                 Some("flood") => (&[DebugKind::OspfFlood], "the LSAs sent and received in updates are reported"),
                 Some("packet") => (&[DebugKind::OspfPacket], "every OSPF packet this router hears is reported"),
+                Some("retransmission") => (&[DebugKind::OspfRxmt], "updates and descriptions sent again are reported"),
                 Some(_) => (&[DebugKind::OspfHello], "the hellos this router hears are reported"),
                 None => (
                     &[
@@ -1318,6 +1473,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                         DebugKind::OspfLsa,
                         DebugKind::OspfFlood,
                         DebugKind::OspfPacket,
+                        DebugKind::OspfRxmt,
                     ],
                     "all of it",
                 ),
@@ -1328,7 +1484,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on {
                 format!("OSPF debugging is on: {note}.")
             } else {
-                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood and packet"))
+                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood, packet and retransmission"))
             })
         }
         Id::ShowClock => {
@@ -1343,7 +1499,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::ShowFlash => Ok(render::flash(c.d()?)),
-        Id::ShowUsers => Ok(render::users(c.cli)),
+        Id::ShowUsers => {
+            let mut s = render::users(c.cli);
+            for (line, owner) in c.sim.async_in_use(c.dev) {
+                let who = c.t.device(owner).map_or("?".to_string(), |d| d.name.clone());
+                let to =
+                    c.t.octal_at_line(c.dev, line.saturating_sub(1)).and_then(|o| c.t.device(o.device)).map_or("?".to_string(), |d| d.name.clone());
+                s.push_str(&format!("\n   {:<18} {:<10} reverse Telnet from {who} to the console of {to}", format!("tty {line}"), "-"));
+            }
+            Ok(s)
+        }
         Id::TerminalLength => {
             let w: Vec<&str> = arg(0).split_whitespace().collect();
             match w.as_slice() {
@@ -1424,6 +1589,28 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok("Startup configuration erased; the next reload starts from factory settings.".into())
         }
         Id::Reload => c.reload(),
+        Id::ReloadIn | Id::ReloadAt => {
+            let (now, _) = c.sim.clock(c.dev);
+            let secs = if spec.id == Id::ReloadIn { reload_delay(arg(0))? } else { reload_until(arg(0), now)? };
+            let reason: String = arg(1).chars().filter(|ch| !ch.is_control()).take(80).collect();
+            c.sim.schedule_reload(c.dev, secs.saturating_mul(1_000_000), reason);
+            Ok(format!("The device will reload in {} (at {}).", reload_span(secs), crate::clock::stamp(now.saturating_add(secs as i64))))
+        }
+        Id::ReloadCancel => {
+            Ok(if c.sim.cancel_reload(c.dev) { "The scheduled reload is cancelled.".to_string() } else { "No reload is scheduled.".to_string() })
+        }
+        Id::ShowReload => {
+            let (now, _) = c.sim.clock(c.dev);
+            Ok(match c.sim.reload_pending(c.dev) {
+                None => "No reload is scheduled.".to_string(),
+                Some((left, why)) => {
+                    let secs = left / 1_000_000;
+                    let reason = if why.is_empty() { String::new() } else { format!("\nReason: {why}") };
+                    format!("The device reloads in {} (at {}).{reason}", reload_span(secs), crate::clock::stamp(now.saturating_add(secs as i64)))
+                }
+            })
+        }
+        Id::ShowAliases => Ok(knobs::aliases(c.d()?)),
         Id::ClearMac => {
             c.sim.clear_macs(c.dev);
             Ok(String::new())
@@ -2106,6 +2293,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpOspfHello
         | Id::IpOspfDead
         | Id::NoIpOspfDead
+        | Id::IpOspfRetransmit
+        | Id::NoIpOspfRetransmit
+        | Id::IpOspfTransmitDelay
+        | Id::NoIpOspfTransmitDelay
         | Id::IpOspfNetwork
         | Id::NoIpOspfNetwork
         | Id::IpOspfAuth
@@ -3378,6 +3569,14 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
             }
             list.dedup();
+            if let Some((first, last)) = c.cli.async_lines.filter(|_| !vty) {
+                // `line 1 8`: what a reverse Telnet to port 2000 plus the line may use.
+                let d = c.dm()?;
+                for n in first..=last {
+                    d.access.async_transport.insert(n, list.clone());
+                }
+                return Ok(String::new());
+            }
             let d = c.dm()?;
             let line = if vty { &mut d.access.vty } else { &mut d.access.console };
             line.transport = Some(list);
@@ -3483,6 +3682,42 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             let dst = parse_ip(&addr).map_err(|e| format!("% {e}"))?;
             Ok(connect(c.t, c.sim, c.dev, c.cli, proto, dst, user))
+        }
+        Id::TelnetPort => {
+            let dst = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let port: u16 = arg(1).parse().map_err(|_| "% The port is a number: 23, or 2001 and up for the lines of an octal card".to_string())?;
+            if port == 23 {
+                return Ok(connect(c.t, c.sim, c.dev, c.cli, RemoteProto::Telnet, dst, None));
+            }
+            Ok(connect_line(c.t, c.sim, c.dev, c.cli, dst, port))
+        }
+        Id::ClearLine => {
+            let n: u8 = arg(0).parse().ok().filter(|n| (1..=16).contains(n)).ok_or("% The line is 1-16")?;
+            if c.d()?.octal_lines() == 0 {
+                return Err("% This router has no octal card: there are no asynchronous lines".into());
+            }
+            Ok(match c.sim.async_owner(c.dev, n) {
+                Some(_) => {
+                    c.sim.async_release(c.dev, n);
+                    format!("[Line {n} cleared: its session is closed]")
+                }
+                None => format!("[Line {n} has no session]"),
+            })
+        }
+        Id::LineAsync => {
+            let lines = c.d()?.octal_lines();
+            if lines == 0 {
+                return Err("% This router has no octal card: fit one (a Card-8A) in a bay first".into());
+            }
+            let num = |w: &str| w.parse::<u8>().ok().filter(|n| (1..=lines).contains(n)).ok_or_else(|| format!("% The line is 1-{lines}"));
+            let first = num(arg(0))?;
+            let last = if arg(1).is_empty() { first } else { num(arg(1))? };
+            if last < first {
+                return Err("% The last line is before the first".into());
+            }
+            c.cli.async_lines = Some((first, last));
+            c.cli.mode = Mode::Line(false);
+            Ok(String::new())
         }
         Id::ShowIpSsh => {
             let a = &c.d()?.access;
@@ -4515,7 +4750,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowOspfNeighbor => {
             let st = c.sim.ospf_state(c.t);
-            let all = render::ospf_neighbors(c.t, c.d()?, &st);
+            let all = render::ospf_neighbors(c.t, c.d()?, &st, &*c.sim);
             let want = arg(0).trim();
             if want.is_empty() {
                 return Ok(all);
@@ -4769,6 +5004,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return Err("% There is one console line: `line console 0`".into());
             }
             c.cli.mode = Mode::Line(false);
+            c.cli.async_lines = None;
             Ok(String::new())
         }
         Id::LineVty => {
@@ -4778,6 +5014,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return Err("% vty lines are 0-15: `line vty 0 4` or `line vty 0 15`".into());
             }
             c.cli.mode = Mode::Line(true);
+            c.cli.async_lines = None;
             Ok(String::new())
         }
         Id::LinePassword | Id::NoLinePassword | Id::Login | Id::NoLogin => {
