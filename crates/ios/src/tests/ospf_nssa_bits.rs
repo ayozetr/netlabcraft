@@ -16,9 +16,9 @@ fn nssa() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
     let s = lab.add(DeviceKind::Switch);
     lab.cable(r1, "g0/0", r2, "g0/0");
     lab.cable(r1, "g0/1", r4, "g0/0");
-    lab.cable(r2, "g0/1", s, "g0/1");
-    lab.cable(r3, "g0/0", s, "g0/2");
-    lab.cable(r4, "g0/1", s, "g0/3");
+    lab.cable(r2, "g0/1", s, "fa0/1");
+    lab.cable(r3, "g0/0", s, "fa0/2");
+    lab.cable(r4, "g0/1", s, "fa0/3");
     let ifs = |a: &str, b: &str| {
         format!("interface g0/0\nip address {a} 255.255.255.0\nno shutdown\nexit\ninterface g0/1\nip address {b} 255.255.255.0\nno shutdown\nexit\n")
     };
