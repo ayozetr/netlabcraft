@@ -13,7 +13,7 @@ command to type, and what to check with which command.
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it; 19 of the 60). A lab that passes there works when typed by hand.
+agent drives it; 19 of the 62). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -123,7 +123,7 @@ A failing step names its line in the lab's Markdown.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-18 | minor | Labs 61 to 72 join the book: 62 labs with 73 and 74. Site-to-site and remote-access VPN faults, wireless clients, IP phones, five labs on reading `debug` output, IPv6, HSRP, DHCP snooping and ACL order. |
-| 2026-11-18 | minor | Labs 61 to 72 join the book: 60 labs. Site-to-site and remote-access VPN faults, wireless clients, IP phones, five labs on reading `debug` output, IPv6, HSRP, DHCP snooping and ACL order. |
+| 2026-11-18 | minor | Labs 61 to 72 join the book: 62 labs with 73 and 74. Site-to-site and remote-access VPN faults, wireless clients, IP phones, five labs on reading `debug` output, IPv6, HSRP, DHCP snooping and ACL order. |
 | 2026-11-16 | minor | Lab 48 (Dial-up) joins the book: 48 labs. |
 | 2026-11-16 | minor | Lab 47 (BGP session passwords and a conditional default route) joins the book: 47 labs. |
 | 2026-11-16 | minor | Lab 45 (OSPF stub, NSSA and virtual-link areas) joins the book: 46 labs. |
