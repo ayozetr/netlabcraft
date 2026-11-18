@@ -28,6 +28,7 @@ Commands:
   ftp <address>                          send and fetch files on an FTP server
   cellular [on|off|apn <name|none>]      phones and tablets: cellular status, data and APN
   netstat                                TCP connections this host set up
+  igmp [join|leave <group>]              list, join or leave multicast groups
   dir                                    list this host's files
   arp -a                                 show the ARP cache
   arp -d [address]                       empty the ARP cache (or forget one entry)
@@ -226,6 +227,7 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
             out(s)
         }
         "netstat" => out(netstat(sim, dev)),
+        "igmp" => out(igmp(t, sim, dev, words.get(1..).unwrap_or_default())),
         "arp" => match words.get(1).map(|w| w.to_ascii_lowercase()) {
             Some(f) if f == "-d" => match words.get(2) {
                 None | Some(&"*") => {
@@ -567,5 +569,43 @@ fn ipv6config(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> 
             sim.topology_changed(t);
             Outcome { output: e, changed: true, clear: false }
         }
+    }
+}
+
+/// `igmp [join|leave GROUP]`: the multicast groups a host listens to.
+fn igmp(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> String {
+    use netlabcraft_model::igmp::{Igmp, MAX_JOINED};
+    let Some(d) = t.device_mut(dev) else { return "This device no longer exists.".into() };
+    let group = |a: Option<&&str>| -> Result<std::net::Ipv4Addr, String> {
+        let g = parse_ip(a.ok_or("Give a group address, for example 239.1.1.1")?).map_err(|e| e.to_string())?;
+        if Igmp::joinable(g) { Ok(g) } else { Err(format!("{g} is not a group a host can join (224.0.1.0 to 239.255.255.255)")) }
+    };
+    match args.first().map(|w| w.to_ascii_lowercase()).as_deref() {
+        None | Some("groups") => {
+            if d.igmp.joined.is_empty() {
+                return "This host has joined no multicast group.".into();
+            }
+            d.igmp.joined.iter().map(|g| g.to_string()).collect::<Vec<_>>().join("\n")
+        }
+        Some(w) if w == "join" || w == "leave" => {
+            let g = match group(args.get(1)) {
+                Ok(g) => g,
+                Err(e) => return e,
+            };
+            let join = w == "join";
+            if join {
+                if !d.igmp.joined.contains(&g) && d.igmp.joined.len() >= MAX_JOINED {
+                    return format!("A host joins at most {MAX_JOINED} groups.");
+                }
+                d.igmp.joined.insert(g);
+            } else if !d.igmp.joined.remove(&g) {
+                return format!("This host has not joined {g}.");
+            }
+            match sim.igmp_announce(t, dev, g, !join) {
+                Ok(()) => format!("{} {g}.", if join { "Joined" } else { "Left" }),
+                Err(e) => format!("{} {g}, but no message could be sent: {e}", if join { "Joined" } else { "Left" }),
+            }
+        }
+        Some(_) => "Usage: igmp [join|leave <group>]".into(),
     }
 }
