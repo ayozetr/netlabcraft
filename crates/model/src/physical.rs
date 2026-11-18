@@ -13,7 +13,7 @@ use std::collections::BTreeSet;
 use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
-use crate::furniture::{Fitting, Furniture, Mount, PatchWire, Plug};
+use crate::furniture::{Fitting, Furniture, Hang, Mount, PatchWire, Plug};
 use crate::{End, Link, MAX_DEVICES, MAX_NAME, ModelError, Result, Topology, finite};
 
 /// Most places in a lab.
@@ -46,16 +46,20 @@ pub enum PlaceKind {
     Building,
     #[default]
     Closet,
+    /// A generic container: a plain room-like place in a city or a building that holds devices
+    /// and furniture like a wiring closet.
+    Container,
 }
 
 impl PlaceKind {
-    pub const ALL: [PlaceKind; 3] = [PlaceKind::City, PlaceKind::Building, PlaceKind::Closet];
+    pub const ALL: [PlaceKind; 4] = [PlaceKind::City, PlaceKind::Building, PlaceKind::Closet, PlaceKind::Container];
 
     pub fn id(self) -> &'static str {
         match self {
             PlaceKind::City => "city",
             PlaceKind::Building => "building",
             PlaceKind::Closet => "closet",
+            PlaceKind::Container => "container",
         }
     }
 
@@ -64,6 +68,7 @@ impl PlaceKind {
             PlaceKind::City => "City",
             PlaceKind::Building => "Building",
             PlaceKind::Closet => "Wiring closet",
+            PlaceKind::Container => "Container",
         }
     }
 
@@ -72,26 +77,43 @@ impl PlaceKind {
             "city" => Some(PlaceKind::City),
             "building" => Some(PlaceKind::Building),
             "closet" | "wiring-closet" | "rack" => Some(PlaceKind::Closet),
+            "container" | "generic-container" => Some(PlaceKind::Container),
             _ => None,
         }
     }
 
-    /// The kind of place this one sits in (none: the Intercity map).
-    pub fn parent_kind(self) -> Option<PlaceKind> {
+    /// The kinds of place this one can sit in (none: it is on the Intercity map).
+    pub fn parent_kinds(self) -> &'static [PlaceKind] {
         match self {
-            PlaceKind::City => None,
-            PlaceKind::Building => Some(PlaceKind::City),
-            PlaceKind::Closet => Some(PlaceKind::Building),
+            PlaceKind::City => &[],
+            PlaceKind::Building => &[PlaceKind::City],
+            PlaceKind::Closet => &[PlaceKind::Building],
+            PlaceKind::Container => &[PlaceKind::City, PlaceKind::Building],
         }
     }
 
-    /// The kind of place that sits in this one.
+    /// The kinds of place that can sit in this one.
+    pub fn child_kinds(self) -> &'static [PlaceKind] {
+        match self {
+            PlaceKind::City => &[PlaceKind::Building, PlaceKind::Container],
+            PlaceKind::Building => &[PlaceKind::Closet, PlaceKind::Container],
+            PlaceKind::Closet | PlaceKind::Container => &[],
+        }
+    }
+
+    /// The kind of place the plain "new place" button makes here (a building in a city, a
+    /// closet in a building).
     pub fn child_kind(self) -> Option<PlaceKind> {
         match self {
             PlaceKind::City => Some(PlaceKind::Building),
             PlaceKind::Building => Some(PlaceKind::Closet),
-            PlaceKind::Closet => None,
+            PlaceKind::Closet | PlaceKind::Container => None,
         }
+    }
+
+    /// Whether devices and furniture stand in it: a wiring closet or a container.
+    pub fn holds_things(self) -> bool {
+        matches!(self, PlaceKind::Closet | PlaceKind::Container)
     }
 }
 
@@ -155,6 +177,12 @@ pub struct Physical {
     /// Devices plugged into a power distribution device's outlets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plugs: Vec<Plug>,
+    /// Cables hung on the pegs of cable pegboards.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hangs: Vec<Hang>,
+    /// The closet the user works in (the Home button goes there); none: the first closet.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub working: Option<u32>,
     /// The lab ignores cable lengths: a copper run over [`COPPER_MAX_M`] (or another medium's
     /// limit) still carries frames. Not set, lengths count, as they always did.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -175,6 +203,8 @@ impl Physical {
             && self.mounts.is_empty()
             && self.patch_wires.is_empty()
             && self.plugs.is_empty()
+            && self.hangs.is_empty()
+            && self.working.is_none()
             && !self.ignore_lengths
     }
 }
@@ -221,6 +251,26 @@ impl Topology {
         self.places().iter().find(|p| p.id == id).cloned()
     }
 
+    /// The closet the Home button goes to: the one marked as working, else the first closet.
+    pub fn working_closet(&self) -> Option<u32> {
+        let places = self.places();
+        self.physical
+            .working
+            .filter(|w| places.iter().any(|p| p.id == *w && p.kind == PlaceKind::Closet))
+            .or_else(|| places.iter().filter(|p| p.kind == PlaceKind::Closet).map(|p| p.id).min())
+    }
+
+    /// Marks a closet as the working one.
+    pub fn set_working_closet(&mut self, id: u32) -> Result<()> {
+        let p = self.place(id).ok_or_else(|| ModelError::Invalid(format!("no place {id}")))?;
+        if p.kind != PlaceKind::Closet {
+            return Err(ModelError::Invalid("the working closet is a wiring closet".into()));
+        }
+        self.materialize_places();
+        self.physical.working = Some(id);
+        Ok(())
+    }
+
     /// Writes the implicit layout down, so it can be changed.
     pub fn materialize_places(&mut self) {
         if self.physical.places.is_empty() {
@@ -232,7 +282,10 @@ impl Topology {
     /// building, else the first city.
     pub fn default_place(&self) -> u32 {
         let places = self.places();
-        PlaceKind::ALL.iter().rev().find_map(|k| places.iter().find(|p| p.kind == *k).map(|p| p.id)).unwrap_or(DEFAULT_CLOSET)
+        [PlaceKind::Closet, PlaceKind::Container, PlaceKind::Building, PlaceKind::City]
+            .iter()
+            .find_map(|k| places.iter().find(|p| p.kind == *k).map(|p| p.id))
+            .unwrap_or(DEFAULT_CLOSET)
     }
 
     /// Where a device stands: its place and its position there.
@@ -306,6 +359,7 @@ impl Topology {
         match p.kind {
             PlaceKind::Building => Some(p),
             PlaceKind::Closet => p.parent.and_then(|b| self.place(b)),
+            PlaceKind::Container => p.parent.and_then(|b| self.place(b)).filter(|b| b.kind == PlaceKind::Building),
             PlaceKind::City => None,
         }
     }
@@ -315,6 +369,9 @@ impl Topology {
         let p = self.place(place)?;
         match p.kind {
             PlaceKind::City => Some(p),
+            PlaceKind::Container if p.parent.and_then(|c| self.place(c)).is_some_and(|c| c.kind == PlaceKind::City) => {
+                p.parent.and_then(|c| self.place(c))
+            }
             _ => self.building_of(place).and_then(|b| b.parent).and_then(|c| self.place(c)),
         }
     }
@@ -329,23 +386,21 @@ impl Topology {
         if self.physical.places.len() >= MAX_PLACES {
             return Err(ModelError::Invalid(format!("at most {MAX_PLACES} places")));
         }
-        let parent = match kind.parent_kind() {
-            None => None,
-            Some(pk) => {
-                let id = parent.ok_or_else(|| {
-                    ModelError::Invalid(format!("say which {} the {} goes in", pk.label().to_lowercase(), kind.label().to_lowercase()))
-                })?;
-                let p = self.place(id).ok_or_else(|| ModelError::Invalid(format!("no place {id}")))?;
-                if p.kind != pk {
-                    return Err(ModelError::Invalid(format!(
-                        "a {} goes in a {}, not in a {}",
-                        kind.label().to_lowercase(),
-                        pk.label().to_lowercase(),
-                        p.kind.label().to_lowercase()
-                    )));
-                }
-                Some(id)
+        let kinds = kind.parent_kinds();
+        let parent = if kinds.is_empty() {
+            None
+        } else {
+            let wanted = kinds.iter().map(|k| k.label().to_lowercase()).collect::<Vec<_>>().join(" or ");
+            let id = parent.ok_or_else(|| ModelError::Invalid(format!("say which {wanted} the {} goes in", kind.label().to_lowercase())))?;
+            let p = self.place(id).ok_or_else(|| ModelError::Invalid(format!("no place {id}")))?;
+            if !kinds.contains(&p.kind) {
+                return Err(ModelError::Invalid(format!(
+                    "a {} goes in a {wanted}, not in a {}",
+                    kind.label().to_lowercase(),
+                    p.kind.label().to_lowercase()
+                )));
             }
+            Some(id)
         };
         let id = self.next_place_id();
         let name = name.and_then(clean_name).unwrap_or_else(|| {
@@ -354,6 +409,7 @@ impl Topology {
                 PlaceKind::City => format!("City {n}"),
                 PlaceKind::Building => format!("Building {n}"),
                 PlaceKind::Closet => format!("Closet {n}"),
+                PlaceKind::Container => format!("Container {n}"),
             }
         });
         self.physical.places.push(Place { id, kind, name, x: finite(x), y: finite(y), parent });
@@ -389,6 +445,9 @@ impl Topology {
         }
         let gone = self.place_subtree(id);
         let up = p.parent.and_then(|q| self.place(q)).filter(|q| q.kind == PlaceKind::Building).map(|q| q.id);
+        if self.physical.working.is_some_and(|w| gone.contains(&w)) {
+            self.physical.working = None;
+        }
         self.physical.places.retain(|q| !gone.contains(&q.id));
         match up {
             Some(b) => {
@@ -413,7 +472,7 @@ impl Topology {
         let name = d.name.clone();
         let p = self.place(place).ok_or_else(|| ModelError::Invalid(format!("no place {place}")))?;
         match p.kind {
-            PlaceKind::Closet => {}
+            PlaceKind::Closet | PlaceKind::Container => {}
             PlaceKind::Building if host => {}
             PlaceKind::Building => {
                 return Err(ModelError::Invalid(format!("{name} is network equipment: it goes in a wiring closet, not in a building's rooms")));
@@ -506,22 +565,21 @@ impl Topology {
             p.x = finite(p.x);
             p.y = finite(p.y);
         }
-        // Cities, then buildings, then closets: each must sit in a place of the kind above.
+        // Cities, then buildings, then closets and containers: each must sit in a place of a
+        // kind that can hold it.
         for kind in PlaceKind::ALL {
             let fits: Vec<(u32, PlaceKind)> = ph.places.iter().map(|p| (p.id, p.kind)).collect();
-            let first_parent = kind.parent_kind().and_then(|pk| fits.iter().find(|(_, k)| *k == pk).map(|(i, _)| *i));
+            let wanted = kind.parent_kinds();
+            let first_parent = wanted.iter().find_map(|pk| fits.iter().find(|(_, k)| k == pk).map(|(i, _)| *i));
             let mut drop = BTreeSet::new();
             for p in ph.places.iter_mut().filter(|p| p.kind == kind) {
-                match kind.parent_kind() {
-                    None => p.parent = None,
-                    Some(pk) => {
-                        if !p.parent.is_some_and(|q| fits.iter().any(|(i, k)| *i == q && *k == pk)) {
-                            match first_parent {
-                                Some(q) => p.parent = Some(q),
-                                None => {
-                                    drop.insert(p.id);
-                                }
-                            }
+                if wanted.is_empty() {
+                    p.parent = None;
+                } else if !p.parent.is_some_and(|q| fits.iter().any(|(i, k)| *i == q && wanted.contains(k))) {
+                    match first_parent {
+                        Some(q) => p.parent = Some(q),
+                        None => {
+                            drop.insert(p.id);
                         }
                     }
                 }
@@ -550,6 +608,10 @@ impl Topology {
                 && links.iter().any(|l| same_cable(l, c))
                 && seen.insert(if c.a <= c.b { (c.a, c.b) } else { (c.b, c.a) })
         });
+        let working = self.physical.working;
+        if working.is_some_and(|w| !self.places().iter().any(|p| p.id == w && p.kind == PlaceKind::Closet)) {
+            self.physical.working = None;
+        }
         self.sanitize_furniture();
     }
 }

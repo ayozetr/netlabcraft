@@ -160,3 +160,51 @@ fn furniture_survives_a_save_and_a_load() {
     assert_eq!(back, s.topology);
     assert!(back.fitting(p as u32).is_some());
 }
+
+#[test]
+fn containers_and_the_new_furniture_are_commands_and_undo_steps() {
+    let (mut s, a, _, _) = lab();
+    assert!(s.execute("place.add", json!({"kind": "container", "parent": 3})).is_err(), "not in a closet");
+    let c = id(&s.execute("place.add", json!({"kind": "container", "name": "Store", "parent": 2})).unwrap());
+    assert_eq!(s.topology.place(c as u32).unwrap().name, "Store");
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(s.topology.place(c as u32).is_none());
+    s.execute("edit.redo", json!({})).unwrap();
+    let inv = id(&s.execute("furniture.add", json!({"kind": "inventory-shelf", "place": c})).unwrap());
+    let peg = id(&s.execute("furniture.add", json!({"kind": "pegboard", "place": 3})).unwrap());
+    let icp = id(&s.execute("furniture.add", json!({"kind": "icp", "place": 3})).unwrap());
+    assert!(s.execute("furniture.add", json!({"kind": "sofa"})).is_err());
+    // Storage switches a device off in one undo step.
+    s.execute("device.place", json!({"device": a, "place": c})).unwrap();
+    s.execute("furniture.mount", json!({"device": a, "furniture": inv})).unwrap();
+    assert!(s.topology.devices[0].powered_off);
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(!s.topology.devices[0].powered_off);
+    assert!(s.execute("furniture.mount", json!({"device": a, "furniture": peg})).is_err());
+    assert!(s.execute("furniture.mount", json!({"device": a, "furniture": icp})).is_err());
+    let list = s.execute("closet.list", json!({"place": 3})).unwrap();
+    assert_eq!(list["furniture"].as_array().unwrap().len(), 2);
+}
+
+#[test]
+fn cables_hang_on_a_pegboard_and_the_working_closet_is_set() {
+    let (mut s, a, b, _) = lab();
+    s.execute("link.add", json!({"a": a, "a_port": "Fa0/1", "b": b, "b_port": "Fa0/1"})).unwrap();
+    let peg = id(&s.execute("furniture.add", json!({"kind": "pegboard"})).unwrap());
+    let r = s.execute("furniture.hang", json!({"furniture": peg, "device": a, "port": "Fa0/1"})).unwrap();
+    assert_eq!(r["peg"], 1);
+    assert!(s.execute("furniture.hang", json!({"furniture": peg, "device": a, "port": "Fa0/2"})).is_err(), "no cable there");
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(s.topology.physical.hangs.is_empty());
+    s.execute("edit.redo", json!({})).unwrap();
+    s.execute("furniture.unhang", json!({"device": b, "port": "Fa0/1"})).unwrap();
+    assert!(s.execute("furniture.unhang", json!({"device": b, "port": "Fa0/1"})).is_err());
+    // The working closet.
+    assert_eq!(s.execute("place.working.get", json!({})).unwrap()["id"], 3);
+    let c2 = id(&s.execute("place.add", json!({"kind": "closet", "parent": 2})).unwrap());
+    s.execute("place.working.set", json!({"id": c2})).unwrap();
+    assert_eq!(s.execute("place.working.get", json!({})).unwrap()["id"], json!(c2));
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(s.execute("place.working.get", json!({})).unwrap()["id"], 3);
+    assert!(s.execute("place.working.set", json!({"id": 2})).is_err(), "a building is not a closet");
+}

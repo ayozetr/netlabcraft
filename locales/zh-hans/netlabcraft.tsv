@@ -2370,3 +2370,12 @@ furniture	Table	桌子
 	Backup written to {}	备份已写入 {}
 	Application size	程序字号
 	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。
+	Container	容器
+	New Container	新建容器
+	Inventory Shelf	库存货架
+	Cable Pegboard	线缆挂板
+	Industrial Control Panel	工业控制面板
+	{}, {} DIN slots	{}，{} 个 DIN 槽位
+	{}, {} rows of hooks	{}，{} 排挂钩
+	Hang on a Peg	挂到挂钩上
+	Take off the Peg	从挂钩上取下

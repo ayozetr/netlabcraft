@@ -73,7 +73,7 @@ fn furniture_label(kind: FurnitureKind) -> &'static str {
 /// The wiring closet being looked at, if any.
 pub(crate) fn current(app: &PacketApp) -> Option<u32> {
     let place = app.session.place_view?;
-    app.session.topology.place(place).filter(|p| p.kind == netlabcraft_model::physical::PlaceKind::Closet).map(|p| p.id)
+    app.session.topology.place(place).filter(|p| p.kind.holds_things()).map(|p| p.id)
 }
 
 /// The strip at the top of the workspace that holds the closet's title; the fit keeps the furniture below it.
@@ -246,6 +246,17 @@ impl Scene {
 const RACK_BLUE: Color32 = Color32::from_rgb(0x1f, 0x5a, 0xa8);
 const RAIL: Color32 = Color32::from_rgb(0x8a, 0x5a, 0x1c);
 const SHELF_DARK: Color32 = Color32::from_rgb(0x2f, 0x32, 0x37);
+const INVENTORY_GREEN: Color32 = Color32::from_rgb(0x3d, 0x62, 0x4a);
+const PEGBOARD_TAN: Color32 = Color32::from_rgb(0xa9, 0x84, 0x56);
+const PANEL_GREY: Color32 = Color32::from_rgb(0x6b, 0x72, 0x7c);
+/// The colours of cables hung on a pegboard, by peg.
+const HUNG: [Color32; 5] = [
+    Color32::from_rgb(0x2f, 0x80, 0xed),
+    Color32::from_rgb(0xe5, 0x53, 0x3d),
+    Color32::from_rgb(0x2f, 0xa8, 0x4f),
+    Color32::from_rgb(0xf0, 0xa0, 0x1a),
+    Color32::from_rgb(0x8e, 0x44, 0xad),
+];
 const PLATE: Color32 = Color32::from_rgb(0x1c, 0x1f, 0x24);
 
 /// A cable's colour by kind: straight-through green, cross-over orange, fiber gold, console light
@@ -642,6 +653,9 @@ fn draw_furniture(p: &Painter, kind: FurnitureKind, size: u32, name: &str, whole
     let z = zoom;
     let frame = match kind {
         FurnitureKind::Shelf => SHELF_DARK,
+        FurnitureKind::InventoryShelf => INVENTORY_GREEN,
+        FurnitureKind::CablePegboard => PEGBOARD_TAN,
+        FurnitureKind::ControlPanel => PANEL_GREY,
         _ => RACK_BLUE,
     };
     p.rect_filled(whole, 3.0 * z, frame);
@@ -680,6 +694,61 @@ fn draw_furniture(p: &Painter, kind: FurnitureKind, size: u32, name: &str, whole
                 p.rect_filled(level, 0.0, tk.canvas);
             }
         }
+        FurnitureKind::InventoryShelf => {
+            // Levels split into labelled bins, where devices wait in storage.
+            let bins = netlabcraft_model::furniture::SHELF_CAPACITY;
+            for i in 0..size {
+                let y = top + i as f32 * netlabcraft_model::furniture::SHELF_LEVEL_H * z;
+                let level = Rect::from_min_size(
+                    pos2(whole.left() + 16.0 * z, y),
+                    vec2(whole.width() - 32.0 * z, (netlabcraft_model::furniture::SHELF_LEVEL_H - 8.0) * z),
+                );
+                p.rect_filled(level, 0.0, tk.canvas);
+                let bin_w = level.width() / bins as f32;
+                for b in 0..bins {
+                    let x = level.left() + b as f32 * bin_w;
+                    if b > 0 {
+                        p.line_segment([pos2(x, level.top()), pos2(x, level.bottom())], Stroke::new((2.0 * z).max(1.0), frame));
+                    }
+                    let tag = Rect::from_min_size(pos2(x + 6.0 * z, level.top() + 4.0 * z), vec2(34.0 * z, 11.0 * z));
+                    p.rect_filled(tag, 2.0 * z, Color32::from_gray(0xe8));
+                    p.rect_stroke(tag, 2.0 * z, Stroke::new(1.0, Color32::from_gray(0x80)), StrokeKind::Inside);
+                }
+            }
+        }
+        FurnitureKind::CablePegboard => {
+            // A board with rows of hooks.
+            let inner = Rect::from_min_max(pos2(whole.left() + 16.0 * z, top + 4.0 * z), pos2(whole.right() - 16.0 * z, whole.bottom() - foot));
+            p.rect_filled(inner, 2.0 * z, theme::shade(PEGBOARD_TAN, 0.9));
+            let hook = Stroke::new((2.4 * z).max(1.0), Color32::from_gray(0x4a));
+            for r in 0..size {
+                for c in 0..netlabcraft_model::furniture::PEGS_PER_ROW {
+                    let pos = peg_pos(whole, top, z, r, c);
+                    p.circle_filled(pos, (2.6 * z).max(1.0), Color32::from_gray(0x3a));
+                    p.line_segment([pos, pos + vec2(0.0, 14.0 * z)], hook);
+                    p.line_segment([pos + vec2(0.0, 14.0 * z), pos + vec2(6.0 * z, 8.0 * z)], hook);
+                }
+            }
+        }
+        FurnitureKind::ControlPanel => {
+            // A wall panel with a DIN rail down the middle and a slot for each module.
+            let inner = Rect::from_min_max(pos2(whole.left() + 28.0 * z, top), pos2(whole.right() - 28.0 * z, whole.bottom() - foot));
+            p.rect_filled(inner, 0.0, theme::shade(PANEL_GREY, 1.5));
+            let rail = Rect::from_min_max(pos2(whole.center().x - 9.0 * z, top), pos2(whole.center().x + 9.0 * z, inner.bottom()));
+            p.rect_filled(rail, 0.0, Color32::from_gray(0xb8));
+            p.rect_stroke(rail, 0.0, Stroke::new(1.0, Color32::from_gray(0x70)), StrokeKind::Inside);
+            for u in 0..size {
+                let y = top + (u as f32 + 0.5) * RACK_UNIT_H * z;
+                p.rect_filled(Rect::from_center_size(rail.center_top() + vec2(0.0, y - top), vec2(4.0 * z, 14.0 * z)), 2.0 * z, Color32::from_gray(0x50));
+                p.text(
+                    pos2(whole.left() + 10.0 * z, y),
+                    Align2::CENTER_CENTER,
+                    (u + 1).to_string(),
+                    FontId::proportional((9.0 * z).clamp(6.0, 14.0)),
+                    Color32::from_gray(0xe0),
+                );
+            }
+        }
         FurnitureKind::Table => {
             let inner = Rect::from_min_max(pos2(whole.left() + 16.0 * z, top + 8.0 * z), pos2(whole.right() - 16.0 * z, whole.bottom() - foot));
             p.rect_filled(inner, 0.0, tk.canvas);
@@ -690,6 +759,29 @@ fn draw_furniture(p: &Painter, kind: FurnitureKind, size: u32, name: &str, whole
     p.text(head.center(), Align2::CENTER_CENTER, name, FontId::proportional((15.0 * z).clamp(9.0, 24.0)), Color32::WHITE);
     if picked {
         p.rect_stroke(whole.expand(3.0), 4.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
+    }
+}
+
+/// Where the hook `col` of row `row` of a pegboard is.
+fn peg_pos(whole: Rect, top: f32, z: f32, row: u32, col: u32) -> Pos2 {
+    let cols = netlabcraft_model::furniture::PEGS_PER_ROW as f32;
+    pos2(whole.left() + (col as f32 + 0.5) * whole.width() / cols, top + (row as f32 + 0.3) * netlabcraft_model::furniture::PEG_ROW_H * z)
+}
+
+/// The cables hung on a pegboard: each a loop over its hook, in a colour of its own.
+fn draw_hangs(p: &Painter, t: &Topology, furniture: u32, whole: Rect, head: Rect, z: f32) {
+    let per = netlabcraft_model::furniture::PEGS_PER_ROW;
+    for h in t.hangs_on(furniture) {
+        let pos = peg_pos(whole, head.bottom(), z, h.peg / per, h.peg % per);
+        let (x, y) = (pos.x, pos.y);
+        let mut pts = vec![pos2(x - 8.0 * z, y + 40.0 * z), pos2(x - 8.0 * z, y + 2.0 * z)];
+        for i in 1..8 {
+            let a = std::f32::consts::PI * (1.0 - i as f32 / 8.0);
+            pts.push(pos2(x + 8.0 * z * a.cos(), y + 2.0 * z - 8.0 * z * a.sin()));
+        }
+        pts.push(pos2(x + 8.0 * z, y + 2.0 * z));
+        pts.push(pos2(x + 8.0 * z, y + 40.0 * z));
+        p.add(egui::Shape::line(pts, Stroke::new((3.0 * z).max(1.5), HUNG[h.peg as usize % HUNG.len()])));
     }
 }
 
@@ -775,6 +867,9 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
         let whole = sc.rect(cell);
         let head = Rect::from_min_size(whole.min, vec2(whole.width(), FRAME_HEAD * zoom));
         draw_furniture(p, f.kind, f.size, &f.name, whole, head, zoom, &tk, picked(*id));
+        if f.kind == FurnitureKind::CablePegboard {
+            draw_hangs(p, t, *id, whole, head, zoom);
+        }
         sc.frames.push((*id, whole, head));
     }
     let label_h = 15.0 * zoom;
@@ -785,7 +880,7 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
     for placed in &layout.items {
         let Placed { item, cell, furniture } = *placed;
         let c = sc.rect(&cell);
-        let in_rack = furniture.and_then(|f| kinds.get(&f)).is_some_and(|k| *k == FurnitureKind::Rack);
+        let in_rack = furniture.and_then(|f| kinds.get(&f)).is_some_and(|k| k.is_rack_like());
         let panel = if in_rack {
             Rect::from_min_max(c.min + vec2(0.0, zoom), pos2(c.right(), c.bottom() - label_h))
         } else {
@@ -807,6 +902,10 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
                 }
                 for (port, sr) in device_panel(p, t, dev, panel, zoom, &tk) {
                     sc.ports.push((Pole::Device(End { device: d, port }), sr));
+                }
+                // Stored on an inventory shelf: dimmed.
+                if furniture.and_then(|f| kinds.get(&f)).is_some_and(|k| *k == FurnitureKind::InventoryShelf) {
+                    p.rect_filled(panel, 2.0, Color32::from_black_alpha(90));
                 }
                 panels.insert(d, panel);
             }
@@ -932,14 +1031,16 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
 fn slot_highlight(p: &Painter, sc: &Scene, f: &netlabcraft_model::furniture::Furniture, slot: u32, units: u32, tk: &Tokens) {
     let (w, h) = f.dims();
     let (x, y, ww, hh) = match f.kind {
-        FurnitureKind::Rack => (f.x + 28.0, f.y + FRAME_HEAD + slot as f32 * RACK_UNIT_H, w - 56.0, units as f32 * RACK_UNIT_H),
-        FurnitureKind::Shelf => (
+        FurnitureKind::Rack | FurnitureKind::ControlPanel => {
+            (f.x + 28.0, f.y + FRAME_HEAD + slot as f32 * RACK_UNIT_H, w - 56.0, units as f32 * RACK_UNIT_H)
+        }
+        FurnitureKind::Shelf | FurnitureKind::InventoryShelf => (
             f.x + 16.0,
             f.y + FRAME_HEAD + slot as f32 * netlabcraft_model::furniture::SHELF_LEVEL_H,
             w - 32.0,
             netlabcraft_model::furniture::SHELF_LEVEL_H - 8.0,
         ),
-        FurnitureKind::Table => (f.x + 16.0, f.y + FRAME_HEAD, w - 32.0, h - FRAME_HEAD - FRAME_FOOT),
+        FurnitureKind::Table | FurnitureKind::CablePegboard => (f.x + 16.0, f.y + FRAME_HEAD, w - 32.0, h - FRAME_HEAD - FRAME_FOOT),
     };
     let r = sc.rect(&Cell { x, y, w: ww, h: hh });
     p.rect_filled(r, 2.0, tk.selection.gamma_multiply(0.18));
@@ -1097,7 +1198,9 @@ fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) 
         let Some(f) = t.furniture_piece(*id) else { continue };
         let label = match f.kind {
             FurnitureKind::Rack => trf("{}, {} units", &[&f.name, &f.size]),
-            FurnitureKind::Shelf => trf("{}, {} levels", &[&f.name, &f.size]),
+            FurnitureKind::Shelf | FurnitureKind::InventoryShelf => trf("{}, {} levels", &[&f.name, &f.size]),
+            FurnitureKind::ControlPanel => trf("{}, {} DIN slots", &[&f.name, &f.size]),
+            FurnitureKind::CablePegboard => trf("{}, {} rows of hooks", &[&f.name, &f.size]),
             FurnitureKind::Table => f.name.clone(),
         };
         nodes.push((egui::Id::unique(("closet-furniture", *id)), *head, label, false, None));
@@ -1433,6 +1536,29 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             if ui.button(tl("Cable Length…")).clicked() {
                 let m = t.cable_length(&l).meters;
                 app.ui.physical.length = Some((l.a, m.to_string()));
+                ui.close();
+            }
+            let boards: Vec<(u32, String)> = t
+                .furniture_in(place)
+                .iter()
+                .filter(|f| f.kind == FurnitureKind::CablePegboard)
+                .map(|f| (f.id, f.name.clone()))
+                .collect();
+            if !boards.is_empty() {
+                ui.menu_button(tl("Hang on a Peg"), |ui| {
+                    for (id, n) in &boards {
+                        if ui.button(n).clicked() {
+                            let mut params = pole_json(&app.session.topology, Pole::Device(l.a));
+                            params["furniture"] = json!(id);
+                            app.run("furniture.hang", params);
+                            ui.close();
+                        }
+                    }
+                });
+            }
+            if app.session.topology.hang_of(l.a).is_some() && ui.button(tl("Take off the Peg")).clicked() {
+                let params = pole_json(&app.session.topology, Pole::Device(l.a));
+                app.run("furniture.unhang", params);
                 ui.close();
             }
         }
