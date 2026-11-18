@@ -771,7 +771,31 @@ fn aaa(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut
     });
     if changed {
         apply(app, d, &new);
+        return;
     }
+    // The certificate the 802.1X (PEAP) login presents: from a CA in the lab, or self-signed.
+    ui.separator();
+    ui.label(RichText::new(tl("802.1X certificate")).strong());
+    let cert = new.aaa.cert.as_ref().and_then(|c| netlabcraft_wire::x509::Certificate::from_pem(&c.certificate).ok());
+    ui.label(match &cert {
+        Some(c) => crate::i18n::trf("Presented in PEAP: {} (issued by {})", &[&c.subject.text(), &c.issuer.text()]),
+        None => tl("No certificate: PEAP uses an anonymous tunnel").to_string(),
+    });
+    let cas: Vec<String> =
+        app.session.topology.devices.iter().filter(|x| netlabcraft_sim::pki::ca_certificate(x).is_some()).map(|x| x.name.clone()).collect();
+    ui.horizontal_wrapped(|ui| {
+        if ui.button(tl("Generate self-signed")).clicked() {
+            app.run("aaa.certificate", json!({"device": d.0, "self_signed": true}));
+        }
+        for ca in &cas {
+            if ui.button(crate::i18n::trf("Issue from {}", &[ca])).clicked() {
+                app.run("aaa.certificate", json!({"device": d.0, "ca": ca}));
+            }
+        }
+        if cert.is_some() && ui.button(tl("Remove certificate")).clicked() {
+            app.run("aaa.certificate", json!({"device": d.0, "clear": true}));
+        }
+    });
 }
 
 fn pppoe(app: &mut PacketApp, ui: &mut Ui, d: DeviceId, sv: &Services, forms: &mut ServiceForms) {

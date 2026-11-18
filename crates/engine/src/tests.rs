@@ -1060,7 +1060,7 @@ fn a_controller_pushes_wlans_to_its_access_points_and_checks_logins_with_radius(
         "EAP request: identity?",
         "EAP response: identity \"ana\"",
         "EAP request: PEAP, start",
-        "EAP response: PEAP, TLS handshake (client hello)",
+        "EAP response: PEAP, ClientHello",
         "CAPWAP data carrying",
         "RADIUS",
         "EAP success",
@@ -1616,11 +1616,11 @@ fn peap_runs_inside_radius_with_message_authenticators_and_keys_the_handshake() 
         "EAP request: identity?",
         "EAP response: identity \"ana\"",
         "EAP request: PEAP, start",
-        "EAP response: PEAP, TLS handshake (client hello)",
-        "EAP request: PEAP, TLS handshake (server hello, finished)",
-        "EAP response: PEAP, TLS handshake (finished)",
-        "EAP request: PEAP, TLS application data",
-        "EAP response: PEAP, TLS application data",
+        "EAP response: PEAP, ClientHello",
+        "EAP request: PEAP, ServerHello",
+        "EAP response: PEAP, ClientKeyExchange",
+        "EAP request: PEAP, ChangeCipherSpec",
+        "EAP response: PEAP, Application Data",
         "EAP success",
         "4-way handshake message 1 of 4",
         "4-way handshake message 4 of 4",
@@ -1672,7 +1672,7 @@ fn peap_runs_inside_radius_with_message_authenticators_and_keys_the_handshake() 
     let tr = trace_text(&s);
     let reject = tr.find("RADIUS Access-Reject").unwrap_or_else(|| panic!("no reject:\n{tr}"));
     let failure = tr.find("EAP failure").unwrap_or_else(|| panic!("no EAP failure:\n{tr}"));
-    assert!(tr.find("TLS application data").is_some_and(|a| a < reject) && reject < failure, "{tr}");
+    assert!(tr.find("Application Data").is_some_and(|a| a < reject) && reject < failure, "{tr}");
     assert!(tr.contains("IEEE 802.1X authentication failed"), "{tr}");
 }
 
