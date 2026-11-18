@@ -38,6 +38,22 @@ const DEFAULT_ON: &[&str] = &[
     "validate-update-source",
 ];
 
+/// Settings the simulator acts on: they are kept like the others, but the console does not say
+/// they change nothing.
+const ACTIVE: &[&str] = &[
+    "cdp holdtime",
+    "cdp timer",
+    "ip classless",
+    "ip icmp rate-limit unreachable",
+    "ip unreachables",
+    "lldp holdtime",
+    "lldp timer",
+    "logging rate-limit",
+    "mac address-table aging-time",
+    "mac-address-table aging-time",
+    "service sequence-numbers",
+];
+
 /// What the console says after it keeps a setting.
 const KEPT: &str = "Accepted: kept in the configuration; it does not change what the simulator does.";
 
@@ -153,7 +169,7 @@ pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
             None => d.knobs.clear(s, &key),
         }
     }
-    Ok(if keep.is_some() && !key.starts_with("alias ") && key != "ip unreachables" { KEPT.to_string() } else { String::new() })
+    Ok(if keep.is_some() && !key.starts_with("alias ") && !ACTIVE.contains(&key.as_str()) { KEPT.to_string() } else { String::new() })
 }
 
 /// `show aliases`: what each alias stands for, by mode.

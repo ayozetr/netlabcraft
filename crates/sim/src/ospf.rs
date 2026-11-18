@@ -1112,9 +1112,10 @@ pub fn fingerprint(t: &Topology) -> u64 {
                 // Policy decides what is redistributed and what BGP accepts, so edits count.
                 format!("{:?}{:?}{:?}", d.prefix_lists, d.route_maps, d.acls).hash(&mut h);
             }
-            if !d.community_lists.is_empty() || !d.as_path_lists.is_empty() {
-                // Community lists and AS-path lists are what `match community` and `match as-path` read.
-                format!("{:?}{:?}", d.community_lists, d.as_path_lists).hash(&mut h);
+            if !d.community_lists.is_empty() || !d.as_path_lists.is_empty() || !d.ext_community_lists.is_empty() {
+                // Community lists and AS-path lists are what `match community`, `match extcommunity` and
+                // `match as-path` read.
+                format!("{:?}{:?}{:?}", d.community_lists, d.as_path_lists, d.ext_community_lists).hash(&mut h);
             }
             d.eigrp_summary.hash(&mut h);
             if !d.key_chains.is_default() {
