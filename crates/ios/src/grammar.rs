@@ -494,6 +494,9 @@ pub enum Id {
     NoAreaAuth,
     OspfRedistribute,
     NoOspfRedistribute,
+    OspfTimersThrottleSpf,
+    NoOspfTimersThrottleSpf,
+    ShowIpOspfMaxage,
     RipRedistribute,
     NoRipRedistribute,
     EigrpRedistribute,
@@ -793,6 +796,8 @@ pub enum Id {
     IfSpeed,
     IfDuplex,
     IfMdix,
+    IfTransceiver,
+    ShowIntTransceiver,
     IfProxyArp,
     NoIfProxyArp,
     NoIfMdix,
@@ -1712,6 +1717,27 @@ pub static SPECS: &[Spec] = &[
         "Remove a message-digest key"
     ),
     spec!(
+        ShowIpOspfMaxage,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("maxage-database")],
+        "LSAs this router still holds at MaxAge, withdrawn by their originator"
+    ),
+    spec!(
+        OspfTimersThrottleSpf,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("timers"), K("throttle"), K("spf"), Arg("<0-600000>"), Arg("<0-600000>"), Arg("<0-600000>")],
+        "Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to"
+    ),
+    spec!(
+        NoOspfTimersThrottleSpf,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("timers"), K("throttle"), K("spf")],
+        "The default SPF delays again (50, 200 and 5000 ms)"
+    ),
+    spec!(
         IpOspfKeyChain,
         OSPF_IFS,
         Modes::BOTH,
@@ -2301,6 +2327,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowMemory, EXECS, Modes::BOTH, [K("show"), K("memory"), K("statistics")], "Memory in use"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface")], "Layer-3 settings of every interface"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), Rest("<interface>")], "Layer-3 settings of an interface"),
+    spec!(
+        ShowIntTransceiver,
+        EXECS,
+        Modes::SWITCH.or(Modes::CARD),
+        [K("show"), K("interfaces"), K("transceiver")],
+        "Transceiver, loss budget and margin of each fiber port"
+    ),
     spec!(ShowIntStatus, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("status")], "Port state, VLAN and speed"),
     spec!(
         ShowRunInterface,
@@ -2421,14 +2454,14 @@ pub static SPECS: &[Spec] = &[
         DebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
-        "Report OSPF: hellos heard, adjacency states, or events"
+        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
+        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
+        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
         "Stop one kind of OSPF report"
     ),
     spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),
@@ -4352,6 +4385,162 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("transport"), K("preferred"), Arg("{all|none|telnet|ssh}")],
         "Return this setting to its default"
     ),
+    spec!(Knob, Modes::RIP, Modes::BOTH, [K("maximum-paths"), Arg("<1-32>")], "Most equal-cost routes RIP installs"),
+    spec!(NoKnob, Modes::RIP, Modes::BOTH, [K("no"), K("maximum-paths")], "Return this setting to its default"),
+    spec!(Knob, Modes::RIP, Modes::BOTH, [K("distance"), Arg("<1-255>")], "Administrative distance of RIP routes"),
+    spec!(NoKnob, Modes::RIP, Modes::BOTH, [K("no"), K("distance")], "Return this setting to its default"),
+    spec!(Knob, Modes::RIP, Modes::BOTH, [K("output-delay"), Arg("<8-50>")], "Milliseconds between the packets of an update"),
+    spec!(NoKnob, Modes::RIP, Modes::BOTH, [K("no"), K("output-delay")], "Return this setting to its default"),
+    spec!(Knob, Modes::RIP, Modes::BOTH, [K("validate-update-source")], "Accept updates only from a neighbour on the same subnet (on)"),
+    spec!(NoKnob, Modes::RIP, Modes::BOTH, [K("no"), K("validate-update-source")], "Turn this off (it is on by default)"),
+    spec!(Knob, Modes::EIGRP, Modes::BOTH, [K("eigrp"), K("stub")], "Act as a stub router that advertises only what it is told to"),
+    spec!(NoKnob, Modes::EIGRP, Modes::BOTH, [K("no"), K("eigrp"), K("stub")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [K("eigrp"), K("stub"), Rest("[connected] [static] [summary] [receive-only] [redistributed]")],
+        "Act as a stub router that advertises only the routes named"
+    ),
+    spec!(NoKnob, Modes::EIGRP, Modes::BOTH, [K("no"), K("eigrp"), K("stub")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [K("distance"), K("eigrp"), Arg("<1-255>"), Arg("<1-255>")],
+        "Administrative distances of internal and external EIGRP routes"
+    ),
+    spec!(NoKnob, Modes::EIGRP, Modes::BOTH, [K("no"), K("distance"), K("eigrp")], "Return this setting to its default"),
+    spec!(Knob, Modes::EIGRP, Modes::BOTH, [K("eigrp"), K("log-neighbor-changes")], "Log the neighbours that come and go"),
+    spec!(NoKnob, Modes::EIGRP, Modes::BOTH, [K("no"), K("eigrp"), K("log-neighbor-changes")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [K("metric"), K("weights"), Arg("<0-8>"), Arg("<0-255>"), Arg("<0-255>"), Arg("<0-255>"), Arg("<0-255>"), Arg("<0-255>")],
+        "The K values of the metric"
+    ),
+    spec!(NoKnob, Modes::EIGRP, Modes::BOTH, [K("no"), K("metric"), K("weights")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("ip"), K("rip"), K("send"), K("version"), Rest("{1|2|1 2}")], "RIP versions this interface sends"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("ip"), K("rip"), K("send"), K("version")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("ip"), K("rip"), K("receive"), K("version"), Rest("{1|2|1 2}")], "RIP versions this interface accepts"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("ip"), K("rip"), K("receive"), K("version")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("ip"), K("rip"), K("authentication"), K("mode"), Arg("{md5|text}")],
+        "How RIP updates are authenticated here"
+    ),
+    spec!(
+        NoKnob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("rip"), K("authentication"), K("mode"), Arg("{md5|text}")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("ip"), K("rip"), K("authentication"), K("key-chain"), Arg("WORD")],
+        "The key chain that authenticates RIP updates here"
+    ),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("ip"), K("rip"), K("authentication"), K("key-chain")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("ip"), K("rip"), K("v2-broadcast")], "Send RIP version 2 updates as broadcasts"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("ip"), K("rip"), K("v2-broadcast")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("ip"), K("rip"), K("triggered")], "Send RIP updates only when the table changes"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("ip"), K("rip"), K("triggered")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("ip"), K("bandwidth-percent"), K("eigrp"), Arg("<1-65535>"), Arg("<1-999999>")],
+        "Percent of the bandwidth EIGRP may use"
+    ),
+    spec!(
+        NoKnob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("bandwidth-percent"), K("eigrp"), Arg("<1-65535>")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("ip"), K("authentication"), K("mode"), K("eigrp"), Arg("<1-65535>"), K("md5")],
+        "Sign EIGRP packets here with MD5"
+    ),
+    spec!(
+        NoKnob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("authentication"), K("mode"), K("eigrp"), Arg("<1-65535>"), K("md5")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("ip"), K("authentication"), K("key-chain"), K("eigrp"), Arg("<1-65535>"), Arg("WORD")],
+        "The key chain that signs EIGRP packets here"
+    ),
+    spec!(
+        NoKnob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("authentication"), K("key-chain"), K("eigrp"), Arg("<1-65535>")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("timers"), Arg("<1-254>"), Arg("<1-254>")],
+        "HSRP hello and hold times in seconds"
+    ),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("timers")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("timers"), K("msec"), Rest("<15-999> msec <50-3000>")],
+        "HSRP hello and hold times in milliseconds"
+    ),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("timers"), K("msec")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("authentication"), Rest("[text|md5 key-string] KEY")],
+        "HSRP authentication string"
+    ),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("authentication")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("standby"), Arg("<0-255>"), K("name"), Arg("WORD")], "A name for the HSRP group"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("name")], "Return this setting to its default"),
+    spec!(
+        Knob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("standby"), Arg("<0-255>"), K("preempt"), K("delay"), K("minimum"), Arg("<0-3600>")],
+        "Seconds to wait before taking over"
+    ),
+    spec!(
+        NoKnob,
+        KNOB_IF,
+        Modes::ROUTER,
+        [K("no"), K("standby"), Arg("<0-255>"), K("preempt"), K("delay"), K("minimum")],
+        "Return this setting to its default"
+    ),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("standby"), Arg("<0-255>"), K("mac-address"), Arg("H.H.H")], "The virtual MAC address of the HSRP group"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("mac-address")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("standby"), Arg("<0-255>"), K("follow"), Arg("WORD")], "Follow another HSRP group"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("standby"), Arg("<0-255>"), K("follow")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("standby"), K("use-bia")], "Use the interface MAC address as the virtual one"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("standby"), K("use-bia")], "Return this setting to its default"),
+    spec!(Knob, KNOB_IF, Modes::ROUTER, [K("vrrp"), Arg("<1-255>"), K("description"), Rest("TEXT")], "A note on the VRRP group"),
+    spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("vrrp"), Arg("<1-255>"), K("description")], "Return this setting to its default"),
     spec!(Ipv6AccessList, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("access-list"), Arg("WORD")], "Create or edit an IPv6 access list"),
     spec!(NoIpv6AccessList, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("access-list"), Arg("WORD")], "Delete an IPv6 access list"),
     spec!(Acl6EntryLine, Modes::ACL6, Modes::ROUTER, [K("permit"), Rest("{ipv6|icmp|tcp|udp} <src> [port] <dst> [port]")], "Allow matching packets"),
@@ -4590,6 +4779,14 @@ pub static SPECS: &[Spec] = &[
     spec!(IfProxyArp, IFS, Modes::ROUTER, [K("ip"), K("proxy-arp")], "Answer ARP for hosts that are reached through this router"),
     spec!(NoIfProxyArp, IFS, Modes::ROUTER, [K("no"), K("ip"), K("proxy-arp")], "Answer ARP only for this interface's own address"),
     spec!(NoIfMdix, Modes::IF, Modes::BOTH, [K("no"), K("mdix"), K("auto")], "Expect the right cable type"),
+    spec!(
+        IfTransceiver,
+        Modes::IF,
+        Modes::BOTH,
+        [K("transceiver"), K("type"), Arg("{multi-mode|single-mode}")],
+        "The transceiver in a fiber or combo port (both ends of a link need the same)"
+    ),
+    spec!(IfTransceiver, Modes::IF, Modes::BOTH, [K("no"), K("transceiver"), K("type")], "Put the multi-mode transceiver back"),
     spec!(IfKeepalive, Modes::IF, Modes::BOTH, [K("keepalive")], "Keepalives every 10 seconds again"),
     spec!(
         IfKeepalive,

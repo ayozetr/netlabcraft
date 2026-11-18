@@ -31,6 +31,9 @@ pub struct Knobs {
     /// Per line group: `con` or `vty`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub line: BTreeMap<String, Lines>,
+    /// Per routing process: `rip` or `eigrp` (the lines under `router rip` and `router eigrp`).
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub proto: BTreeMap<String, Lines>,
 }
 
 /// Where a setting lives.
@@ -39,6 +42,7 @@ pub enum Scope<'a> {
     Global,
     Iface(&'a str),
     Line(&'a str),
+    Proto(&'a str),
 }
 
 impl Knobs {
@@ -47,6 +51,7 @@ impl Knobs {
             Scope::Global => Some(&self.global),
             Scope::Iface(n) => self.iface.get(n),
             Scope::Line(n) => self.line.get(n),
+            Scope::Proto(n) => self.proto.get(n),
         }
     }
 
@@ -55,6 +60,7 @@ impl Knobs {
             Scope::Global => return Ok(&mut self.global),
             Scope::Iface(n) => (&mut self.iface, n),
             Scope::Line(n) => (&mut self.line, n),
+            Scope::Proto(n) => (&mut self.proto, n),
         };
         if !map.contains_key(name) && map.len() >= MAX_SCOPES {
             return Err(format!("% At most {MAX_SCOPES} interfaces or lines can hold settings"));
@@ -81,6 +87,7 @@ impl Knobs {
             }
             Scope::Iface(n) => (&mut self.iface, n),
             Scope::Line(n) => (&mut self.line, n),
+            Scope::Proto(n) => (&mut self.proto, n),
         };
         if let Some(l) = map.get_mut(name) {
             l.remove(key);

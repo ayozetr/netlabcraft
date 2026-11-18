@@ -182,7 +182,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) \| "console" \| "straight-through" \| "cross-over" \| "fiber-single-mode" \| "fiber-multi-mode" \| "phone" \| "coaxial" \| "serial-dce" \| "serial-dte" \| "octal" \| "iot-custom" \| "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}` |
 | `link.list` | List cables |  |  | `{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")` |
-| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything` |
+| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
+| `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
 | `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
 | `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |
@@ -364,6 +365,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `show ip ospf maxage-database` | user, privileged | router, switch | LSAs this router still holds at MaxAge, withdrawn by their originator |
+| `timers throttle spf <0-600000> <0-600000> <0-600000>` |  | router, switch | Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to |
+| `no timers throttle spf` |  | router, switch | The default SPF delays again (50, 200 and 5000 ms) |
 | `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |
 | `no ip ospf authentication key-chain` | interface, subinterface | router, switch | Stop reading the keys from a key chain |
 | `key chain NAME` | config | router, switch | Create or edit a chain of keys with lifetimes |
@@ -573,6 +577,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
 | `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
+| `show interfaces transceiver` | user, privileged | switch | Transceiver, loss budget and margin of each fiber port |
 | `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
 | `show logging` | user, privileged | router, switch, firewall | The logging buffer |
@@ -653,8 +658,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
-| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
+| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
+| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
@@ -1337,6 +1342,60 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no transport output {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
 | `transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Protocol assumed for a host name typed alone |
 | `no transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
+| `maximum-paths <1-32>` |  | router, switch | Most equal-cost routes RIP installs |
+| `no maximum-paths` |  | router, switch | Return this setting to its default |
+| `distance <1-255>` |  | router, switch | Administrative distance of RIP routes |
+| `no distance` |  | router, switch | Return this setting to its default |
+| `output-delay <8-50>` |  | router, switch | Milliseconds between the packets of an update |
+| `no output-delay` |  | router, switch | Return this setting to its default |
+| `validate-update-source` |  | router, switch | Accept updates only from a neighbour on the same subnet (on) |
+| `no validate-update-source` |  | router, switch | Turn this off (it is on by default) |
+| `eigrp stub` |  | router, switch | Act as a stub router that advertises only what it is told to |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `eigrp stub [connected] [static] [summary] [receive-only] [redistributed]` |  | router, switch | Act as a stub router that advertises only the routes named |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `distance eigrp <1-255> <1-255>` |  | router, switch | Administrative distances of internal and external EIGRP routes |
+| `no distance eigrp` |  | router, switch | Return this setting to its default |
+| `eigrp log-neighbor-changes` |  | router, switch | Log the neighbours that come and go |
+| `no eigrp log-neighbor-changes` |  | router, switch | Return this setting to its default |
+| `metric weights <0-8> <0-255> <0-255> <0-255> <0-255> <0-255>` |  | router, switch | The K values of the metric |
+| `no metric weights` |  | router, switch | Return this setting to its default |
+| `ip rip send version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface sends |
+| `no ip rip send version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip receive version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface accepts |
+| `no ip rip receive version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication mode {md5\|text}` | interface, subinterface | router | How RIP updates are authenticated here |
+| `no ip rip authentication mode {md5\|text}` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication key-chain WORD` | interface, subinterface | router | The key chain that authenticates RIP updates here |
+| `no ip rip authentication key-chain` | interface, subinterface | router | Return this setting to its default |
+| `ip rip v2-broadcast` | interface, subinterface | router | Send RIP version 2 updates as broadcasts |
+| `no ip rip v2-broadcast` | interface, subinterface | router | Return this setting to its default |
+| `ip rip triggered` | interface, subinterface | router | Send RIP updates only when the table changes |
+| `no ip rip triggered` | interface, subinterface | router | Return this setting to its default |
+| `ip bandwidth-percent eigrp <1-65535> <1-999999>` | interface, subinterface | router | Percent of the bandwidth EIGRP may use |
+| `no ip bandwidth-percent eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Sign EIGRP packets here with MD5 |
+| `no ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication key-chain eigrp <1-65535> WORD` | interface, subinterface | router | The key chain that signs EIGRP packets here |
+| `no ip authentication key-chain eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers <1-254> <1-254>` | interface, subinterface | router | HSRP hello and hold times in seconds |
+| `no standby <0-255> timers` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers msec <15-999> msec <50-3000>` | interface, subinterface | router | HSRP hello and hold times in milliseconds |
+| `no standby <0-255> timers msec` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> authentication [text\|md5 key-string] KEY` | interface, subinterface | router | HSRP authentication string |
+| `no standby <0-255> authentication` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> name WORD` | interface, subinterface | router | A name for the HSRP group |
+| `no standby <0-255> name` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> preempt delay minimum <0-3600>` | interface, subinterface | router | Seconds to wait before taking over |
+| `no standby <0-255> preempt delay minimum` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> mac-address H.H.H` | interface, subinterface | router | The virtual MAC address of the HSRP group |
+| `no standby <0-255> mac-address` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> follow WORD` | interface, subinterface | router | Follow another HSRP group |
+| `no standby <0-255> follow` | interface, subinterface | router | Return this setting to its default |
+| `standby use-bia` | interface, subinterface | router | Use the interface MAC address as the virtual one |
+| `no standby use-bia` | interface, subinterface | router | Return this setting to its default |
+| `vrrp <1-255> description TEXT` | interface, subinterface | router | A note on the VRRP group |
+| `no vrrp <1-255> description` | interface, subinterface | router | Return this setting to its default |
 | `ipv6 access-list WORD` | config | router, switch | Create or edit an IPv6 access list |
 | `no ipv6 access-list WORD` | config | router, switch | Delete an IPv6 access list |
 | `permit {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Allow matching packets |
@@ -1443,6 +1502,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip proxy-arp` | interface, subinterface | router | Answer ARP for hosts that are reached through this router |
 | `no ip proxy-arp` | interface, subinterface | router | Answer ARP only for this interface's own address |
 | `no mdix auto` | interface | router, switch | Expect the right cable type |
+| `transceiver type {multi-mode\|single-mode}` | interface | router, switch | The transceiver in a fiber or combo port (both ends of a link need the same) |
+| `no transceiver type` | interface | router, switch | Put the multi-mode transceiver back |
 | `keepalive` | interface | router, switch | Keepalives every 10 seconds again |
 | `keepalive <1-32767>` | interface | router, switch | Seconds between keepalives (shown by `show interfaces`; the simulator sends none) |
 | `no keepalive` | interface | router, switch | No keepalives |
