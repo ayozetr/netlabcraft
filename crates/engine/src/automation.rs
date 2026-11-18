@@ -1279,7 +1279,7 @@ fn header_param(p: &Value) -> Result<Vec<(String, String)>> {
 }
 
 /// The trust a `pc.http_request` asks for: the CA certificates held by the named routers.
-fn trust_param(s: &Session, client: DeviceId, p: &Value, tls: bool) -> Result<Option<netlabcraft_wire::tls::Trust>> {
+fn trust_param(s: &Session, client: DeviceId, p: &Value, tls: bool, host: &str) -> Result<Option<netlabcraft_wire::tls::Trust>> {
     let names: Vec<String> = match p.get("trust") {
         None | Some(Value::Null) => return Ok(None),
         Some(Value::String(n)) => vec![n.clone()],
@@ -1289,7 +1289,14 @@ fn trust_param(s: &Session, client: DeviceId, p: &Value, tls: bool) -> Result<Op
     if !tls {
         return Err(bad("`trust` applies to https:// URLs"));
     }
+    let verify_host = match p.get("verify_host") {
+        None | Some(Value::Null) => false,
+        Some(Value::Bool(b)) => *b,
+        Some(_) => return Err(bad("`verify_host` is true or false")),
+    };
+    let now = u64::try_from(s.sim.clock(client).0).unwrap_or(0);
     let mut anchors = Vec::new();
+    let mut crls = Vec::new();
     for n in &names {
         let id = s.topology.resolve(n).map_err(|_| bad(format!("`trust`: no device named {n}")))?;
         let dev = s.topology.device(id).ok_or_else(|| bad(format!("`trust`: no device named {n}")))?;
@@ -1298,9 +1305,9 @@ fn trust_param(s: &Session, client: DeviceId, p: &Value, tls: bool) -> Result<Op
             return Err(bad(format!("`trust`: {n} holds no CA certificate (authenticate or enroll a trustpoint, or run `crypto pki server`)")));
         }
         anchors.extend(found);
+        crls.extend(netlabcraft_sim::pki::trust_crls(dev, s.sim.clock(id).0));
     }
-    let now = u64::try_from(s.sim.clock(client).0).unwrap_or(0);
-    Ok(Some(netlabcraft_wire::tls::Trust { anchors, now, required: true }))
+    Ok(Some(netlabcraft_wire::tls::Trust { anchors, now, required: true, host: verify_host.then(|| host.to_string()), crls }))
 }
 
 /// `pc.http_request`.
@@ -1342,7 +1349,7 @@ pub(crate) fn http_request(s: &mut Session, p: &Value) -> Result<Value> {
     }
     let req = Request { method: method.clone(), target: path.clone(), headers: all, body };
     let server = resolve(s, d, &host)?;
-    let trust = trust_param(s, d, p, tls)?;
+    let trust = trust_param(s, d, p, tls, &host)?;
     let mut tls_info = None;
     let got = if tls {
         s.sim.https_with(&s.topology, d, server, port, &req.encode(), trust).map(|(data, info)| {
@@ -1956,6 +1963,34 @@ mod tests {
         // Without asking for verification the same server still answers.
         let r = req(&mut s, "GET", "/restconf/data/ietf-system:system", None);
         assert_eq!((r["status"].clone(), r["tls"]["verified"].clone()), (json!(200), json!(false)));
+    }
+
+    #[test]
+    fn a_client_can_insist_that_the_certificate_is_for_the_host() {
+        let mut s = lab();
+        configure(
+            &mut s,
+            "crypto pki trustpoint WEB\nenrollment selfsigned\nsubject-name CN=r1.lab.test\nip-address 192.168.1.1\nexit\ncrypto pki enroll WEB\nip http secure-trustpoint WEB",
+        );
+        let ask = |s: &mut Session, verify: bool| {
+            s.execute(
+                "pc.http_request",
+                json!({"pc": "PC1", "url": "https://192.168.1.1/restconf", "user": "admin", "password": "NetLab2026", "trust": "R1", "verify_host": verify}),
+            )
+        };
+        let r = ask(&mut s, true).unwrap();
+        assert_eq!((r["status"].clone(), r["tls"]["verified"].clone()), (json!(200), json!(true)), "{r}");
+        // The certificate now names another address: the host in the URL is not among them.
+        configure(&mut s, "crypto pki trustpoint WEB\nip-address 10.9.9.9\nexit\ncrypto pki enroll WEB");
+        let e = ask(&mut s, true).unwrap_err();
+        assert!(e.to_string().contains("not for 192.168.1.1") || e.to_string().contains("bad_certificate"), "{e}");
+        // Without asking, the same server is trusted by its chain alone.
+        let r = ask(&mut s, false).unwrap();
+        assert_eq!((r["status"].clone(), r["tls"]["verified"].clone()), (json!(200), json!(true)), "{r}");
+        let e = s
+            .execute("pc.http_request", json!({"pc": "PC1", "url": "https://192.168.1.1/restconf", "trust": "R1", "verify_host": "yes"}))
+            .unwrap_err();
+        assert!(e.to_string().contains("verify_host"), "{e}");
     }
 
     #[test]

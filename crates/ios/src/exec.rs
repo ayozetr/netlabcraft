@@ -237,6 +237,8 @@ pub struct Cli {
     pub modulus_prompt: bool,
     /// `copy running-config tftp:` typed without a server: asking for it, then the file name.
     pub copy_prompt: Option<CopyPrompt>,
+    /// Collecting pasted PEM text for a certificate command, until a line that says `quit`.
+    pub paste: Option<Paste>,
     /// A Telnet or SSH session this console opened to another device.
     pub remote: Option<Box<Remote>>,
     /// A host's `ftp` session.
@@ -246,6 +248,31 @@ pub struct Cli {
     /// `terminal monitor` in a remote session: log and debug messages of the device appear in it.
     pub monitor: bool,
 }
+
+/// What a block of pasted PEM text is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasteKind {
+    /// The CA certificate of a trustpoint (`crypto pki authenticate` with `enrollment terminal`).
+    CaCertificate,
+    /// The certificate a CA signed for a trustpoint (`crypto pki import NAME certificate`).
+    Certificate,
+    /// The revocation list of a trustpoint's CA (`crypto pki import NAME crl`).
+    Crl,
+    /// A request for this router's own CA (`crypto pki server NAME request pkcs10 terminal`).
+    Request,
+}
+
+/// Text being pasted: for which command, under which name, and what has come so far.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Paste {
+    pub kind: PasteKind,
+    /// The trustpoint, or for a request the certificate authority.
+    pub name: String,
+    pub text: String,
+}
+
+/// Most pasted text kept for one command, in bytes.
+pub const MAX_PASTE: usize = 24 * 1024;
 
 /// The questions a TFTP copy asks when the server isn't on the command line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -532,6 +559,9 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
     if d.kind == DeviceKind::Hub {
         return format!("{}> ", d.name);
     }
+    if cli.paste.is_some() {
+        return String::new();
+    }
     if cli.modulus_prompt {
         return MODULUS_PROMPT.into();
     }
@@ -631,6 +661,18 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     let line = line.trim_end_matches(['\r', '\n']);
     if cli.remote.is_some() {
         return remote_line(t, sim, cli, line);
+    }
+    // Pasted certificate text: every line is kept until `quit`.
+    if let Some(mut p) = cli.paste.take() {
+        if line.trim().eq_ignore_ascii_case("quit") {
+            return pki::paste_done(t, sim, dev, p);
+        }
+        if p.text.len() < MAX_PASTE {
+            p.text.push_str(line.trim());
+            p.text.push('\n');
+        }
+        cli.paste = Some(p);
+        return Outcome::default();
     }
     if cli.modulus_prompt {
         cli.modulus_prompt = false;
@@ -2284,18 +2326,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::CryptoPkiAuthenticate
         | Id::CryptoPkiServer
         | Id::NoCryptoPkiServer
+        | Id::CryptoPkiImportCertificate
+        | Id::CryptoPkiImportCrl
+        | Id::CryptoPkiCrlRequest
+        | Id::CryptoPkiServerRequest
+        | Id::CryptoPkiServerGrantRequest
+        | Id::CryptoPkiServerReject
+        | Id::CryptoPkiServerRevoke
         | Id::PkiEnrollment
         | Id::PkiSubjectName
         | Id::PkiRsakeypair
         | Id::PkiRevocationCheck
+        | Id::PkiFqdn
+        | Id::PkiIpAddress
         | Id::PkiServerIssuer
         | Id::PkiServerGrant
+        | Id::PkiServerNoGrant
         | Id::PkiServerLifetime
+        | Id::PkiServerLifetimeCrl
         | Id::PkiServerShutdown
         | Id::NoPkiServerShutdown
         | Id::ShowCryptoPkiTrustpoints
         | Id::ShowCryptoPkiCertificates
-        | Id::ShowCryptoPkiServer => pki::command(&mut c, spec.id, &args),
+        | Id::ShowCryptoPkiServer
+        | Id::ShowCryptoPkiCrls => pki::command(&mut c, spec.id, &args),
         Id::ClassMap
         | Id::NoClassMap
         | Id::PolicyMap

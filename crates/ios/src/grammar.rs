@@ -1288,18 +1288,30 @@ pub enum Id {
     CryptoPkiAuthenticate,
     CryptoPkiServer,
     NoCryptoPkiServer,
+    CryptoPkiImportCertificate,
+    CryptoPkiImportCrl,
+    CryptoPkiCrlRequest,
+    CryptoPkiServerRequest,
+    CryptoPkiServerGrantRequest,
+    CryptoPkiServerReject,
+    CryptoPkiServerRevoke,
     PkiEnrollment,
     PkiSubjectName,
     PkiRsakeypair,
     PkiRevocationCheck,
+    PkiFqdn,
+    PkiIpAddress,
     PkiServerIssuer,
     PkiServerGrant,
+    PkiServerNoGrant,
     PkiServerLifetime,
+    PkiServerLifetimeCrl,
     PkiServerShutdown,
     NoPkiServerShutdown,
     ShowCryptoPkiTrustpoints,
     ShowCryptoPkiCertificates,
     ShowCryptoPkiServer,
+    ShowCryptoPkiCrls,
     PowerInline,
     ShowPowerInline,
     VoiceRegGlobal,
@@ -6029,10 +6041,59 @@ pub static SPECS: &[Spec] = &[
         "Delete the certificate authority"
     ),
     spec!(
+        CryptoPkiImportCertificate,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("import"), Arg("NAME"), K("certificate")],
+        "Paste the certificate a CA signed for a trustpoint"
+    ),
+    spec!(
+        CryptoPkiImportCrl,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("import"), Arg("NAME"), K("crl")],
+        "Paste the revocation list of a trustpoint's CA"
+    ),
+    spec!(
+        CryptoPkiCrlRequest,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("crl"), K("request"), Arg("NAME")],
+        "Fetch the revocation list of a trustpoint's CA"
+    ),
+    spec!(
+        CryptoPkiServerRequest,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("request"), K("pkcs10"), K("terminal")],
+        "Paste a certificate request to the certificate authority"
+    ),
+    spec!(
+        CryptoPkiServerGrantRequest,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("grant"), Arg("{ID|all}")],
+        "Sign a pending certificate request"
+    ),
+    spec!(
+        CryptoPkiServerReject,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("reject"), Arg("{ID|all}")],
+        "Refuse a pending certificate request"
+    ),
+    spec!(
+        CryptoPkiServerRevoke,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("revoke"), Arg("SERIAL")],
+        "Revoke a certificate the authority signed"
+    ),
+    spec!(
         PkiEnrollment,
         Modes::PKI_TRUSTPOINT,
         Modes::ROUTER,
-        [K("enrollment"), Rest("{selfsigned|url http://A.B.C.D[:PORT]}")],
+        [K("enrollment"), Rest("{selfsigned|terminal|url http://A.B.C.D[:PORT]}")],
         "Where the certificate comes from"
     ),
     spec!(
@@ -6043,10 +6104,26 @@ pub static SPECS: &[Spec] = &[
         "The name in the certificate"
     ),
     spec!(PkiRsakeypair, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("rsakeypair"), Arg("LABEL")], "The key pair the certificate is for"),
-    spec!(PkiRevocationCheck, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("revocation-check"), Arg("none")], "Do not check for revoked certificates"),
+    spec!(
+        PkiRevocationCheck,
+        Modes::PKI_TRUSTPOINT,
+        Modes::ROUTER,
+        [K("revocation-check"), Rest("{none|crl [none]}")],
+        "How revoked certificates are found"
+    ),
+    spec!(PkiFqdn, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("fqdn"), Arg("NAME")], "A DNS name the certificate is also for"),
+    spec!(PkiIpAddress, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("ip-address"), Arg("A.B.C.D")], "An address the certificate is also for"),
     spec!(PkiServerIssuer, Modes::PKI_SERVER, Modes::ROUTER, [K("issuer-name"), Rest("CN=NAME[, O=ORG]")], "The CA's name"),
     spec!(PkiServerGrant, Modes::PKI_SERVER, Modes::ROUTER, [K("grant"), Arg("auto")], "Sign requests as they arrive"),
+    spec!(PkiServerNoGrant, Modes::PKI_SERVER, Modes::ROUTER, [K("no"), K("grant"), K("auto")], "Hold requests until an administrator grants them"),
     spec!(PkiServerLifetime, Modes::PKI_SERVER, Modes::ROUTER, [K("lifetime"), K("certificate"), Arg("DAYS")], "How long issued certificates last"),
+    spec!(
+        PkiServerLifetimeCrl,
+        Modes::PKI_SERVER,
+        Modes::ROUTER,
+        [K("lifetime"), K("crl"), Arg("HOURS")],
+        "How long a published revocation list is good for"
+    ),
     spec!(PkiServerShutdown, Modes::PKI_SERVER, Modes::ROUTER, [K("shutdown")], "Stop the certificate authority"),
     spec!(NoPkiServerShutdown, Modes::PKI_SERVER, Modes::ROUTER, [K("no"), K("shutdown")], "Start the certificate authority"),
     spec!(
@@ -6064,6 +6141,13 @@ pub static SPECS: &[Spec] = &[
         "The certificates this router holds"
     ),
     spec!(ShowCryptoPkiServer, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("pki"), K("server")], "The certificate authority"),
+    spec!(
+        ShowCryptoPkiCrls,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("crypto"), K("pki"), K("crls")],
+        "The revocation lists this router holds or publishes"
+    ),
     spec!(ShowCryptoIkev2Proposal, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("proposal")], "IKEv2 proposals"),
     spec!(ShowCryptoIkev2Profile, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("profile")], "IKEv2 profiles"),
     spec!(PowerInline, Modes::IF, Modes::SWITCH, [K("power"), K("inline"), Arg("{auto|never}")], "Power over Ethernet on this port (PoE switches)"),

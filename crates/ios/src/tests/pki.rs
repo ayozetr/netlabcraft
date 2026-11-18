@@ -154,10 +154,10 @@ fn the_certificate_authority_refuses_what_it_should() {
     // Stopped, then running without `grant auto`.
     assert!(lab.try_run(r2, "crypto pki authenticate LAB").contains("503"));
     let out = lab.run(ca, "no shutdown");
-    assert!(out.contains("No requests are signed until `grant auto` is set."), "{out}");
+    assert!(out.contains("Requests wait until an administrator grants them"), "{out}");
     lab.run(r2, "crypto pki authenticate LAB");
     let out = lab.try_run(r2, "crypto pki enroll LAB");
-    assert!(out.contains("403"), "{out}");
+    assert!(out.contains("Request 1 is waiting for the administrator"), "{out}");
     // Shut down again: it stops answering, but keeps its key and certificate.
     lab.run(ca, "shutdown");
     assert!(lab.try_run(r2, "crypto pki authenticate LAB").contains("503"));
@@ -182,7 +182,11 @@ fn trustpoint_commands_reject_bad_input() {
         "subject-name XX=1",
         "subject-name CN=",
         "subject-name C=ESP",
-        "revocation-check crl",
+        "revocation-check crl bogus",
+        "revocation-check none crl",
+        "fqdn bad name",
+        "fqdn",
+        "ip-address 1.2.3",
         "rsakeypair a b",
     ] {
         assert!(lab.try_run(r, bad).contains("% "), "{bad}");
@@ -228,4 +232,189 @@ fn the_https_server_takes_its_certificate_from_a_trustpoint() {
     lab.run(r, "conf t\nno ip http secure-trustpoint\nend");
     assert!(lab.run(r, "show ip http server status").contains("anonymous DH, no certificate"));
     assert!(lab.run(r, "show crypto key mypubkey rsa").contains("SSH          : SHA256:"));
+}
+
+/// The first PEM block of `text` with this label.
+fn pem_in(text: &str, label: &str) -> String {
+    let begin = format!("-----BEGIN {label}-----");
+    let end = format!("-----END {label}-----");
+    let from = text.find(&begin).unwrap_or_else(|| panic!("no {label} in {text}"));
+    let to = text[from..].find(&end).unwrap() + from + end.len();
+    text[from..to].to_string()
+}
+
+/// Pastes a block of text into a command that asked for it, ending with `quit`.
+fn paste(lab: &mut Lab, r: netlabcraft_core::DeviceId, text: &str) -> String {
+    lab.run(r, text);
+    lab.try_run(r, "quit")
+}
+
+const GRANTING: &str = "conf t\nip http server\ncrypto pki server LABCA\nissuer-name CN=Lab Root CA, O=NetLab\nno shutdown\nend";
+
+#[test]
+fn requests_wait_for_the_administrator_and_are_granted_by_hand() {
+    let (mut lab, ca, r2) = two_routers();
+    lab.run(ca, GRANTING);
+    lab.run(
+        r2,
+        "conf t\ncrypto pki trustpoint LAB\nenrollment url http://10.0.0.1\nsubject-name CN=edge.lab.test, O=NetLab\nfqdn edge.lab.test\nip-address 10.0.0.2\nexit\ncrypto pki authenticate LAB",
+    );
+    let out = lab.run(r2, "crypto pki enroll LAB");
+    assert!(out.contains("Request 1 is waiting for the administrator to grant it"), "{out}");
+    // Asking again is the same request, not a second one.
+    lab.run(r2, "crypto pki enroll LAB");
+    let shown = lab.run(ca, "show crypto pki server");
+    assert!(shown.contains("1: CN=edge.lab.test, O=NetLab (waiting)") && !shown.contains("    2: "), "{shown}");
+    lab.run(r2, "end");
+    assert!(!lab.run(r2, "show crypto pki certificates").contains("Certificate of trustpoint LAB"));
+    // The administrator grants it; the router gets the certificate the next time, with its names.
+    lab.run(ca, "conf t");
+    assert!(lab.try_run(ca, "crypto pki server LABCA grant 7").starts_with("% The certificate authority holds no request number 7"));
+    assert!(lab.try_run(ca, "crypto pki server OTHER grant 1").starts_with("% No certificate authority named OTHER"));
+    let out = lab.run(ca, "crypto pki server LABCA grant 1");
+    assert!(out.contains("Request 1 for CN=edge.lab.test, O=NetLab granted") && out.contains("-----BEGIN CERTIFICATE-----"), "{out}");
+    assert!(lab.run(ca, "crypto pki server LABCA grant all").contains("No request changed"));
+    lab.run(r2, "conf t");
+    let out = lab.run(r2, "crypto pki enroll LAB");
+    assert!(out.contains("received"), "{out}");
+    let tp = lab.t.device(r2).unwrap().pki.trustpoint("LAB").unwrap().clone();
+    let leaf = Certificate::from_pem(&tp.certificate).unwrap();
+    let root = Certificate::from_pem(&tp.ca_certificate).unwrap();
+    assert_eq!((leaf.alt.dns.clone(), leaf.alt.ips.clone()), (vec!["edge.lab.test".to_string()], vec![[10, 0, 0, 2]]));
+    assert!(leaf.matches_host("edge.lab.test") && leaf.matches_host("10.0.0.2") && !leaf.matches_host("10.0.0.3"));
+    let now = u64::try_from(lab.sim.clock(r2).0).unwrap();
+    assert_eq!(x509::verify_chain(std::slice::from_ref(&leaf), std::slice::from_ref(&root), now), Ok(()));
+    let certs = lab.run(r2, "end\nshow crypto pki certificates");
+    assert!(certs.contains("Also for      : edge.lab.test, 10.0.0.2"), "{certs}");
+    let run = lab.run(r2, "show running-config");
+    assert!(run.contains(" fqdn edge.lab.test\n ip-address 10.0.0.2\n"), "{run}");
+    // A third router's request is rejected, and it is told so.
+    let r3 = lab.add(DeviceKind::Router);
+    lab.cable(ca, "g0/1", r3, "g0/0");
+    lab.run(ca, "conf t\nint g0/1\nip address 10.0.1.1 255.255.255.0\nno shut\nend");
+    lab.run(
+        r3,
+        "en\nconf t\nhostname Spare\nint g0/0\nip address 10.0.1.2 255.255.255.0\nno shut\nexit\ncrypto pki trustpoint LAB\nenrollment url http://10.0.1.1\nexit\ncrypto pki authenticate LAB",
+    );
+    lab.run(r3, "crypto pki enroll LAB");
+    let out = lab.run(ca, "conf t\ncrypto pki server LABCA reject all");
+    assert!(out.contains("Request 2 for CN=Spare rejected."), "{out}");
+    assert!(lab.try_run(r3, "crypto pki enroll LAB").contains("403"));
+    // `grant auto` is the other mode, and goes back with `no grant auto`; the list's hours are kept.
+    lab.run(ca, "crypto pki server LABCA\ngrant auto");
+    assert!(lab.run(ca, "end\nshow running-config").contains(" grant auto\n"));
+    lab.run(ca, "conf t\ncrypto pki server LABCA\nno grant auto\nlifetime crl 12\nend");
+    let run = lab.run(ca, "show running-config");
+    assert!(!run.contains(" grant auto\n") && run.contains(" lifetime crl 12\n"), "{run}");
+}
+
+#[test]
+fn certificates_are_copied_by_hand_with_a_terminal_enrollment() {
+    let (mut lab, ca, r2) = two_routers();
+    lab.run(ca, "conf t\ncrypto pki server LABCA\nissuer-name CN=Lab Root CA, O=NetLab\ngrant auto\nno shutdown\nend");
+    let ca_pem = lab.t.device(ca).unwrap().pki.server.as_ref().unwrap().certificate.clone();
+    lab.run(r2, "conf t\ncrypto pki trustpoint HAND\nenrollment terminal\nsubject-name CN=hand.lab.test, O=NetLab\nexit");
+    assert!(lab.run(r2, "end\nshow running-config").contains("crypto pki trustpoint HAND\n enrollment terminal\n"));
+    lab.run(r2, "conf t");
+    // Pasting text that is not a CA certificate is refused, and nothing is kept.
+    let out = lab.run(r2, "crypto pki authenticate HAND");
+    assert!(out.contains("Paste the CA's certificate"), "{out}");
+    assert_eq!(lab.prompt(r2), "");
+    let out = paste(&mut lab, r2, "-----BEGIN CERTIFICATE-----\nAAAA\n-----END CERTIFICATE-----");
+    assert!(out.starts_with("% The pasted text is not a certificate"), "{out}");
+    assert_eq!(lab.prompt(r2), "Edge(config)#");
+    lab.run(r2, "crypto pki authenticate HAND");
+    let out = paste(&mut lab, r2, &ca_pem);
+    assert!(out.contains("Trusting the CA certificate of CN=Lab Root CA, O=NetLab (fingerprint "), "{out}");
+    // The request is printed; the CA signs it from a paste and prints the certificate.
+    let out = lab.run(r2, "crypto pki enroll HAND");
+    assert!(out.contains("Copy this request to the certificate authority"), "{out}");
+    let csr = pem_in(&out, "CERTIFICATE REQUEST");
+    let out = lab.run(ca, "conf t\ncrypto pki server LABCA request pkcs10 terminal");
+    assert!(out.contains("Paste the certificate request"), "{out}");
+    let out = paste(&mut lab, ca, &csr);
+    assert!(out.contains("Request 1 for CN=hand.lab.test, O=NetLab granted"), "{out}");
+    let leaf_pem = pem_in(&out, "CERTIFICATE");
+    // The certificate goes in by paste; one for another key is refused.
+    lab.run(r2, "crypto pki import HAND certificate");
+    let out = paste(&mut lab, r2, &ca_pem);
+    assert!(out.starts_with("% The pasted certificate is for another key"), "{out}");
+    lab.run(r2, "crypto pki import HAND certificate");
+    let out = paste(&mut lab, r2, &leaf_pem);
+    assert!(out.contains("for CN=hand.lab.test, O=NetLab imported"), "{out}");
+    let tp = lab.t.device(r2).unwrap().pki.trustpoint("HAND").unwrap().clone();
+    let (leaf, root) = (Certificate::from_pem(&tp.certificate).unwrap(), Certificate::from_pem(&tp.ca_certificate).unwrap());
+    let now = u64::try_from(lab.sim.clock(r2).0).unwrap();
+    assert_eq!(x509::verify_chain(std::slice::from_ref(&leaf), std::slice::from_ref(&root), now), Ok(()));
+    // No such trustpoint; a trustpoint whose CA is not trusted yet; a stopped authority.
+    assert!(lab.try_run(r2, "crypto pki import NOPE certificate").starts_with("% No trustpoint named NOPE"));
+    lab.run(r2, "crypto pki trustpoint BARE\nenrollment terminal\nexit\ncrypto pki enroll BARE\ncrypto pki import BARE certificate");
+    let out = paste(&mut lab, r2, &leaf_pem);
+    assert!(out.starts_with("% The pasted certificate is for another key") || out.contains("Authenticate the CA first"), "{out}");
+    lab.run(ca, "crypto pki server LABCA\nshutdown\nexit");
+    assert!(lab.try_run(ca, "crypto pki server LABCA request pkcs10 terminal").contains("is stopped"));
+    assert!(lab.try_run(ca, "crypto pki server LABCA grant 1").contains("is stopped"));
+}
+
+#[test]
+fn a_revoked_certificate_is_on_the_crl_and_refused_where_the_check_is_on() {
+    let (mut lab, ca, r2) = two_routers();
+    lab.run(
+        ca,
+        "conf t\nip http server\ncrypto pki server LABCA\nissuer-name CN=Lab Root CA, O=NetLab\ngrant auto\nlifetime crl 24\nno shutdown\nend",
+    );
+    lab.run(
+        r2,
+        "conf t\ncrypto pki trustpoint LAB\nenrollment url http://10.0.0.1\nsubject-name CN=edge.lab.test\nrevocation-check crl\nexit\ncrypto pki authenticate LAB\ncrypto pki enroll LAB\nend",
+    );
+    let leaf = Certificate::from_pem(&lab.t.device(r2).unwrap().pki.trustpoint("LAB").unwrap().certificate).unwrap();
+    let serial = netlabcraft_sim::pki::serial_hex(&leaf.serial);
+    // The chain is checked through the code IKE uses: a signature over nothing fails after the chain.
+    let verdict =
+        |d: &netlabcraft_model::Device, at: i64| netlabcraft_sim::pki::verify_peer(d, at, &[leaf.der()], b"data", b"sig", None).unwrap_err();
+    // No list yet: the check that needs one fails, and `none` after `crl` lets it go on.
+    let (d2, now) = (lab.t.device(r2).unwrap().clone(), lab.sim.clock(r2).0);
+    assert!(verdict(&d2, now).contains("holds no CRL"), "{}", verdict(&d2, now));
+    lab.run(r2, "conf t\ncrypto pki trustpoint LAB\nrevocation-check crl none\nend");
+    let (d2, now) = (lab.t.device(r2).unwrap().clone(), lab.sim.clock(r2).0);
+    assert!(verdict(&d2, now).contains("does not verify"), "{}", verdict(&d2, now));
+    lab.run(r2, "conf t\ncrypto pki trustpoint LAB\nrevocation-check crl\nend");
+    assert!(lab.run(r2, "show running-config").contains(" revocation-check crl\n"));
+    // Fetch the (empty) list: the check passes down to the signature.
+    let out = lab.run(r2, "conf t\ncrypto pki crl request LAB");
+    assert!(out.contains("Revocation list number 0 of CN=Lab Root CA, O=NetLab with 0 revoked certificate(s)"), "{out}");
+    let (d2, now) = (lab.t.device(r2).unwrap().clone(), lab.sim.clock(r2).0);
+    assert!(verdict(&d2, now).contains("does not verify"), "{}", verdict(&d2, now));
+    // The CA revokes the certificate; the router's old list does not know yet.
+    lab.run(ca, "conf t");
+    assert!(lab.try_run(ca, "crypto pki server LABCA revoke zz").starts_with("% The serial number is hexadecimal"));
+    let out = lab.run(ca, &format!("crypto pki server LABCA revoke {serial}"));
+    assert!(out.contains(&format!("Certificate {serial} revoked; revocation list number 1")), "{out}");
+    assert!(lab.try_run(ca, &format!("crypto pki server LABCA revoke {serial}")).contains("already revoked"));
+    let (dca, at) = (lab.t.device(ca).unwrap().clone(), lab.sim.clock(ca).0);
+    let e = netlabcraft_sim::pki::verify_peer(&dca, at, &[leaf.der()], b"data", b"sig", None).unwrap_err();
+    assert!(e.contains("was revoked by this router's authority"), "{e}");
+    let (d2, now) = (lab.t.device(r2).unwrap().clone(), lab.sim.clock(r2).0);
+    assert!(verdict(&d2, now).contains("does not verify"), "{}", verdict(&d2, now));
+    let out = lab.run(r2, "crypto pki crl request LAB");
+    assert!(out.contains("Revocation list number 1") && out.contains("with 1 revoked certificate(s)"), "{out}");
+    let (d2, now) = (lab.t.device(r2).unwrap().clone(), lab.sim.clock(r2).0);
+    assert!(verdict(&d2, now).contains(&format!("(serial {serial}) was revoked by CN=Lab Root CA, O=NetLab")), "{}", verdict(&d2, now));
+    let crls = lab.run(r2, "end\nshow crypto pki crls");
+    assert!(crls.contains("Revocation list held for trustpoint LAB") && crls.contains(&format!("serial {serial}")), "{crls}");
+    assert!(crls.contains("(current)") && crls.contains("made by the CA's key"), "{crls}");
+    assert!(lab.run(ca, "end\nshow crypto pki crls").contains("Revocation list this router's own CA publishes"));
+    assert!(lab.run(ca, "show crypto pki server").contains(&format!("serial {serial}")));
+    // A list is good for its hours: past them the check that needs it fails, and `crl none` goes on.
+    lab.run(r2, "clock set 10:00:00 5 Jan 2026");
+    let (d2, later) = (lab.t.device(r2).unwrap().clone(), lab.sim.clock(r2).0);
+    assert!(verdict(&d2, later).contains("is out of date"), "{}", verdict(&d2, later));
+    lab.run(r2, "conf t\ncrypto pki trustpoint LAB\nrevocation-check crl none\nend");
+    let d2 = lab.t.device(r2).unwrap().clone();
+    assert!(verdict(&d2, later).contains("does not verify"), "{}", verdict(&d2, later));
+    // Fetching for a trustpoint that does not exist, or that cannot fetch, says so.
+    lab.run(r2, "conf t");
+    assert!(lab.try_run(r2, "crypto pki crl request NOPE").starts_with("% No trustpoint named NOPE"));
+    lab.run(r2, "crypto pki trustpoint HAND\nenrollment terminal\nexit");
+    assert!(lab.try_run(r2, "crypto pki crl request HAND").starts_with("% Only a trustpoint with `enrollment url`"));
 }
