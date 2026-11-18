@@ -1896,6 +1896,16 @@ event	write request for	写请求
 	Rename	重命名
 	Name:	名称：
 	{}, {} units	{}，{} 个单元
+	Turn to the Front	转到正面
+	Turn to the Back	转到背面
+	Loose Devices	散放设备
+	As a Grid	按网格排列
+	As a List	按列表排列
+	Width in cells ({} to {}):	宽度（单元格，{} 至 {}）：
+	Depth in cells ({} to {}):	深度（单元格，{} 至 {}）：
+	{}, {} by {} cells	{}，{} × {} 个单元格
+	{}, rear view	{}，背面视图
+	{} (rear)	{}（背面）
 	{}, {} levels	{}，{} 层
 	{}, on {}	{}，位于 {}
 	Rack	机架

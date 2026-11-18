@@ -1896,6 +1896,16 @@ event	write request for	demande d'écriture de
 	Rename	Renommer
 	Name:	Nom :
 	{}, {} units	{}, {} unités
+	Turn to the Front	Tourner vers l'avant
+	Turn to the Back	Tourner vers l'arrière
+	Loose Devices	Appareils libres
+	As a Grid	En grille
+	As a List	En liste
+	Width in cells ({} to {}):	Largeur en cellules ({} à {}) :
+	Depth in cells ({} to {}):	Profondeur en cellules ({} à {}) :
+	{}, {} by {} cells	{}, {} sur {} cellules
+	{}, rear view	{}, vue arrière
+	{} (rear)	{} (arrière)
 	{}, {} levels	{}, {} niveaux
 	{}, on {}	{}, sur {}
 	Rack	Baie

@@ -595,6 +595,18 @@ fn auth_check(a: &Device, a_addr: Ipv4Addr, b: &Device, b_addr: Ipv4Addr) -> Res
     Ok(())
 }
 
+/// A `set pfs` group as the console words it.
+pub(crate) fn pfs_name(pfs: Option<u16>) -> String {
+    pfs.map_or_else(|| "no PFS".to_string(), |g| format!("PFS group{g}"))
+}
+
+/// How the two ends' `set pfs` differ, when they do (for the log of a refused renewal).
+pub(crate) fn pfs_difference(t: &Topology, d: &Device, local: Ipv4Addr, peer: Ipv4Addr) -> Option<String> {
+    let mine = crate::ikev2::entry_for(d, local, peer)?;
+    let theirs = crate::ikev2::entry_for(owner(t, d, peer)?, peer, local)?;
+    (mine.pfs != theirs.pfs).then(|| format!("PFS differs ({} here, {} at the peer)", pfs_name(mine.pfs), pfs_name(theirs.pfs)))
+}
+
 /// Quick mode messages 1 and 2: the responder has a crypto map entry back to the initiator,
 /// on the interface the exchange reached, with the same transform set.
 fn quick_check(a: &Device, a_addr: Ipv4Addr, e: &CryptoMapEntry, b: &Device, b_addr: Ipv4Addr) -> Result<(), String> {
@@ -608,6 +620,13 @@ fn quick_check(a: &Device, a_addr: Ipv4Addr, e: &CryptoMapEntry, b: &Device, b_a
         pe.transform_set.as_deref().and_then(|n| b.crypto.transform_set(n)).ok_or("the peer's crypto map entry has no usable transform set")?;
     if p_ts.transforms != ts.transforms || p_ts.transport != ts.transport {
         return Err(format!("transform sets differ ({} here, {} at the peer)", ts.transforms.join(" "), p_ts.transforms.join(" ")));
+    }
+    if e.pfs != pe.pfs {
+        return Err(format!(
+            "PFS differs ({} here, {} at the peer): both crypto map entries need the same `set pfs`",
+            pfs_name(e.pfs),
+            pfs_name(pe.pfs)
+        ));
     }
     Ok(())
 }
@@ -728,7 +747,18 @@ fn ah_child_transform(integ: Integ, mode: u16) -> (u8, Transform) {
 /// The protocols and transforms quick mode proposes for a transform set (RFC 2407 §4.4.3,
 /// §4.4.4 and §4.5): AH for a set of AH transforms only, ESP otherwise, and for a set with both
 /// the two together under one proposal number (§4.2: logically ANDed), AH first.
-fn child_proposals(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Vec<(u8, Transform)> {
+fn child_proposals(ts: Option<&netlabcraft_model::vpn::TransformSet>, pfs: Option<u16>) -> Vec<(u8, Transform)> {
+    let mut out = child_proposals_plain(ts);
+    if let Some(group) = pfs {
+        // The group description attribute (RFC 2407 §4.5) says quick mode carries a key exchange.
+        for (_, t) in &mut out {
+            t.attrs.push((3, group));
+        }
+    }
+    out
+}
+
+fn child_proposals_plain(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Vec<(u8, Transform)> {
     let mode = if ts.is_some_and(|t| t.transport) { 2 } else { 1 };
     if let Some(integ) = ts.and_then(ah_integ) {
         return vec![ah_child_transform(integ, mode)];
@@ -744,7 +774,7 @@ fn child_proposals(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Vec<(u8
 /// The proposals of a quick-mode message with this router's SPIs: one per protocol, all with
 /// the same proposal number.
 fn child_offer(v1: &V1State, ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Vec<Proposal> {
-    child_proposals(ts)
+    child_proposals(ts, Some(v1.pfs).filter(|g| *g != 0))
         .into_iter()
         .map(|(protocol, transform)| {
             let spi = if protocol == ike::PROTO_AH && v1.ah_integ.is_some() { v1.ah_spi_mine } else { v1.spi_mine };
@@ -1269,7 +1299,13 @@ impl Sim {
         v1.ah_spi_mine = if v1.ah_integ.is_some() { fresh_spi(&[seed, b"spi-ah-i"].concat()) } else { 0 };
         v1.qm_ni = ike::filler(&[seed, b"qm-ni"].concat(), 16);
         v1.start_qm(qm_id);
-        let rest = vec![Payload::Sa(child_offer(&v1, ts)), Payload::Nonce(v1.qm_ni.clone()), id_payload(local), id_payload(peer)];
+        let ke = v1.make_qm_ke(my_entry.as_ref().and_then(|e| e.pfs), &[seed, b"qm-i"].concat());
+        let mut rest = vec![Payload::Sa(child_offer(&v1, ts)), Payload::Nonce(v1.qm_ni.clone())];
+        if let Some(ke) = ke {
+            v1.qm_ke_i.clone_from(&ke);
+            rest.push(Payload::Ke(ke));
+        }
+        rest.extend([id_payload(local), id_payload(peer)]);
         let mut payloads = vec![Payload::Hash(v1.hash_qm(qm_id, None, &rest))];
         payloads.extend(rest);
         let out = v1.seal(ic, rc, ike::EXCH_QUICK, qm_id, &payloads, true);
@@ -1554,7 +1590,15 @@ impl Sim {
                 };
                 let offer = list.iter().find_map(|p| if let Payload::Sa(v) = p { Some(v.clone()) } else { None });
                 let ts = my_entry.as_ref().and_then(|e| e.transform_set.as_deref()).and_then(|n| d.crypto.transform_set(n));
-                let mine = child_proposals(ts);
+                let my_pfs = my_entry.as_ref().and_then(|e| e.pfs);
+                let offered_pfs = offer
+                    .as_ref()
+                    .and_then(|o| o.first())
+                    .and_then(|p| p.transforms.first())
+                    .and_then(|t| t.attrs.iter().find(|(k, _)| *k == 3).map(|(_, v)| *v));
+                // The transforms are compared with the group the peer names, so that a
+                // difference in the group alone is reported as one.
+                let mine = child_proposals(ts, offered_pfs);
                 let verdict = match (&my_entry, &offer) {
                     (None, _) => Err(format!("no crypto map entry here for {peer}")),
                     (_, None) => Err("quick mode message 1 carries no IPsec proposal".to_string()),
@@ -1572,6 +1616,11 @@ impl Sim {
                         });
                         Err(why.unwrap_or_else(|| "the peer's ESP transforms differ from this router's transform set".to_string()))
                     }
+                    (Some(_), Some(_)) if offered_pfs != my_pfs => Err(format!(
+                        "PFS differs ({} here, {} at the peer): both crypto map entries need the same `set pfs`",
+                        pfs_name(my_pfs),
+                        pfs_name(offered_pfs)
+                    )),
                     _ => Ok(()),
                 };
                 if let Err(why) = verdict {
@@ -1589,7 +1638,23 @@ impl Sim {
                 v1.spi_mine = fresh_spi(&[&seed[..], b"spi-r"].concat());
                 v1.ah_spi_mine = if v1.ah_integ.is_some() { fresh_spi(&[&seed[..], b"spi-ah-r"].concat()) } else { 0 };
                 v1.qm_nr = ike::filler(&[&seed[..], b"qm-nr"].concat(), 16);
-                let rest = vec![Payload::Sa(child_offer(&v1, ts)), Payload::Nonce(v1.qm_nr.clone()), id_payload(peer), id_payload(local)];
+                // PFS: this router's own value, and the secret with the initiator's.
+                let ke_r = v1.make_qm_ke(my_pfs, &[&seed[..], b"qm-r"].concat());
+                if my_pfs.is_some() {
+                    let ke_i = crate::ikev1::ke_of(&list).unwrap_or_default().to_vec();
+                    if !v1.derive_qm(&ke_i) {
+                        self.ike_fail(d, peer, format!("quick mode message 1 has no valid key exchange value for {}; refused", pfs_name(my_pfs)));
+                        self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::INVALID_KEY_INFORMATION));
+                        return Ok(());
+                    }
+                    v1.qm_ke_i = ke_i;
+                }
+                let mut rest = vec![Payload::Sa(child_offer(&v1, ts)), Payload::Nonce(v1.qm_nr.clone())];
+                if let Some(ke) = ke_r {
+                    v1.qm_ke_r.clone_from(&ke);
+                    rest.push(Payload::Ke(ke));
+                }
+                rest.extend([id_payload(peer), id_payload(local)]);
                 let mut payloads = vec![Payload::Hash(v1.hash_qm(m.message_id, Some(&v1.qm_ni), &rest))];
                 payloads.extend(rest);
                 let out = v1.seal(ic, rc, ike::EXCH_QUICK, m.message_id, &payloads, true);
@@ -1609,6 +1674,14 @@ impl Sim {
                     }
                 };
                 v1.qm_nr = list.iter().find_map(|p| if let Payload::Nonce(n) = p { Some(n.clone()) } else { None }).unwrap_or_default();
+                if v1.pfs != 0 {
+                    let ke_r = crate::ikev1::ke_of(&list).unwrap_or_default().to_vec();
+                    if !v1.derive_qm(&ke_r) {
+                        self.ike_fail(d, peer, format!("quick mode message 2 has no valid key exchange value for group{}", v1.pfs));
+                        return Ok(());
+                    }
+                    v1.qm_ke_r = ke_r;
+                }
                 let answered: Vec<Proposal> =
                     list.iter().find_map(|p| if let Payload::Sa(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
                 let spi_of_proto = |proto: u8| answered.iter().find(|p| p.protocol == proto).map_or(0, |p| spi_u32(&p.spi));
