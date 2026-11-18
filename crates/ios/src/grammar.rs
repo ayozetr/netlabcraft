@@ -1507,9 +1507,6 @@ pub static SPECS: &[Spec] = &[
     spec!(EraseStartup, Modes::EXEC, BOTH_FW, [K("erase"), K("startup-config")], "Delete the saved configuration"),
     spec!(Reload, Modes::EXEC, BOTH_FW, [K("reload")], "Restart with the saved configuration"),
     spec!(ReloadIn, Modes::EXEC, Modes::BOTH, [K("reload"), K("in"), Arg("<minutes|hh:mm>")], "Restart after a delay of simulated time"),
-<<<<<<< HEAD
-    spec!(ReloadIn, Modes::EXEC, Modes::BOTH, [K("reload"), K("in"), Arg("<minutes|hh:mm>"), Rest("<reason>")], "Restart after a delay, with a reason"),
-=======
     spec!(
         ReloadIn,
         Modes::EXEC,
@@ -1517,7 +1514,6 @@ pub static SPECS: &[Spec] = &[
         [K("reload"), K("in"), Arg("<minutes|hh:mm>"), Rest("<reason>")],
         "Restart after a delay, with a reason"
     ),
->>>>>>> origin/main
     spec!(ReloadAt, Modes::EXEC, Modes::BOTH, [K("reload"), K("at"), Arg("<hh:mm>")], "Restart at the next time the device clock shows this"),
     spec!(ReloadAt, Modes::EXEC, Modes::BOTH, [K("reload"), K("at"), Arg("<hh:mm>"), Rest("<reason>")], "Restart at a time of day, with a reason"),
     spec!(ReloadCancel, Modes::EXEC, Modes::BOTH, [K("reload"), K("cancel")], "Cancel a scheduled restart"),
@@ -1530,17 +1526,7 @@ pub static SPECS: &[Spec] = &[
         [K("alias"), Arg("{exec|configure|interface}"), Arg("NAME"), Rest("<command text>")],
         "Give a command another name in one mode"
     ),
-<<<<<<< HEAD
-    spec!(
-        NoKnob,
-        Modes::CONFIG,
-        Modes::BOTH,
-        [K("no"), K("alias"), Arg("{exec|configure|interface}"), Arg("NAME")],
-        "Remove a command alias"
-    ),
-=======
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("alias"), Arg("{exec|configure|interface}"), Arg("NAME")], "Remove a command alias"),
->>>>>>> origin/main
     spec!(ClearMac, Modes::EXEC, Modes::SWITCH.or(Modes::CARD), [K("clear"), K("mac"), K("address-table")], "Forget learned MAC addresses"),
     spec!(ClearArp, Modes::EXEC, Modes::ROUTER, [K("clear"), K("arp-cache")], "Forget ARP entries"),
     spec!(ShowMac, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("mac-address-table")], "Learned MAC addresses"),
