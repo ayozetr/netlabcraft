@@ -5840,6 +5840,8 @@ mod tests {
                 Modes::BBA_GROUP,
                 Modes::VTEMPLATE,
                 Modes::DIALER,
+                Modes::KEYCHAIN,
+                Modes::KEYCHAIN_KEY,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))
