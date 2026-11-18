@@ -836,7 +836,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "New place",
         "",
         None,
-        r#"{"kind": "city"|"building"|"closet", "name"?, "parent"?: place number (a building goes in a city, a closet in a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}"#,
+        r#"{"kind": "city"|"building"|"closet"|"container", "name"?, "parent"?: place number (a building goes in a city, a closet in a building, a container in a city or a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}"#,
         true
     ),
     c!("place.rename", "Rename place", "", None, r#"{"id", "name"}"#, true),
@@ -946,7 +946,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Add furniture",
         "",
         None,
-        r#"{"kind": "rack" | "shelf" | "table", "name"?, "place"?: wiring closet number, "size"?: rack units 4-48 (default 12) or shelf levels 1-8 (default 4), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets"#,
+        r#"{"kind": "rack" | "shelf" | "table" | "inventory-shelf" | "pegboard" | "icp", "name"?, "place"?: wiring closet or container number, "size"?: rack units 4-48 (default 12), shelf or inventory shelf levels 1-8 (default 4), pegboard rows of hooks 1-8 (default 4) or control panel DIN slots 6-24 (default 12), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets and containers; a device put on an inventory shelf is switched off; a control panel takes industrial devices only; a pegboard takes cables, not devices"#,
         true
     ),
     c!("furniture.rename", "Rename furniture", "", None, r#"{"furniture": name or number, "name"}"#, true),
@@ -969,6 +969,31 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!("furniture.unmount", "Take off furniture", "", None, r#"{"device" | "passive"}: it stays in the closet, loose"#, true),
+    c!(
+        "furniture.hang",
+        "Hang a cable",
+        "",
+        None,
+        r#"{"furniture": cable pegboard name or number, "device", "port": either end of the cable, "peg"?: hook counted from 1 (default: the first free one)} → {"furniture", "peg"}: one of the cable's ends stands in the pegboard's place; a cable hangs on one peg"#,
+        true
+    ),
+    c!("furniture.unhang", "Take a cable off its peg", "", None, r#"{"device", "port": either end of the cable}"#, true),
+    c!(
+        "place.working.set",
+        "Set as working closet",
+        "",
+        None,
+        r#"{"id"?: wiring closet number (default: the closet being viewed)} → {"id", "name"}: the closet the Home button goes to"#,
+        true
+    ),
+    c!(
+        "place.working.get",
+        "Working closet",
+        "",
+        None,
+        r#"{} → {"id", "name"}: the marked closet, else the first closet; null when there is none"#,
+        false
+    ),
     c!(
         "passive.add",
         "Add a passive device",

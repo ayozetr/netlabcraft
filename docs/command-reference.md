@@ -138,7 +138,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `view.enter_place` | Open place |  |  | `{"id": place number} → {"physical", "place", "kind", "path"} (switches to the physical view)` |
 | `view.place_up` | Back to the enclosing place |  |  | `{} → {"physical", "place", "kind", "path"}` |
 | `view.intercity` | Back to the Intercity map |  |  | `{} → {"physical", "place": null, "path": []}` |
-| `place.add` | New place |  |  | `{"kind": "city"\|"building"\|"closet", "name"?, "parent"?: place number (a building goes in a city, a closet in a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}` |
+| `place.add` | New place |  |  | `{"kind": "city"\|"building"\|"closet"\|"container", "name"?, "parent"?: place number (a building goes in a city, a closet in a building, a container in a city or a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}` |
 | `place.rename` | Rename place |  |  | `{"id", "name"}` |
 | `place.move` | Move place |  |  | `{"id", "x", "y", "transient"?: false}: its icon on the map it sits in` |
 | `place.remove` | Remove place |  |  | `{"id"}: with the places inside it; their devices go to the building above, else the default closet (the last city stays)` |
@@ -157,13 +157,17 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.place` | Move to place |  |  | `{"device" \| "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building` |
 | `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)` |
 | `closet.list` | List a wiring closet |  |  | `{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" \| "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}` |
-| `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table", "name"?, "place"?: wiring closet number, "size"?: rack units 4-48 (default 12) or shelf levels 1-8 (default 4), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets` |
+| `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table" \| "inventory-shelf" \| "pegboard" \| "icp", "name"?, "place"?: wiring closet or container number, "size"?: rack units 4-48 (default 12), shelf or inventory shelf levels 1-8 (default 4), pegboard rows of hooks 1-8 (default 4) or control panel DIN slots 6-24 (default 12), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets and containers; a device put on an inventory shelf is switched off; a control panel takes industrial devices only; a pegboard takes cables, not devices` |
 | `furniture.rename` | Rename furniture |  |  | `{"furniture": name or number, "name"}` |
 | `furniture.resize` | Resize furniture |  |  | `{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size` |
 | `furniture.move` | Move furniture |  |  | `{"furniture", "x", "y", "transient"?: false}: where it stands in the closet` |
 | `furniture.remove` | Remove furniture |  |  | `{"furniture"}: what stood on it stays in the closet, loose` |
 | `furniture.mount` | Put on furniture |  |  | `{"device" \| "passive": name or number, "furniture": name or number, "slot"?: rack unit or shelf level counted from 1 at the top (default: the first free one), "units"?: 1-4 rack units (default 1)} → {"furniture", "slot", "units"}: the item moves into the furniture's closet; a rack takes no overlapping units, a shelf level holds 4 items, a table 8` |
 | `furniture.unmount` | Take off furniture |  |  | `{"device" \| "passive"}: it stays in the closet, loose` |
+| `furniture.hang` | Hang a cable |  |  | `{"furniture": cable pegboard name or number, "device", "port": either end of the cable, "peg"?: hook counted from 1 (default: the first free one)} → {"furniture", "peg"}: one of the cable's ends stands in the pegboard's place; a cable hangs on one peg` |
+| `furniture.unhang` | Take a cable off its peg |  |  | `{"device", "port": either end of the cable}` |
+| `place.working.set` | Set as working closet |  |  | `{"id"?: wiring closet number (default: the closet being viewed)} → {"id", "name"}: the closet the Home button goes to` |
+| `place.working.get` | Working closet |  |  | `{} → {"id", "name"}: the marked closet, else the first closet; null when there is none` |
 | `passive.add` | Add a passive device |  |  | `{"kind": "copper-patch-panel" \| "fiber-patch-panel" \| "copper-wall-mount" \| "fiber-wall-mount" \| "power-strip", "name"?, "place"?, "ports"?: ports or outlets (panels 4-48, wall mounts 1-4, power strip 2-16), "furniture"?, "slot"?, "units"?} → {"id", "name", "kind", "ports", "place"}` |
 | `passive.rename` | Rename a passive device |  |  | `{"passive": name or number, "name"}` |
 | `passive.remove` | Remove a passive device |  |  | `{"passive"}: with its patch wires (a cable they carried is unplugged) and its plugs` |

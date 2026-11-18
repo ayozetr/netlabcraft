@@ -214,7 +214,7 @@ pub fn current_level(app: &PacketApp) -> Option<GridLevel> {
         Some(p) => match p.kind {
             PlaceKind::City => Some(GridLevel::City),
             PlaceKind::Building => Some(GridLevel::Building),
-            PlaceKind::Closet => None,
+            PlaceKind::Closet | PlaceKind::Container => None,
         },
     }
 }
