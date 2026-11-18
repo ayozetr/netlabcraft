@@ -120,6 +120,7 @@ labs! {
     lab_81_mst_regions => "81-mst-regions.md",
     lab_82_igmp_snooping => "82-igmp-snooping.md",
     lab_83_802_1x_on_a_switch_port => "83-802-1x-on-a-switch-port.md",
+    lab_85_vrf_lite => "85-vrf-lite.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up
