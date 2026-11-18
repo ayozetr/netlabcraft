@@ -1052,6 +1052,18 @@
 	Show All/None	Mostrar tudo/nada
 	Show as text	Mostrar como texto
 	Show grid	Mostrar grade
+	Grid Preferences	Preferências da grade
+	Grid Preferences…	Preferências da grade…
+	Grid Scale	Escala da grade
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Define o espaçamento da grade, em metros, para cada nível do espaço de trabalho físico. A grade de um nível é desenhada quando sua caixa está marcada.
+	Grid-X (m)	Grade X (m)
+	Grid-Y (m)	Grade Y (m)
+	Generic Container	Contêiner genérico
+	A wiring closet has no scale, so it has no grid.	Um armário de cabeamento não tem escala, portanto não tem grade.
+	Grid Line Color	Cor das linhas da grade
+	Select Grid Color	Escolher cor da grade
+	Grid color {}	Cor da grade {}
+	{}: zoom in to see the lines	{}: aumente o zoom para ver as linhas
 	Device windows as separate windows	Janelas de dispositivo separadas
 	Not available in the web version	Indisponível na versão web
 	shown when it fails	mostrado quando falha
@@ -2383,6 +2395,8 @@ furniture	Table	Mesa
 	Application size	Tamanho do aplicativo
 	Enter the password first: some tabs are locked.	Digite antes a senha: algumas abas estão bloqueadas.
 	Port, {}	Porta, {}
+	Language:	Idioma:
+	Program ({})	Programa ({})
 	Up	Ativo
 	Down	Inativo
 	Properties…	Propriedades…
