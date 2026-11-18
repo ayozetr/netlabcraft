@@ -70,25 +70,6 @@ pub fn show(unix: i64, set: bool) -> String {
     s
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn round_trips_and_validates() {
-        let t = parse_set("14:05:09 30 Oct 2026").unwrap();
-        assert_eq!(parse_set("14:05:09 october 30 2026").unwrap(), t);
-        assert_eq!(show(t, true), "14:05:09 UTC Fri Oct 30 2026");
-        assert_eq!(show(netlabcraft_sim::DEFAULT_CLOCK, false).lines().next().unwrap(), "00:00:00 UTC Thu Jan 1 2026");
-        assert_eq!(show(parse_set("23:59:59 29 Feb 2028").unwrap(), true), "23:59:59 UTC Tue Feb 29 2028");
-        assert!(parse_set("12:00:00 29 Feb 2027").is_err());
-        assert!(parse_set("25:00:00 1 Jan 2026").is_err());
-        assert!(parse_set("12:00 1 Jan 2026").is_err());
-        assert!(parse_set("12:00:00 1 Foo 2026").is_err());
-        assert!(parse_set("12:00:00 1 Jan 99999").is_err());
-    }
-}
-
 /// `14:05:00 Oct 30 2026`: a time of the clock as `accept-lifetime` and `clock set` read it.
 pub fn stamp(unix: i64) -> String {
     let days = unix.div_euclid(86_400);
@@ -121,4 +102,23 @@ pub fn parse_lifetime(args: &str) -> Result<netlabcraft_model::keychain::Lifetim
         _ => return Err(usage.into()),
     };
     Ok(netlabcraft_model::keychain::Lifetime { start, end })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn round_trips_and_validates() {
+        let t = parse_set("14:05:09 30 Oct 2026").unwrap();
+        assert_eq!(parse_set("14:05:09 october 30 2026").unwrap(), t);
+        assert_eq!(show(t, true), "14:05:09 UTC Fri Oct 30 2026");
+        assert_eq!(show(netlabcraft_sim::DEFAULT_CLOCK, false).lines().next().unwrap(), "00:00:00 UTC Thu Jan 1 2026");
+        assert_eq!(show(parse_set("23:59:59 29 Feb 2028").unwrap(), true), "23:59:59 UTC Tue Feb 29 2028");
+        assert!(parse_set("12:00:00 29 Feb 2027").is_err());
+        assert!(parse_set("25:00:00 1 Jan 2026").is_err());
+        assert!(parse_set("12:00 1 Jan 2026").is_err());
+        assert!(parse_set("12:00:00 1 Foo 2026").is_err());
+        assert!(parse_set("12:00:00 1 Jan 99999").is_err());
+    }
 }
