@@ -1908,6 +1908,21 @@ event	write request for	demande d'écriture de
 	{} (rear)	{} (arrière)
 	{}, {} levels	{}, {} niveaux
 	{}, on {}	{}, sur {}
+	Plugged into {} (USB {}): {}	Branchée sur {} (USB {}) : {}
+	Not plugged in: join it to a host with a USB cable.	Non branchée : reliez-la à un hôte avec un câble USB.
+	mounted	montée
+	ejected	éjectée
+	Eject	Éjecter
+	Mount	Monter
+	{} of {} bytes used	{} octets utilisés sur {}
+	No files on the stick.	Aucun fichier sur la clé.
+	Save to stick	Enregistrer sur la clé
+	Delete file	Supprimer le fichier
+	USB {}	USB {}
+	Print test page	Imprimer une page de test
+	This device has no USB port.	Cet appareil n'a pas de port USB.
+	Test page from {}	Page de test de {}
+	Sent a test page over USB.	Une page de test a été envoyée par USB.
 	to {}	vers {}
 	Backbone	Câblage de dorsale
 	Backbone to	Dorsale vers
