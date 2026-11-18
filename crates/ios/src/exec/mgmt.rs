@@ -68,6 +68,9 @@ pub fn running_config(s: &mut String, d: &Device) {
     if let Some(l) = m.logging_console {
         let _ = writeln!(s, "logging console {}", severity_name(l));
     }
+    if let Some(l) = m.logging_monitor {
+        let _ = writeln!(s, "logging monitor {}", severity_name(l));
+    }
     if let Some(l) = m.logging_trap {
         let _ = writeln!(s, "logging trap {}", severity_name(l));
     }
@@ -121,14 +124,22 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
             }
             Ok(String::new())
         }
-        Id::LoggingTrap | Id::LoggingConsole => {
+        Id::LoggingTrap | Id::LoggingConsole | Id::LoggingMonitor => {
             let l = level(arg(0))?;
             let m = &mut c.dm()?.mgmt;
-            if id == Id::LoggingTrap {
-                m.logging_trap = Some(l)
-            } else {
-                m.logging_console = Some(l)
+            match id {
+                Id::LoggingTrap => m.logging_trap = Some(l),
+                Id::LoggingMonitor => m.logging_monitor = Some(l),
+                _ => m.logging_console = Some(l),
             }
+            Ok(String::new())
+        }
+        Id::NoLoggingMonitor => {
+            c.dm()?.mgmt.logging_monitor = None;
+            Ok(String::new())
+        }
+        Id::NoLoggingBuffered => {
+            c.dm()?.mgmt.logging_buffered = None;
             Ok(String::new())
         }
         Id::NoLoggingTrap => {
