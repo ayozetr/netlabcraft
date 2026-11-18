@@ -2415,8 +2415,5 @@ furniture	Table	Tisch
 	no clock rate on the DCE end	keine Taktrate am DCE-Ende
 	the two ends use different encapsulations	die beiden Enden verwenden unterschiedliche Kapselungen
 	PPP authentication failed (check the usernames and passwords)	PPP-Authentifizierung fehlgeschlagen (Benutzernamen und Kennwörter prüfen)
-	Resize…	Größe ändern…
-	Resize	Größe ändern
-	Units ({} to {}):	Einheiten ({} bis {}):
-	Levels ({} to {}):	Ebenen ({} bis {}):
-	Enter a whole number	Gib eine ganze Zahl ein
+	Each place has its own physics	Jeder Ort hat seine eigene Physik
+	Parts change the place they stand in by rates, and the place settles back when they stop	Geräte verändern ihren Ort mit einer Rate, und der Ort kehrt zurück, wenn sie anhalten
