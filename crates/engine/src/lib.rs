@@ -62,6 +62,8 @@ mod tests_dialup;
 #[cfg(test)]
 mod tests_dot1x;
 #[cfg(test)]
+mod tests_dot1x_wired;
+#[cfg(test)]
 mod tests_envcustom;
 #[cfg(test)]
 mod tests_envs;
