@@ -15,6 +15,7 @@ use egui::{Color32, RichText, Sense, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_engine::{EngineError, Session, sample};
 
+pub use physical_grid::{GridLevel, GridPrefs};
 pub use print::{PdfUse, PrintChoices, PrintJob};
 
 use serde_json::{Value, json};
@@ -57,6 +58,7 @@ pub mod pdf;
 pub mod pdu_dialog;
 mod phone;
 mod physical;
+mod physical_grid;
 pub mod png;
 pub mod prefs;
 mod prefs_admin;
@@ -78,6 +80,7 @@ mod wlan_page;
 #[cfg(test)]
 mod tests;
 mod tests_closet;
+mod tests_grid;
 mod tests_environments;
 mod tests_families;
 #[cfg(test)]
@@ -1182,7 +1185,7 @@ impl PacketApp {
                 if ui.checkbox(&mut self.ui.dark, tl("Dark interface")).changed() {
                     self.apply_theme(ui.ctx());
                 }
-                ui.checkbox(&mut self.ui.show_grid, tl("Show grid")).hint(shortcuts::text(shortcuts::Act::ShowGrid));
+                physical_grid::menu_item(self, ui);
                 // Native windows need viewports: egui embeds them (the web build, headless runs).
                 let embedded = ui.ctx().embed_viewports();
                 let native = ui.add_enabled(!embedded, egui::Checkbox::new(&mut self.ui.native_windows, tl("Device windows as separate windows")));
@@ -1247,6 +1250,9 @@ impl PacketApp {
                 if check_item(ui, self.ui.prefs.show_wireless_signals, tl("View Wireless Signals"), &shortcuts::text(shortcuts::Act::WirelessSignals))
                 {
                     self.ui.prefs.show_wireless_signals = !self.ui.prefs.show_wireless_signals;
+                }
+                if ui.add_enabled(self.session.physical, egui::Button::new(tl("Grid Preferences…"))).clicked() {
+                    self.ui.physical.grid.open = true;
                 }
             });
             ui.menu_button(tl("Tools"), |ui| {
@@ -1504,6 +1510,9 @@ impl PacketApp {
                     if resp.clicked() {
                         self.ui.prefs.show_wireless_signals = !on;
                     }
+                }
+                if physical {
+                    physical_grid::bar_button(self, ui, &tk);
                 }
                 if physical {
                     // Intercity › City › Building › Closet (right to left here); each opens.
