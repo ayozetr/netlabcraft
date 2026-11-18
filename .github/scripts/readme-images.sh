@@ -27,12 +27,12 @@ run "$snap" --sample serial-wan "$out/serial-wan.png"
 run "$snap" --sample activity-first-router --instructions --cmd 'activity.set={"time_limit":45}' "$out/activity.png"
 
 # A home router with a PC, two Wi-Fi laptops and the provider's router.
-run "$snap" --size 1600x820 --console Home --config-page home \
+run "$snap" --size 2300x820 --console Home --config-page home \
   --cmd 'device.add={"model":"Home-Router","name":"Home","x":1000,"y":200}' \
   --cmd 'device.add={"kind":"pc","name":"PC1","x":1000,"y":400}' \
   --cmd 'device.add={"model":"Laptop-WiFi","name":"Laptop1","x":1180,"y":380}' \
   --cmd 'device.add={"model":"Laptop-WiFi","name":"Laptop2","x":820,"y":380}' \
-  --cmd 'device.add={"model":"Router-3","name":"ISP","x":1180,"y":60}' \
+  --cmd 'device.add={"model":"Router-3","name":"ISP","x":1000,"y":40}' \
   --cmd 'link.add={"a":"Home","a_port":"Ethernet1","b":"PC1"}' \
   --cmd 'link.add={"a":"Home","a_port":"Internet0","b":"ISP"}' \
   --cmd 'device.wireless={"device":"Laptop1","ssid":"HomeNetwork"}' \
