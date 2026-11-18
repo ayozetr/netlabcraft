@@ -3023,13 +3023,17 @@ impl Sim {
             }
             if hsrp
                 && self.debug_on(d.id, DebugKind::Standby)
-                && let Some(h) = Udp::decode(&ip.payload, ip.src, ip.dst).ok().and_then(|u| netlabcraft_wire::control::HsrpHello::decode(&u.payload).ok())
+                && let Some(h) =
+                    Udp::decode(&ip.payload, ip.src, ip.dst).ok().and_then(|u| netlabcraft_wire::control::HsrpHello::decode(&u.payload).ok())
             {
                 let who = if h.active { "the active router" } else { "the standby router" };
                 self.debug_log(
                     d.id,
                     DebugKind::Standby,
-                    &format!("hello from {} on {}: {who} of group {} (virtual address {}, priority {})", ip.src, ifc.name, h.group, h.virtual_ip, h.priority),
+                    &format!(
+                        "hello from {} on {}: {who} of group {} (virtual address {}, priority {})",
+                        ip.src, ifc.name, h.group, h.virtual_ip, h.priority
+                    ),
                 );
             }
             if ip.protocol == netlabcraft_wire::vrrp::PROTO_VRRP
