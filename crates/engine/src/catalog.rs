@@ -161,6 +161,30 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "aaa.certificate",
+        "Server certificate (802.1X)",
+        "",
+        None,
+        r#"{"device": Server, "ca"?: "a router running `crypto pki server` that issues it", "self_signed"?: true, "subject"?: "CN=radius.lab.test, O=NetLab", "fqdn"?: "radius.lab.test", "days"?: 1-36500 (365), "clear"?: true (back to no certificate)} → {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}: the certificate the RADIUS service presents in the PEAP tunnel, for a 1024-bit key pair the simulator makes; a host whose login validates the server checks it"#,
+        true
+    ),
+    c!(
+        "dot1x.trust",
+        "Login: validate the server certificate",
+        "",
+        None,
+        r#"{"device": host, "port"?: "Wireless0", "validate"?: true|false (refuse a RADIUS server whose certificate does not chain to a trusted CA), "ca"?: "a lab device whose CA certificate to trust: a router running a certificate authority or holding a trustpoint, or a Server with a certificate", "ca_pem"?: "a CA certificate in PEM", "server_name"?: "the name the certificate must be for", "clear"?: true (forget the trusted CAs first)} → {"validate", "server_name", "trusted_cas": [subjects]}: for a host that has a login (device.wireless user and password)"#,
+        true
+    ),
+    c!(
+        "dot1x.status",
+        "Login: 802.1X status",
+        "",
+        None,
+        r#"{"device": host, "port"?: "Wireless0"} → {"login": user or null, "validate", "server_name", "trusted_cas": [subjects], "associated": bool (through the login and the handshake), "server_certificate": null | {"presented", "subject", "issuer", "not_after", "chain_length", "verified", "error", "suite"}}: what the host saw of the RADIUS server's certificate in its PEAP tunnel (run `sim.advance` first: the login takes simulated time)"#,
+        false
+    ),
+    c!(
         "vpnclient.status",
         "VPN Client status",
         "",

@@ -25,6 +25,7 @@ mod closet;
 mod cmd;
 mod controller;
 mod dialup;
+mod dot1x;
 mod envs;
 mod families;
 mod hardware;
@@ -57,6 +58,8 @@ mod tests_closet;
 mod tests_debug;
 #[cfg(test)]
 mod tests_dialup;
+#[cfg(test)]
+mod tests_dot1x;
 #[cfg(test)]
 mod tests_envcustom;
 #[cfg(test)]
