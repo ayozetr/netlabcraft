@@ -25,10 +25,20 @@ const MAX_TILES: i64 = 4_000;
 /// The preview's size in the window.
 const PREVIEW: Vec2 = vec2(200.0, 140.0);
 
+/// A texture (the handle has no `Debug` of its own).
+#[derive(Clone)]
+struct Tex(TextureHandle);
+
+impl std::fmt::Debug for Tex {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Tex({:?})", self.0.id())
+    }
+}
+
 /// The textures made from the lab's pictures, by picture id.
 #[derive(Debug, Clone, Default)]
 pub struct Textures {
-    map: BTreeMap<String, Option<TextureHandle>>,
+    map: BTreeMap<String, Option<Tex>>,
 }
 
 /// A texture of the bytes of a picture, no larger than the graphics card takes.
@@ -44,10 +54,10 @@ impl Textures {
     /// only after the picture changes).
     pub fn get(&mut self, ctx: &Context, t: &Topology, id: &str) -> Option<TextureHandle> {
         if let Some(tex) = self.map.get(id) {
-            return tex.clone();
+            return tex.as_ref().map(|t| t.0.clone());
         }
         let tex = t.images.get(id).and_then(|img| load(ctx, &format!("picture-{id}"), &img.data));
-        self.map.insert(id.to_string(), tex.clone());
+        self.map.insert(id.to_string(), tex.clone().map(Tex));
         tex
     }
 
@@ -138,7 +148,7 @@ struct Picked {
     data: Arc<Vec<u8>>,
     w: u32,
     h: u32,
-    tex: Option<TextureHandle>,
+    tex: Option<Tex>,
 }
 
 /// Where a picture of the draft stands.
@@ -344,7 +354,6 @@ pub fn windows(app: &mut PacketApp, ctx: &Context) {
     let mut w = std::mem::take(&mut app.ui.pictures.window);
     let mut open = true;
     egui::Window::new(tl("Set Background Image"))
-        .id(egui::Id::new("set_background_image"))
         .open(&mut open)
         .collapsible(false)
         .resizable(false)
@@ -462,9 +471,9 @@ fn preview(app: &mut PacketApp, ctx: &Context, ui: &mut Ui, w: &mut Window) {
     let shown = match &mut w.bg {
         Slot::New(p) => {
             if p.tex.is_none() {
-                p.tex = load(ctx, "picture-draft", &p.data);
+                p.tex = load(ctx, "picture-draft", &p.data).map(Tex);
             }
-            p.tex.clone().map(|tex| (tex, (p.w, p.h)))
+            p.tex.clone().map(|tex| (tex.0, (p.w, p.h)))
         }
         Slot::Stored => w.stored_background(t).and_then(|b| {
             let dims = t.images.get(&b.image).map(|i| (i.w, i.h))?;
@@ -536,9 +545,9 @@ fn icon_tab(app: &mut PacketApp, ctx: &Context, ui: &mut Ui, w: &mut Window) {
     let shown = match &mut w.icon {
         Slot::New(p) => {
             if p.tex.is_none() {
-                p.tex = load(ctx, "icon-draft", &p.data);
+                p.tex = load(ctx, "icon-draft", &p.data).map(Tex);
             }
-            p.tex.clone().map(|tex| (tex, (p.w, p.h)))
+            p.tex.clone().map(|tex| (tex.0, (p.w, p.h)))
         }
         Slot::Stored => stored_icon.and_then(|id| {
             let dims = t.images.get(&id).map(|i| (i.w, i.h))?;
