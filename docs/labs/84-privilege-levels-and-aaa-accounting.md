@@ -134,8 +134,7 @@ PC1> teacher
 PC1> pt-lab84
 PC1> show privilege
   expect: level is 15
-PC1> show running-config
-  expect: aaa authorization exec default
+PC1> show startup-config
 PC1> reload
   expect: Command authorization failed
 PC1> exit
@@ -154,13 +153,13 @@ PC1> exit
 
 ## Part 3 — The records
 
-The server kept a start and a stop record for each login and for the one command it allowed, and
+The server kept a start and a stop record for each login and for the one level-15 command it allowed, and
 none for the refused `reload`.
 
 ```verify
 run aaa.records {"device": "SRV1"}
   expect: "detail":"exec"
-  expect: "detail":"command: show running-config"
+  expect: "detail":"command: show startup-config"
   expect: "user":"teacher"
   expect: "protocol":"TACACS+"
   reject: reload
