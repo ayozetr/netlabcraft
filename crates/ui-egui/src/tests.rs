@@ -2329,7 +2329,7 @@ fn the_workspace_list_is_a_tree_of_places_furniture_and_devices() {
     assert_eq!(h.state().ui.list_pick, Some(crate::overview::ListPick::Furniture(1)));
     h.get_by_label(&name).click();
     h.run_steps(2);
-    assert_eq!(h.state().ui.selected, h.state().session.topology.resolve(&name));
+    assert_eq!(h.state().ui.selected, h.state().session.topology.resolve(&name).ok());
     // A double click opens: a furniture opens the closet it stands in.
     assert_eq!(h.state().session.place_view, None);
     let at = h.get_by_label("Rack0").rect().center();
