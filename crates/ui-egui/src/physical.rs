@@ -457,6 +457,8 @@ fn draw_places(app: &mut PacketApp, ctx: &egui::Context, painter: &egui::Painter
             let galley = painter.layout_no_wrap(line, font.clone(), color);
             let at = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, y), galley.size());
             y = at.bottom();
+            // On a soft plate of the ground colour, so a background picture does not hide the letters.
+            painter.rect_filled(at.expand2(vec2(3.0, 0.0)), 4.0, tk.ground.gamma_multiply(0.82));
             painter.galley(at.min, galley, color);
         }
     }
