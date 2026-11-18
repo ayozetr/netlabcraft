@@ -19,6 +19,9 @@ pub(crate) struct IotForm {
     server: String,
     interval: String,
     filled: bool,
+    /// A Bluetooth pairing code and an RFID tag being typed.
+    code: String,
+    tag: String,
     rule_sensor: String,
     rule_op: usize,
     rule_above: String,
@@ -255,12 +258,58 @@ fn generator_controls(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     });
 }
 
+/// Bluetooth pairing code and profile, an RFID card's typed id, a trip sensor's wire.
+fn proximity_controls(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm, what: &str) {
+    let d = dev.id.0;
+    if matches!(what, "bluetooth speaker" | "music player") {
+        ui.horizontal(|ui| {
+            let l = ui.label(tl("Pairing code:"));
+            let r = ui.add(egui::TextEdit::singleline(&mut form.code).desired_width(50.0).char_limit(4)).labelled_by(l.id);
+            if r.lost_focus() && form.code != format!("{:04}", dev.iot.pairing_code) {
+                app.run("iot.configure", json!({"device": d, "pairing_code": form.code.trim()}));
+            }
+            if what == "bluetooth speaker" {
+                ui.label(tl("Profile:"));
+                for (id, label) in [("a2dp", tl("Music (A2DP)")), ("headset", tl("Headset"))] {
+                    if ui.selectable_label(dev.iot.profile.id() == id, label).clicked() && dev.iot.profile.id() != id {
+                        app.run("iot.configure", json!({"device": d, "profile": id}));
+                    }
+                }
+            }
+        });
+    }
+    if what == "rfid card" {
+        ui.horizontal(|ui| {
+            let l = ui.label(tl("Card id (hex):"));
+            let r = ui.add(egui::TextEdit::singleline(&mut form.tag).desired_width(90.0).char_limit(8)).labelled_by(l.id);
+            if r.lost_focus() {
+                app.run("iot.configure", json!({"device": d, "tag": form.tag.trim()}));
+            }
+        });
+    }
+    if what == "trip" {
+        ui.horizontal(|ui| {
+            let mut crossing = dev.iot.crossing;
+            if ui.checkbox(&mut crossing, tl("Report crossings of the wire")).changed() {
+                app.run("iot.configure", json!({"device": d, "crossing": crossing}));
+            }
+            let mut angle = dev.iot.angle;
+            let l = ui.label(tl("Wire angle (degrees):"));
+            if ui.add(egui::DragValue::new(&mut angle).range(0..=359)).labelled_by(l.id).changed() {
+                app.run("iot.configure", json!({"device": d, "angle": angle}));
+            }
+        });
+    }
+}
+
 fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut IotForm) {
     let tk = theme::tokens(app.ui.dark);
     let d = dev.id;
     if !form.filled {
         form.server = dev.iot.server.map(|a| a.to_string()).unwrap_or_default();
         form.interval = dev.iot.interval.to_string();
+        form.code = format!("{:04}", dev.iot.pairing_code);
+        form.tag = format!("{:x}", netlabcraft_model::proximity::announced_id(dev));
         form.filled = true;
     }
     let st = app.session.sim.iot_thing(d).cloned().unwrap_or_default();
@@ -330,9 +379,10 @@ fn thing_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &mut I
         }
         level_rows(app, ui, dev, word);
     }
-    if what.is_some_and(|t| t.what == "signal") {
+    if what.is_some_and(|t| matches!(t.what, "signal" | "speaker" | "bluetooth speaker" | "music player" | "buzzer" | "alarm" | "siren" | "pitch")) {
         generator_controls(app, ui, dev);
     }
+    proximity_controls(app, ui, dev, form, what.map_or("", |t| t.what));
     if matches!(what.map(|t| t.what), Some("bluetooth speaker" | "music player")) {
         let near = match what.map(|t| t.what) {
             Some("music player") => app.session.topology.paired_speaker(dev),

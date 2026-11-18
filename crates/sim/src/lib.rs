@@ -64,6 +64,7 @@ pub mod pdu;
 pub mod peap;
 pub mod pki;
 pub mod pppoe;
+pub mod proximity;
 pub mod qos;
 pub mod ravpn;
 
