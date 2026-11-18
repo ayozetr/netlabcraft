@@ -177,7 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-18 | minor | OSPF LSA copies per router, MaxAge flush, SPF counters and throttle timers, `debug ip ospf lsa-generation\|flood\|packet` (see [protocol-parity.md](protocol-parity.md)): 1343 grammar entries across 45 modes; percentages not re-scored. |
+| 2026-11-18 | minor | OSPF LSA copies per router, MaxAge flush, SPF counters and throttle timers, `debug ip ospf lsa-generation\|flood\|packet` (see [protocol-parity.md](protocol-parity.md)): 1425 grammar entries across 47 modes; percentages not re-scored. |
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1347 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1425 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | Cables are objects (see [ui-parity.md](ui-parity.md)): `link.info` reports a cable's ends, kind, length, state and why it is down; the Summary counts 205 `c!(` entries. |
