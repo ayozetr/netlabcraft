@@ -2417,3 +2417,10 @@ furniture	Table	Tavolo
 	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
 	Each place has its own physics	Ogni luogo ha la sua fisica
 	Parts change the place they stand in by rates, and the place settles back when they stop	Le parti cambiano il luogo con una velocità e il luogo torna al valore quando si fermano
+	Pairing code:	Codice di abbinamento:
+	Profile:	Profilo:
+	Music (A2DP)	Musica (A2DP)
+	Headset	Cuffia
+	Card id (hex):	Id della scheda (hex):
+	Report crossings of the wire	Segnala gli attraversamenti del filo
+	Wire angle (degrees):	Angolo del filo (gradi):

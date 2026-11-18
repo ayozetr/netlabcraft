@@ -2417,3 +2417,10 @@ furniture	Table	Mesa
 	PPP authentication failed (check the usernames and passwords)	falha na autenticação PPP (confira os usuários e as senhas)
 	Each place has its own physics	Cada local tem sua própria física
 	Parts change the place they stand in by rates, and the place settles back when they stop	As peças mudam o local onde estão com uma taxa, e o local volta ao valor quando elas param
+	Pairing code:	Código de pareamento:
+	Profile:	Perfil:
+	Music (A2DP)	Música (A2DP)
+	Headset	Fone de ouvido
+	Card id (hex):	Id do cartão (hex):
+	Report crossings of the wire	Informar travessias do fio
+	Wire angle (degrees):	Ângulo do fio (graus):

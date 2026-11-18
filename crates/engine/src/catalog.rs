@@ -534,8 +534,16 @@ pub static CATALOG: &[CommandInfo] = &[
         "Smart thing settings",
         "",
         None,
-        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) | 0-180 (servo) | 0-16777215 (RGB LED, 0xRRGGBB), "red"?|"green"?|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: signal generator 0..20000 Hz} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "active", "paired", "message"} (reports at once)"#,
+        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) | 0-180 (servo) | 0-16777215 (RGB LED, 0xRRGGBB), "red"?|"green"?|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: 0..20000 Hz (a signal generator's output, the pitch a speaker, player, buzzer, alarm or siren plays (0: its own), the pitch a sound detector is tuned to (0: any; it hears only sounds within a tenth of it)), "pairing_code"?: "0000".."9999" (a Bluetooth speaker pairs with a player that has the same code), "profile"?: "a2dp"|"headset" (a Bluetooth speaker; a headset pairs with no player), "tag"?: an RFID card's id typed in (a number, or up to eight hex digits; 0: the card's own), "crossing"?: true|false (a trip sensor: read 1 for five seconds after something that moves crosses its 50 m wire instead of while something is near), "angle"?: 0..359 (a trip sensor: the wire's direction)} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "active", "paired", "pairing_code", "profile", "tag", "crossing", "angle", "message"} (reports at once)"#,
         true
+    ),
+    c!(
+        "iot.beacon",
+        "Beacon log",
+        "",
+        None,
+        r#"{"device": beacon} → {"device", "audience": [names of the things that hear it], "log": [{"time_s", "thing", "event": "heard"|"lost"}]}: what a beacon keeps (the last 60 things that came into its 100 m range or left it, as of the last step of the simulator)"#,
+        false
     ),
     c!(
         "board.program",
