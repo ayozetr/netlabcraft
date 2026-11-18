@@ -71,6 +71,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::closet::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::pictures::run(s, id, p) {
+        return r;
+    }
     if let Some(r) = crate::settings::run(s, id, p) {
         return r;
     }
