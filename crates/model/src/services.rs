@@ -148,7 +148,24 @@ pub struct Aaa {
     /// The certificate the 802.1X (PEAP) login presents, with its private key.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cert: Option<AaaCert>,
+    /// What each user may be given by TACACS+ authorization: a privilege level and commands to refuse.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<AaaProfile>,
 }
+
+/// A user's authorization: the privilege level the server grants at login (1 when the user has no
+/// profile) and the commands (by their first words, as typed) it refuses.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AaaProfile {
+    pub user: String,
+    #[serde(default)]
+    pub privilege: u8,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub deny: Vec<String>,
+}
+
+/// Most authorization profiles a Server keeps.
+pub const MAX_PROFILES: usize = 64;
 
 /// The certificate of an authentication server: its leaf and the CA certificate that issued
 /// it (PEM; the CA's may be empty), and the RSA key the leaf is for (the two primes in hex, as

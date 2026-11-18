@@ -1553,6 +1553,24 @@ pub enum Id {
     ShowDot1xAll,
     ShowDot1xInterface,
     Dot1xReauth,
+    AaaAuthzExec,
+    NoAaaAuthzExec,
+    AaaAuthzCommands,
+    NoAaaAuthzCommands,
+    AaaAcctExec,
+    NoAaaAcctExec,
+    AaaAcctCommands,
+    NoAaaAcctCommands,
+    AaaAcctConnection,
+    NoAaaAcctConnection,
+    Privilege,
+    NoPrivilege,
+    EnableLevel,
+    EnableSecretLevel,
+    NoEnableSecretLevel,
+    ShowAaa,
+    ShowAaaAuthorization,
+    ShowAaaAccounting,
 }
 
 use Tok::{Arg, K, Rest};
@@ -7788,6 +7806,102 @@ pub static SPECS: &[Spec] = &[
         [K("dot1x"), K("re-authenticate"), K("interface"), Rest("<interface>")],
         "Make the host on a port log in again"
     ),
+    spec!(
+        AaaAuthzExec,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("aaa"), K("authorization"), K("exec"), K("default"), Rest("{group tacacs+|local|if-authenticated|none} ...")],
+        "Where a login gets its privilege level from"
+    ),
+    spec!(
+        NoAaaAuthzExec,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("aaa"), K("authorization"), K("exec"), K("default")],
+        "Logins get the privilege of the user"
+    ),
+    spec!(
+        AaaAuthzCommands,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("aaa"), K("authorization"), K("commands"), Arg("<0-15>"), K("default"), Rest("{group tacacs+|local|if-authenticated|none} ...")],
+        "Who may run the commands of a privilege level"
+    ),
+    spec!(
+        NoAaaAuthzCommands,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("aaa"), K("authorization"), K("commands"), Arg("<0-15>"), K("default")],
+        "Commands of that level need no authorization"
+    ),
+    spec!(
+        AaaAcctExec,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("aaa"), K("accounting"), K("exec"), K("default"), Rest("{start-stop|stop-only|none} [group tacacs+] [group radius]")],
+        "Record logins and logouts"
+    ),
+    spec!(NoAaaAcctExec, Modes::CONFIG, Modes::BOTH, [K("no"), K("aaa"), K("accounting"), K("exec"), K("default")], "Stop recording logins"),
+    spec!(
+        AaaAcctCommands,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("aaa"), K("accounting"), K("commands"), Arg("<0-15>"), K("default"), Rest("{start-stop|stop-only|none} [group tacacs+] [group radius]")],
+        "Record the commands of a privilege level"
+    ),
+    spec!(
+        NoAaaAcctCommands,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("aaa"), K("accounting"), K("commands"), Arg("<0-15>"), K("default")],
+        "Stop recording the commands of that level"
+    ),
+    spec!(
+        AaaAcctConnection,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("aaa"), K("accounting"), K("connection"), K("default"), Rest("{start-stop|stop-only|none} [group tacacs+] [group radius]")],
+        "Record outgoing Telnet and SSH sessions"
+    ),
+    spec!(
+        NoAaaAcctConnection,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("aaa"), K("accounting"), K("connection"), K("default")],
+        "Stop recording outgoing sessions"
+    ),
+    spec!(
+        Privilege,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("privilege"), Arg("{exec|configure|interface|line|router}"), K("level"), Arg("<0-15>"), Rest("<command>")],
+        "Move a command to a privilege level"
+    ),
+    spec!(
+        NoPrivilege,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("privilege"), Arg("{exec|configure|interface|line|router}"), K("level"), Arg("<0-15>"), Rest("<command>")],
+        "Put a command back at its own level"
+    ),
+    spec!(EnableLevel, EXECS, BOTH_FW, [K("enable"), Arg("<1-15>")], "Turn on the commands of a privilege level"),
+    spec!(
+        EnableSecretLevel,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("enable"), K("secret"), K("level"), Arg("<1-15>"), Rest("[0|5] PASSWORD")],
+        "Protect a privilege level with a hashed password"
+    ),
+    spec!(
+        NoEnableSecretLevel,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("enable"), K("secret"), K("level"), Arg("<1-15>")],
+        "Remove the secret of a privilege level"
+    ),
+    spec!(ShowAaa, EXECS, Modes::BOTH, [K("show"), K("aaa")], "AAA settings: login methods, servers, privilege rules"),
+    spec!(ShowAaaAuthorization, EXECS, Modes::BOTH, [K("show"), K("aaa"), K("authorization")], "The authorization lists"),
+    spec!(ShowAaaAccounting, EXECS, Modes::BOTH, [K("show"), K("aaa"), K("accounting")], "The accounting lists and the records sent"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
