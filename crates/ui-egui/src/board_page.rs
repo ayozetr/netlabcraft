@@ -22,6 +22,42 @@ pub(crate) struct BoardForm {
 /// A program to start from: reads a sensor on A0, switches what is on D0.
 pub(crate) const EXAMPLE: &str = "# D0 on while A0 reads above 30\nlet limit = 30\nt = read(A0)\nif t > limit\n  write(D0, 1)\nelse\n  write(D0, 0)\nend\nprint \"reading\", t\nsleep 2\n";
 
+/// The same program in Python: a loop with a pause, pins by name.
+pub(crate) const EXAMPLE_PY: &str = "# D0 on while A0 reads above 30\nimport time\nlimit = 30\nwhile True:\n    t = analogRead(\"A0\")\n    if t > limit:\n        digitalWrite(\"D0\", 1)\n    else:\n        digitalWrite(\"D0\", 0)\n    print(\"reading\", t)\n    time.sleep(2)\n";
+
+/// The same program in JavaScript: `loop` runs again and again, like on a microcontroller.
+pub(crate) const EXAMPLE_JS: &str = "// D0 on while A0 reads above 30\nconst limit = 30;\nfunction loop() {\n  const t = analogRead(\"A0\");\n  digitalWrite(\"D0\", t > limit ? 1 : 0);\n  console.log(\"reading\", t);\n  delay(2000);\n}\n";
+
+/// The example program of a language (`boardscript`, `python`, `javascript`).
+fn example(lang: &str) -> &'static str {
+    match lang {
+        "python" => EXAMPLE_PY,
+        "javascript" => EXAMPLE_JS,
+        _ => EXAMPLE,
+    }
+}
+
+/// The reminder under the editor: the words of each language.
+fn cheat_sheet(lang: &str) -> Option<&'static str> {
+    match lang {
+        "python" => Some(
+            "x = 1 · if / elif / else · while · for i in range(3) · def f(a): return a · print(x) · time.sleep(2) · digitalRead(\"D0\") · digitalWrite(\"D0\", 1) · analogRead(\"A0\") · analogWrite · customRead · customWrite · rgb(r, g, b) · channel(\"A0\", 1) · http_get(path) · report(x)",
+        ),
+        "javascript" => Some(
+            "let x = 1; · if / else · while · for (let i = 0; i < 3; i++) · function f(a) { return a; } · (a) => a · console.log(x) · delay(2000) · digitalRead(\"D0\") · digitalWrite(\"D0\", 1) · analogRead(\"A0\") · analogWrite · customRead · customWrite · rgb(r, g, b) · channel(\"A0\", 1) · httpGet(path) · report(x) · function loop() { }",
+        ),
+        _ => None,
+    }
+}
+
+fn language_label(id: &str) -> &'static str {
+    match id {
+        "python" => "Python",
+        "javascript" => "JavaScript",
+        _ => "BoardScript",
+    }
+}
+
 fn status(app: &mut PacketApp, dev: &Device) -> Value {
     app.session.execute("board.status", json!({"device": dev.id.0})).unwrap_or(Value::Null)
 }
@@ -30,11 +66,39 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &m
     let tk = theme::tokens(app.ui.dark);
     let d = dev.id;
     if !form.filled {
-        form.source = if dev.board.program.is_empty() { EXAMPLE.to_string() } else { dev.board.program.clone() };
+        form.source = if dev.board.program.is_empty() { example(dev.board.language.id()).to_string() } else { dev.board.program.clone() };
         form.server = dev.iot.server.map(|a| a.to_string()).unwrap_or_default();
         form.filled = true;
     }
     let st = status(app, dev);
+    let lang = st["language"].as_str().unwrap_or("boardscript").to_string();
+    let languages: Vec<String> =
+        st["languages"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+    if languages.len() > 1 {
+        ui.horizontal(|ui| {
+            ui.label(tl("Language:"));
+            let mut pick: Option<String> = None;
+            egui::ComboBox::from_id_salt(("board_language", d.0)).selected_text(language_label(&lang)).show_ui(ui, |ui| {
+                for id in &languages {
+                    if ui.selectable_label(*id == lang, language_label(id)).clicked() && *id != lang {
+                        pick = Some(id.clone());
+                    }
+                }
+            });
+            if let Some(id) = pick {
+                // A program that is still one of the examples (or empty) is swapped for the new
+                // language's example; one the person wrote is kept for them to rewrite.
+                let untouched = form.source.trim().is_empty() || [EXAMPLE, EXAMPLE_PY, EXAMPLE_JS].contains(&form.source.as_str());
+                if untouched {
+                    form.source = example(&id).to_string();
+                    let src = form.source.clone();
+                    app.run("board.program", json!({"device": d.0, "language": id, "source": src}));
+                } else {
+                    app.run("board.program", json!({"device": d.0, "language": id}));
+                }
+            }
+        });
+    }
     ui.horizontal(|ui| {
         let state = st["state"].as_str().unwrap_or("not started");
         let words = match state {
@@ -58,7 +122,7 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &m
             app.run("board.program", json!({"device": d.0, "source": src}));
         }
         if ui.button(tl("Example")).hint(tl("Put a short example program in the editor")).clicked() {
-            form.source = EXAMPLE.to_string();
+            form.source = example(&lang).to_string();
         }
     });
     if let Some(m) = st["message"].as_str() {
@@ -74,18 +138,19 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, form: &m
     });
     ui.columns(2, |cols| {
         let ui = &mut cols[0];
-        ui.label(RichText::new(tl("Program (BoardScript)")).strong());
+        ui.label(RichText::new(trf("Program ({})", &[&language_label(&lang)])).strong());
         egui::ScrollArea::vertical().id_salt(("board_src", d.0)).max_height(260.0).show(ui, |ui| {
             let l = ui.label(RichText::new(tl("Program text")).small().color(tk.muted));
             ui.add(egui::TextEdit::multiline(&mut form.source).code_editor().desired_rows(14).desired_width(f32::INFINITY)).labelled_by(l.id);
         });
-        ui.label(
-            RichText::new(tl(
-                "let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop",
-            ))
-            .small()
-            .color(tk.muted),
-        );
+        let reminder = match cheat_sheet(&lang) {
+            Some(code) => code.to_string(),
+            None => {
+                tl("let x = 1 · x = read(A0) · write(D0, 1) · if / elif / else / end · while / end · sleep 2 · print x · report x · get(path) · stop")
+                    .to_string()
+            }
+        };
+        ui.label(RichText::new(reminder).small().color(tk.muted));
         let ui = &mut cols[1];
         ui.label(RichText::new(tl("Pins")).strong());
         pins_table(app, ui, dev, &st);

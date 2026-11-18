@@ -201,6 +201,13 @@ fn fill_port(w: &mut DeviceWindow, dev: &Device, port: usize) {
 
 pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
     let ids: Vec<DeviceId> = app.ui.windows.keys().copied().collect();
+    // What a native window keeps is dropped with it: a window closed any other way than its own
+    // close button (the device removed, the window list cleared, native windows turned off) must
+    // not leave a viewport start, a pending raise or a geometry of a device that is gone.
+    app.ui.native_start.retain(|d, _| app.ui.windows.contains_key(d));
+    app.ui.raise.retain(|d| app.ui.windows.contains_key(d));
+    let known: std::collections::BTreeSet<DeviceId> = app.session.topology.devices.iter().map(|x| x.id).collect();
+    app.ui.native_geometry.retain(|d, _| known.contains(d));
     // Native windows need a backend with viewports: never on the web, never headless.
     let native = app.ui.native_windows && !ctx.embed_viewports();
     for d in ids {
@@ -240,7 +247,9 @@ fn native_window(app: &mut PacketApp, ctx: &egui::Context, d: DeviceId, dev: &De
     // back into the builder every frame would fight the person resizing it.
     let (size, pos) = *app.ui.native_start.entry(d).or_insert_with(|| {
         // This session's geometry first, else the one kept for the device's name, else the default.
-        app.ui.native_geometry.get(&d).or_else(|| app.ui.native_remembered.get(&dev.name)).copied().unwrap_or(([680.0, 470.0], None))
+        let g = app.ui.native_geometry.get(&d).or_else(|| app.ui.native_remembered.get(&dev.name)).copied().unwrap_or(([680.0, 470.0], None));
+        // The screen may have changed since the geometry was kept.
+        crate::place_on_screen(g, ctx.input(|i| i.viewport().monitor_size).map(|s| [s.x, s.y]))
     });
     let mut builder = egui::ViewportBuilder::default()
         .with_title(dev.display_name())
