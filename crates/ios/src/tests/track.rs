@@ -63,7 +63,7 @@ fn commands_are_checked() {
     assert!(lab.try_run(r1, "object 2").starts_with("% "), "a list cannot hold itself");
     assert!(lab.prompt(r1).ends_with("(config-track)#"));
     assert!(lab.try_run(r1, "ip route 1.1.1.0 255.255.255.0 10.0.0.2 track 0").starts_with("% "));
-    lab.run(r1, "exit");
+    // A command of the configuration mode typed in the object's mode runs there and leaves its mode.
     assert!(lab.prompt(r1).ends_with("(config)#"));
 }
 
