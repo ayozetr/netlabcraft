@@ -20,7 +20,7 @@ fn ring() -> (Lab, DeviceId, DeviceId, DeviceId) {
     lab.cable(s1, "g0/2", s3, "g0/1");
     lab.cable(s2, "g0/2", s3, "g0/2");
     for s in [s1, s2, s3] {
-        lab.run(s, "en\nconf t\ninterface range g0/1 - 2\nswitchport mode trunk\nexit\nvlan 10\nvlan 20\nvlan 30\nexit");
+        lab.run(s, "en\nconf t\ninterface range g0/1 - 2\nswitchport mode trunk\nexit\nvlan 10\nvlan 20\nvlan 30\nend");
         lab.run(s, &format!("conf t\n{REGION}end"));
     }
     lab.run(s1, "conf t\nspanning-tree mst 0 root primary\nspanning-tree mst 1 root primary\nend");
@@ -43,7 +43,7 @@ fn the_configuration_mode_edits_the_region_and_replays() {
     assert!(lab.prompt(s1).ends_with("(config-mst)#"), "{}", lab.prompt(s1));
     lab.run(s1, "name LAB\nrevision 3\ninstance 1 vlan 10,20\ninstance 2 vlan 30\nexit");
     assert!(lab.prompt(s1).ends_with("(config)#"), "{}", lab.prompt(s1));
-    lab.run(s1, "spanning-tree mst 1 priority 24576");
+    lab.run(s1, "spanning-tree mst 1 priority 24576\nend");
     let cfg = lab.run(s1, "show spanning-tree mst configuration");
     for want in ["Region name:  LAB", "Revision:     3", "1         10,20", "2         30", "Instances:    2"] {
         assert!(cfg.contains(want), "{want}\n{cfg}");
@@ -58,7 +58,7 @@ fn the_configuration_mode_edits_the_region_and_replays() {
         assert!(run.contains(want), "{want}\n{run}");
     }
     // A VLAN is in one instance: mapping it again moves it.
-    lab.run(s1, "spanning-tree mst configuration\ninstance 2 vlan 20\nend");
+    lab.run(s1, "conf t\nspanning-tree mst configuration\ninstance 2 vlan 20\nend");
     let cfg = lab.run(s1, "show spanning-tree mst configuration");
     assert!(cfg.contains("1         10\n") && cfg.contains("2         20,30"), "{cfg}");
     lab.run(s1, "conf t\nspanning-tree mst configuration\nno instance 2\nend");
@@ -164,7 +164,7 @@ fn the_edge_of_a_region_is_a_boundary_and_the_inside_is_internal() {
     lab.cable(s2, "g0/2", s3, "g0/1");
     lab.cable(s2, "fa0/3", s4, "fa0/3");
     for s in [s1, s2, s3, s4] {
-        lab.run(s, "en\nconf t\ninterface range g0/1 - 2\nswitchport mode trunk\nexit\nvlan 10\nexit");
+        lab.run(s, "en\nconf t\ninterface range g0/1 - 2\nswitchport mode trunk\nexit\nvlan 10\nend");
     }
     for s in [s1, s2] {
         lab.run(s, &format!("conf t\n{REGION}end"));
