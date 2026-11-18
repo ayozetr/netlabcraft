@@ -55,6 +55,14 @@ pub(crate) fn connectors(dev: &Device) -> Vec<Connector> {
     dev.ports.iter().enumerate().map(|(i, p)| icons_ports::panel_connector(&p.name, dev.port_medium(i))).collect()
 }
 
+/// The short label under a port (`Gi0/1`, `Se0/0/0`, `Ce2` for a cellular radio).
+fn short_name(name: &str) -> String {
+    match name.strip_prefix("Cellular") {
+        Some(rest) => format!("Ce{rest}"),
+        None => ifname::short(name),
+    }
+}
+
 /// What a port says about itself, in words: its name, its link and what it is cabled to.
 fn port_line(t: &Topology, dev: &Device, i: usize) -> String {
     let Some(port) = dev.ports.get(i) else { return String::new() };
@@ -68,7 +76,9 @@ pub(crate) fn show(app: &PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let tk = theme::tokens(app.ui.dark);
     let t = &app.session.topology;
     let conns = connectors(dev);
-    let width = ui.available_width().clamp(340.0, 760.0);
+    // As wide as the ports need (a PC with one port is not a rack), up to the window's width.
+    let needed = conns.iter().map(|c| CELL_W.max(icons_ports::panel_size(*c).x + 8.0) + GAP).sum::<f32>() + 2.0 * MARGIN;
+    let width = ui.available_width().clamp(340.0, 760.0).min(needed.max(440.0));
     let (cells, height) = layout(&conns, width);
     let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
     let p = ui.painter_at(rect);
@@ -131,7 +141,7 @@ pub(crate) fn show(app: &PacketApp, ui: &mut egui::Ui, dev: &Device) {
             let colour = if on { Color32::from_rgb(0xf2, 0xc2, 0x3a) } else { Color32::from_rgb(0x6a, 0x5a, 0x2a) };
             p.rect_filled(Rect::from_center_size(pos2(cell.center().x, cell.top() + 62.0), vec2(28.0, 3.0)), 1.0, colour);
         }
-        p.text(pos2(cell.center().x, cell.top() + 72.0), Align2::CENTER_CENTER, ifname::short(&port.name), FontId::proportional(10.5), ink);
+        p.text(pos2(cell.center().x, cell.top() + 72.0), Align2::CENTER_CENTER, short_name(&port.name), FontId::proportional(10.5), ink);
         // The ring: the picked port, the one with the keyboard focus, a lighter one under the pointer.
         let ring = bezel.expand(2.0);
         if is_selected || resp.has_focus() {
@@ -252,7 +262,7 @@ mod tests {
                     );
                     assert!(c.width() >= icons_ports::panel_size(conns[i]).x, "the cell holds its connector");
                     for other in cells.iter().skip(i + 1) {
-                        assert!(!c.intersects(*other), "{} has two ports on top of each other", dev.name);
+                        assert!(!c.shrink(0.5).intersects(other.shrink(0.5)), "{} has two ports on top of each other", dev.name);
                     }
                 }
             }

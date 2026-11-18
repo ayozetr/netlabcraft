@@ -224,24 +224,24 @@ pub(crate) fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let room = rect.width() - 40.0;
     for (i, pin) in pins.iter().enumerate() {
         let x = rect.left() + 20.0 + (i as f32 + 0.5) * room / n;
-        let socket = egui::Rect::from_center_size(egui::pos2(x, rect.top() + 38.0), vec2(14.0, 14.0));
+        let socket = egui::Rect::from_center_size(egui::pos2(x, rect.top() + 38.0), vec2(18.0, 18.0));
         let wired = pin["wired"].as_str();
         crate::icons_ports::draw(&p, crate::icons_ports::Connector::Pin, socket, wired.is_some(), &tk);
         let level = pin["level"].as_i64().unwrap_or(0);
         p.circle_filled(
-            socket.center_bottom() + vec2(0.0, 8.0),
+            socket.center_bottom() + vec2(0.0, 10.0),
             3.0,
             if lit && level != 0 { Color32::from_rgb(0xf6, 0xd3, 0x4a) } else { Color32::from_rgb(0x2a, 0x2a, 0x2a) },
         );
         p.text(
-            socket.center_top() - vec2(0.0, 8.0),
+            socket.center_top() - vec2(0.0, 10.0),
             egui::Align2::CENTER_CENTER,
             pin["pin"].as_str().unwrap_or_default(),
             egui::FontId::proportional(10.0),
             Color32::WHITE,
         );
         if let Some(w) = wired {
-            p.text(socket.center_bottom() + vec2(0.0, 22.0), egui::Align2::CENTER_CENTER, w, egui::FontId::proportional(9.0), Color32::WHITE);
+            p.text(socket.center_bottom() + vec2(0.0, 24.0), egui::Align2::CENTER_CENTER, w, egui::FontId::proportional(9.0), Color32::WHITE);
         }
     }
     ui.label(
