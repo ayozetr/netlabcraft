@@ -80,30 +80,18 @@ impl Dialog {
     pub fn accept(&mut self, line: &str) -> Result<(), String> {
         let text: String = line.chars().filter(|c| !c.is_control()).take(80).collect::<String>().trim().to_string();
         let step = self.answers.len();
+        let yes_no = ["", "y", "n", "yes", "no"].iter().any(|w| text.eq_ignore_ascii_case(w));
+        let ping = self.kind == DialogKind::Ping;
+        if step == 0 && !(text.is_empty() || text.eq_ignore_ascii_case("ip") || text.eq_ignore_ascii_case("ipv6")) {
+            return Err("% The protocol is ip or ipv6".into());
+        }
+        if step == 1 && text.is_empty() {
+            return Err("% A target address or name is needed (type `abort` to give up)".into());
+        }
         match (self.kind, step) {
-            (_, 0) => {
-                if !(text.is_empty() || text.eq_ignore_ascii_case("ip") || text.eq_ignore_ascii_case("ipv6")) {
-                    return Err("% The protocol is ip or ipv6".into());
-                }
-            }
-            (_, 1) => {
-                if text.is_empty() {
-                    return Err("% A target address or name is needed (type `abort` to give up)".into());
-                }
-            }
             (DialogKind::Ping, 2) => number(&text, 1, 1000, "The repeat count")?,
             (DialogKind::Ping, 3) => number(&text, 36, 18_024, "The datagram size")?,
             (DialogKind::Ping, 4) | (DialogKind::Traceroute, 3) => number(&text, 0, 3_600, "The timeout")?,
-            (DialogKind::Ping, 5 | 8 | 10) => {
-                if !(text.is_empty()
-                    || text.eq_ignore_ascii_case("y")
-                    || text.eq_ignore_ascii_case("n")
-                    || text.eq_ignore_ascii_case("yes")
-                    || text.eq_ignore_ascii_case("no"))
-                {
-                    return Err("% Answer yes or no".into());
-                }
-            }
             (DialogKind::Ping, 7) => number(&text, 0, 255, "The type of service")?,
             (DialogKind::Ping, 11) => number(&text, 36, 18_024, "The size")?,
             (DialogKind::Ping, 12) => {
@@ -116,6 +104,9 @@ impl Dialog {
             (DialogKind::Ping, 13) => number(&text, 1, 1_000, "The interval")?,
             (DialogKind::Traceroute, 2) => number(&text, 1, 64, "The number of hops")?,
             _ => {}
+        }
+        if ping && matches!(step, 5 | 8 | 10) && !yes_no {
+            return Err("% Answer yes or no".into());
         }
         self.answers.push(text);
         Ok(())
