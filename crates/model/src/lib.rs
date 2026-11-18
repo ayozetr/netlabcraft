@@ -33,6 +33,7 @@ pub mod furniture;
 pub mod hardware;
 pub mod hostfw;
 pub mod ifname;
+pub mod igmp;
 pub mod iot;
 pub mod keychain;
 pub mod knobs;
@@ -960,6 +961,9 @@ pub struct Device {
     /// and learning for 30 s).
     #[serde(default)]
     pub rapid_stp: bool,
+    /// IGMP snooping on switches, joined groups on hosts.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub igmp: igmp::Igmp,
     /// Routers and switches: the configuration archive (kept in flash, so a reload keeps it).
     #[serde(default, skip_serializing_if = "is_default")]
     pub archive: archive::Archive,
@@ -2262,6 +2266,7 @@ impl Device {
             vlans: BTreeMap::new(),
             vtp: Vtp::default(),
             rapid_stp: false,
+            igmp: igmp::Igmp::default(),
             archive: archive::Archive::default(),
             mst: mst::Mst::default(),
             startup: None,
@@ -2389,6 +2394,7 @@ impl Device {
         self.mgmt = mgmt::Mgmt::default();
         self.access = Access::default();
         self.stp_priority.clear();
+        self.igmp = igmp::Igmp::default();
         self.mst = mst::Mst::default();
         self.svis.clear();
         self.ospf = None;
