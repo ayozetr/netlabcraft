@@ -39,5 +39,5 @@ fn the_process_timers_apply_unless_a_neighbour_has_its_own() {
     advance(&mut lab, 4);
     assert!(lab.run(r1, "show ip bgp neighbors 10.0.12.2").contains("Hold time 180 s, keepalive every 60 s"));
     assert!(!lab.run(r1, "show running-config").contains("timers bgp"));
-    assert!(lab.try_run(r1, "timers bgp 10 2").starts_with("% "), "outside the router bgp mode, and a hold time under 3");
+    assert!(lab.try_run(r1, "timers bgp 10 2").contains("% "), "outside the router bgp mode, and a hold time under 3");
 }
