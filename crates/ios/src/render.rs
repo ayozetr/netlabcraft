@@ -3575,6 +3575,12 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
                 None => "the simulator's stand-in cipher (the transform set has no cipher)".to_string(),
             };
+            let mode = if netlabcraft_sim::vpn::peer_uses_transport(d, sa.peer) {
+                "transport (the packet's own IP header stays and only its payload is protected: traffic between this router and its peer)"
+            } else {
+                "tunnel (whole packets travel inside a new IP header)"
+            };
+            let _ = writeln!(s, "  Mode: {mode}");
             let _ = writeln!(s, "  ESP: {esp}");
             if let Some(line) = ah_half_line(sa) {
                 let _ = writeln!(s, "  {line}");
