@@ -35,6 +35,7 @@ pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
 pub(crate) mod span;
+pub(crate) mod srcguard;
 pub(crate) mod sweep;
 pub(crate) mod swroute;
 pub(crate) mod voice;
@@ -2263,6 +2264,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::IpSgOn | Id::IpSgPortSecurity | Id::IpSgOff | Id::IpSgBinding | Id::IpSgNoBinding | Id::IpSgShowVerify | Id::IpSgShowBinding => {
+            srcguard::command(&mut c, spec.id, &args)
+        }
         Id::KeyChain
         | Id::NoKeyChain
         | Id::KeyChainKey

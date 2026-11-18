@@ -1641,6 +1641,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree mode {pvst\|rapid-pvst}` | config | switch | Classic (30 s to forward) or rapid spanning tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
+| `ip verify source` | interface | switch | IP source guard: only addresses with a binding on this port may send |
+| `ip verify source port-security` | interface | switch | IP source guard that also checks the source MAC address against the binding |
+| `no ip verify source` | interface | switch | No IP source guard on this port |
+| `ip source binding H.H.H vlan <1-4094> A.B.C.D interface <interface>` | config | switch | A binding typed by hand, for a host that does not use DHCP |
+| `no ip source binding H.H.H vlan <1-4094>` | config | switch | Remove a binding typed by hand |
+| `show ip verify source` | user, privileged | switch | Ports with IP source guard and the addresses each lets through |
+| `show ip source binding` | user, privileged | switch | Every binding: learned with DHCP snooping, or typed |
 | `ip dhcp snooping` | config | switch | Turn DHCP snooping on (then name its VLANs) |
 | `no ip dhcp snooping` | config | switch | Turn DHCP snooping off |
 | `ip dhcp snooping vlan <1-4094>[,-]` | config | switch | VLANs DHCP snooping watches |

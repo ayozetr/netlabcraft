@@ -49,6 +49,7 @@ mod route_tags;
 mod routing;
 mod security;
 mod span;
+mod srcguard;
 mod stp_views;
 mod sweep;
 mod swroute;
