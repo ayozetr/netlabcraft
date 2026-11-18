@@ -199,13 +199,9 @@ R1# show crypto isakmp policy
   expect: authentication rsa-sig
 ```
 
-Messages 3 and 4 of main mode are in the clear and now end with a certificate request each, one
-per authority the sender trusts. Messages 5 and 6 are encrypted and carry the sender's certificate,
+Messages 3 and 4 of main mode are in the clear and end with a certificate request each, one
+per authority the sender trusts (look for CERTREQ in the event list). Messages 5 and 6 are encrypted and carry the sender's certificate,
 then the authority's, and a signature over the exchange's hash.
-
-```verify
-events: CERTREQ
-```
 
 ## Part 3 — The certificates expire
 
