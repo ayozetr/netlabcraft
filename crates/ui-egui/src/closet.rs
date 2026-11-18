@@ -1126,6 +1126,30 @@ fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) 
             open = *item;
         }
     }
+    // Every port is a node of its own: Tab to a port and Enter starts a cable there, Tab to
+    // another and Enter finishes it (the same two steps as the two clicks of the cable tool).
+    let mut start = None;
+    for (pole, rect) in &sc.ports {
+        let visible = rect.intersect(canvas);
+        if visible.width() <= 0.0 || visible.height() <= 0.0 {
+            continue;
+        }
+        let text = match pole {
+            Pole::Device(e) => t.end_label(*e),
+            Pole::Panel { fitting, port } => format!("{} {}", t.fitting(*fitting).map_or(String::new(), |f| f.name.clone()), port.saturating_add(1)),
+        };
+        let label = trf("Port, {}", &[&text]);
+        let id = egui::Id::unique(("closet-port", format!("{pole:?}")));
+        let r = ui.interact(visible, id, Sense::focusable_noninteractive());
+        r.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, label.clone()));
+        if r.has_focus() && enter {
+            start = Some(rect.center());
+        }
+    }
+    if let Some(at) = start {
+        let kind = if let Tool::Cable(k) = app.ui.tool { k } else { Cable::Auto };
+        cable_click(app, sc, kind, at);
+    }
     // Moving focus to a device selects it, as on the logical workspace.
     if let Some(Item::Device(d)) = focus {
         app.ui.selected = Some(d);
