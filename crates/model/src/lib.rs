@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 
 pub mod acl;
 pub mod activity;
+pub mod archive;
 pub mod automation;
 pub mod backdrop;
 pub mod bgp;
@@ -950,6 +951,9 @@ pub struct Device {
     /// and learning for 30 s).
     #[serde(default)]
     pub rapid_stp: bool,
+    /// Routers and switches: the configuration archive (kept in flash, so a reload keeps it).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub archive: archive::Archive,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -2244,6 +2248,7 @@ impl Device {
             vlans: BTreeMap::new(),
             vtp: Vtp::default(),
             rapid_stp: false,
+            archive: archive::Archive::default(),
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
