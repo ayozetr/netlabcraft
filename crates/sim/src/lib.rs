@@ -1170,6 +1170,9 @@ pub struct Hop {
 #[derive(Debug, Clone, Default)]
 pub struct Sim {
     now: u64,
+    /// Reloads that were asked for (`reload in|at`): the simulated time each device restarts at,
+    /// and the reason typed.
+    reloads: BTreeMap<DeviceId, (u64, String)>,
     seq: u64,
     queue: BinaryHeap<Reverse<Queued>>,
     state: BTreeMap<DeviceId, DevState>,
@@ -1307,6 +1310,32 @@ pub struct Sim {
 impl Sim {
     pub fn new() -> Sim {
         Sim::default()
+    }
+
+    /// Schedules a reload of a device after `in_us` microseconds of simulated time (replacing
+    /// an earlier one).
+    pub fn schedule_reload(&mut self, dev: DeviceId, in_us: u64, reason: String) {
+        self.reloads.insert(dev, (self.now.saturating_add(in_us), reason));
+    }
+
+    /// Cancels a scheduled reload; whether there was one.
+    pub fn cancel_reload(&mut self, dev: DeviceId) -> bool {
+        self.reloads.remove(&dev).is_some()
+    }
+
+    /// The simulated time left before a scheduled reload (microseconds) and its reason.
+    pub fn reload_pending(&self, dev: DeviceId) -> Option<(u64, &str)> {
+        self.reloads.get(&dev).map(|(at, why)| (at.saturating_sub(self.now), why.as_str()))
+    }
+
+    /// The devices whose scheduled reload time has come; they are no longer scheduled.
+    pub fn take_due_reloads(&mut self) -> Vec<DeviceId> {
+        let now = self.now;
+        let due: Vec<DeviceId> = self.reloads.iter().filter(|(_, (at, _))| *at <= now).map(|(d, _)| *d).collect();
+        for d in &due {
+            self.reloads.remove(d);
+        }
+        due
     }
 
     /// Simulated time, in microseconds.
@@ -1495,6 +1524,7 @@ impl Sim {
 
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
+        self.reloads.remove(&d);
         self.state.remove(&d);
         self.l2.forget(d);
         self.voice.forget(d);
