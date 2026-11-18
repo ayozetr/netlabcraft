@@ -21,6 +21,7 @@ mod families;
 mod inspections;
 mod interface_counters;
 mod ipsec_crypto;
+mod ipv6_ra;
 mod leftovers;
 mod line_protocol;
 mod nat_timeouts;

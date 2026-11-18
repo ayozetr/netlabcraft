@@ -727,6 +727,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 nd managed-config-flag` | interface, subinterface | router, switch | Hosts build their own addresses |
 | `ipv6 nd other-config-flag` | interface, subinterface | router, switch | Tell hosts to take DNS and domain from DHCPv6 |
 | `no ipv6 nd other-config-flag` | interface, subinterface | router, switch | No other settings from DHCPv6 |
+| `ipv6 nd ra suppress` | interface, subinterface | router, switch | Send no router advertisements on this interface |
+| `ipv6 nd ra suppress all` | interface, subinterface | router, switch | Send no router advertisements on this interface |
+| `no ipv6 nd ra suppress` | interface, subinterface | router, switch | Answer router solicitations again |
+| `no ipv6 nd ra suppress all` | interface, subinterface | router, switch | Answer router solicitations again |
+| `ipv6 nd ra lifetime <0-9000>` | interface, subinterface | router, switch | Seconds this router may serve as a default router (0: never) |
+| `no ipv6 nd ra lifetime` | interface, subinterface | router, switch | A lifetime of 1800 seconds again |
 | `show ipv6 dhcp pool` | user, privileged | router | DHCPv6 pools |
 | `show ipv6 dhcp binding` | user, privileged | router | DHCPv6 addresses handed out |
 | `ntp server A.B.C.D` | config | router, switch | Take the time from an NTP server |
