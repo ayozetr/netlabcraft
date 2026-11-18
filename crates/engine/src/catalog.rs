@@ -991,6 +991,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!("furniture.rename", "Rename furniture", "", None, r#"{"furniture": name or number, "name"}"#, true),
+    c!(
+        "furniture.resize",
+        "Resize furniture",
+        "",
+        None,
+        r#"{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size"#,
+        true
+    ),
     c!("furniture.move", "Move furniture", "", None, r#"{"furniture", "x", "y", "transient"?: false}: where it stands in the closet"#, true),
     c!("furniture.remove", "Remove furniture", "", None, r#"{"furniture"}: what stood on it stays in the closet, loose"#, true),
     c!(
@@ -1095,8 +1103,16 @@ pub static CATALOG: &[CommandInfo] = &[
         "Cable information",
         "",
         None,
-        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything"#,
+        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}, "budget": null | {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" | "degraded" | "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)"#,
         false
+    ),
+    c!(
+        "link.splices",
+        "Fiber splices",
+        "",
+        None,
+        r#"{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)"#,
+        true
     ),
     c!(
         "pc.terminal",

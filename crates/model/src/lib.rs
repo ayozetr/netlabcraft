@@ -34,6 +34,7 @@ pub mod hostfw;
 pub mod ifname;
 pub mod iot;
 pub mod keychain;
+pub mod knobs;
 pub mod l2sec;
 pub mod mgmt;
 pub mod models;
@@ -974,6 +975,10 @@ pub struct Device {
     /// across reloads).
     #[serde(default, skip_serializing_if = "is_default")]
     pub nvram: mgmt::Nvram,
+    /// Routers and switches: console settings that are kept and shown but change nothing in the
+    /// simulation (`ip classless`, `load-interval`, line options, ...).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub knobs: knobs::Knobs,
     /// Routers and switches: access and management settings.
     #[serde(default)]
     pub access: Access,
@@ -2223,6 +2228,7 @@ impl Device {
             dhcp_lease: None,
             mgmt: mgmt::Mgmt::default(),
             nvram: mgmt::Nvram::default(),
+            knobs: knobs::Knobs::default(),
             access: Access::default(),
             stp_priority: BTreeMap::new(),
             svis: Vec::new(),

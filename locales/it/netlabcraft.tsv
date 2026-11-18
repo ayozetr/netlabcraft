@@ -220,6 +220,19 @@
 	cable	cavo
 	Cable Length	Lunghezza cavo
 	Cable Length…	Lunghezza cavo…
+	Loss budget	Budget di perdita
+	within the budget	entro il budget
+	degraded: little margin left	degradato: poco margine
+	over the budget	oltre il budget
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB persi su {} dB ({} connettori, {} giunzioni)
+	More splices	Più giunzioni
+	Fewer splices	Meno giunzioni
+	fiber loses {} dB, over the {} dB the transceivers tolerate	la fibra perde {} dB, oltre i {} dB tollerati dai transceiver
+	Resize…	Ridimensiona…
+	Resize	Ridimensiona
+	Units ({} to {}):	Unità ({} a {}):
+	Levels ({} to {}):	Livelli ({} a {}):
+	Enter a whole number	Inserisci un numero intero
 	Cable Modem	Cable Modem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Cable modem: collega in bridge la porta coassiale (Coaxial0) alla porta Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	cavo troppo lungo: {} m in rame, max 100 m

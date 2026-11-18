@@ -1124,6 +1124,24 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let resolved = s.topology.link_at(ea).map_or(cable, |l| s.topology.resolved_cable(l));
             Ok(json!({"a": s.topology.end_label(ea), "b": s.topology.end_label(eb), "cable": cable.id(), "resolved": resolved.id()}))
         }
+        "link.splices" => {
+            let d = device_param(s, p, "device")?;
+            let port = port_param(s, d, str_param(p, "port")?)?;
+            let count = p
+                .get("count")
+                .and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| bad("`count` (0 to 50 splices) is required"))?;
+            let end = End { device: d, port };
+            let mut t = s.topology.clone();
+            t.set_splices(end, count)?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            let t = &s.topology;
+            let l = t.link_at(end).ok_or_else(|| EngineError::Failed("the cable is gone".into()))?;
+            Ok(link_info_json(t, l))
+        }
         "link.info" => {
             let d = device_param(s, p, "device")?;
             let port = port_param(s, d, str_param(p, "port")?)?;
@@ -1632,6 +1650,22 @@ fn link_info_json(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) 
         "problem": netlabcraft_sim::cable_problem(t, l.a),
         "why_down": if up { None } else { netlabcraft_sim::link_why_down(t, l) },
         "transceivers": transceivers,
+        "budget": t.fiber_budget(l).map(|b| {
+            let round = |v: f32| (f64::from(v) * 100.0).round() / 100.0;
+            json!({
+                "meters": b.meters,
+                "connectors": b.connectors,
+                "splices": b.splices,
+                "loss_db": round(b.loss_db),
+                "budget_db": round(b.budget_db),
+                "margin_db": round(b.margin_db()),
+                "state": match b.state() {
+                    netlabcraft_model::physical::BudgetState::Ok => "ok",
+                    netlabcraft_model::physical::BudgetState::Degraded => "degraded",
+                    netlabcraft_model::physical::BudgetState::Over => "over",
+                },
+            })
+        }),
     })
 }
 
