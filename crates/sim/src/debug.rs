@@ -105,6 +105,10 @@ pub enum DebugKind {
     CryptoPki,
     /// `debug ip policy`: the route-map decisions of policy-based routing.
     Policy,
+    /// `debug ip pim`: the PIM messages this router hears.
+    Pim,
+    /// `debug ip mpacket`: what happens to each multicast data packet this router handles.
+    Mpacket,
 }
 
 impl DebugKind {
@@ -152,6 +156,8 @@ impl DebugKind {
         DebugKind::CryptoIpsec,
         DebugKind::CryptoPki,
         DebugKind::Policy,
+        DebugKind::Pim,
+        DebugKind::Mpacket,
     ];
 
     /// `(label, name)`: the label starts every message of the topic (`LABEL debug: text`), the
@@ -203,6 +209,8 @@ impl DebugKind {
             DebugKind::CryptoIpsec => ("IPsec", "IPsec"),
             DebugKind::CryptoPki => ("PKI", "PKI"),
             DebugKind::Policy => ("Policy", "IP policy routing"),
+            DebugKind::Pim => ("PIM", "PIM"),
+            DebugKind::Mpacket => ("Multicast packet", "multicast packets"),
         }
     }
 

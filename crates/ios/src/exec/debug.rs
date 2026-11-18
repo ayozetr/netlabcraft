@@ -49,6 +49,8 @@ pub(crate) const TOPICS: &[(&str, DebugKind, &str)] = &[
     ("crypto ipsec", DebugKind::CryptoIpsec, "Report IPsec SAs coming and going"),
     ("crypto pki", DebugKind::CryptoPki, "Report certificates checked, requests, grants and revocations"),
     ("ip policy", DebugKind::Policy, "Report the decisions of policy-based routing"),
+    ("ip pim", DebugKind::Pim, "Report the PIM hellos, joins and registers this router hears"),
+    ("ip mpacket", DebugKind::Mpacket, "Report what this router does with each multicast data packet"),
 ];
 
 /// The words of a spec after `[no] debug`, joined by spaces, without a trailing argument.

@@ -729,6 +729,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
 | `debug crypto pki` | privileged | router, switch | Report certificates checked, requests, grants and revocations |
 | `debug ip policy` | privileged | router, switch | Report the decisions of policy-based routing |
+| `debug ip pim` | privileged | router, switch | Report the PIM hellos, joins and registers this router hears |
+| `debug ip mpacket` | privileged | router, switch | Report what this router does with each multicast data packet |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
@@ -768,6 +770,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
 | `no debug ip policy` | privileged | router, switch | Stop reporting policy routing |
+| `no debug ip pim` | privileged | router, switch | Stop reporting PIM |
+| `no debug ip mpacket` | privileged | router, switch | Stop reporting multicast packets |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet\|retransmission` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again |
@@ -2407,6 +2411,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip pim rp mapping` | user, privileged | router, switch | Which rendezvous point serves which groups |
 | `show ip igmp groups` | user, privileged | router, switch | Groups with a member on each interface |
 | `show ip igmp interface` | user, privileged | router, switch | IGMP on each interface that runs PIM |
+| `ip multicast ttl-threshold <0-255>` | interface, subinterface | router, switch | Send out of this interface only multicast packets whose TTL is above this |
+| `no ip multicast ttl-threshold` | interface, subinterface | router, switch | No TTL limit on multicast sent out of this interface |
+| `show ip rpf A.B.C.D` | user, privileged | router, switch | The interface and neighbour multicast from an address has to come in by |
 
 ## Host shell (PCs and servers)
 

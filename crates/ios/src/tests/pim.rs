@@ -7,7 +7,7 @@ use netlabcraft_model::DeviceKind;
 use super::Lab;
 
 /// What crossed the cables, and why each frame was dropped (for a failing assertion).
-fn dump(lab: &Lab) -> String {
+pub(super) fn dump(lab: &Lab) -> String {
     lab.sim
         .trace()
         .iter()
@@ -16,17 +16,17 @@ fn dump(lab: &Lab) -> String {
         .join("\n")
 }
 
-struct Net {
-    lab: Lab,
-    r1: DeviceId,
-    r2: DeviceId,
-    src: DeviceId,
-    rcv: DeviceId,
+pub(super) struct Net {
+    pub(super) lab: Lab,
+    pub(super) r1: DeviceId,
+    pub(super) r2: DeviceId,
+    pub(super) src: DeviceId,
+    pub(super) rcv: DeviceId,
 }
 
 /// SRC (10.1.1.10) - R1 - R2 - RCV (10.2.2.10); R1's loopback 1.1.1.1 is the rendezvous point.
 /// Static routes carry the unicast traffic; `mode` is the PIM mode typed on every link.
-fn net(mode: &str) -> Net {
+pub(super) fn net(mode: &str) -> Net {
     let mut lab = Lab::new();
     let src = lab.add(DeviceKind::Pc);
     let rcv = lab.add(DeviceKind::Pc);
@@ -188,4 +188,36 @@ fn the_commands_check_their_arguments_and_say_when_routing_is_off() {
     assert!(n.lab.try_run(n.r1, "show ip pim neighbor").starts_with("% "));
     // The interface lines stay for when routing comes back.
     assert!(n.lab.run(n.r1, "show running-config").contains(" ip pim sparse-mode"));
+}
+
+#[test]
+fn debug_ip_pim_and_mpacket_report_what_the_router_does() {
+    let mut n = net("sparse-mode");
+    n.lab.run(n.rcv, "igmp join 239.1.1.1");
+    n.lab.run(n.r1, "debug ip pim\ndebug ip mpacket");
+    n.lab.run(n.src, "ping -n 1 239.1.1.1");
+    n.lab.sim.run_for(&n.lab.t, 61_000_000);
+    let log = n.lab.run(n.r1, "show logging");
+    assert!(log.contains("10.1.1.10 to 239.1.1.1 arrived on GigabitEthernet0/0, forwarded out GigabitEthernet0/1"), "{log}");
+    assert!(log.contains("PIM hello") && log.contains("from 10.0.12.2"), "{log}");
+    assert!(n.lab.run(n.r1, "show debugging").contains("PIM"));
+    n.lab.run(n.r1, "no debug ip pim\nno debug ip mpacket\nclear logging");
+    n.lab.run(n.src, "ping -n 1 239.1.1.1");
+    assert!(!n.lab.run(n.r1, "show logging").contains("Multicast packet debug"));
+}
+
+#[test]
+fn a_router_can_ping_a_group() {
+    let mut n = net("sparse-mode");
+    n.lab.run(n.rcv, "igmp join 239.1.1.1");
+    // R2 is on the receiver's LAN; R1 reaches it through the tree.
+    let near = n.lab.run(n.r2, "ping 239.1.1.1");
+    assert!(near.contains('!'), "{near}\n{}", dump(&n.lab));
+    let far = n.lab.run(n.r1, "ping 239.1.1.1");
+    assert!(far.contains('!'), "{far}\n{}", dump(&n.lab));
+    let m2 = n.lab.run(n.r2, "show ip mroute 239.1.1.1");
+    assert!(m2.contains("(10.0.12.1, 239.1.1.1)") || m2.contains("(10.1.1.1, 239.1.1.1)"), "{m2}");
+    // With routing off a router has nowhere to send a group's packets.
+    n.lab.run(n.r1, "conf t\nno ip multicast-routing\nend");
+    assert!(!n.lab.try_run(n.r1, "ping 239.1.1.1").contains('!'));
 }
