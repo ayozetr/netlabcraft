@@ -1209,7 +1209,7 @@ pub fn mac_table(t: &Topology, sim: &Sim, d: &Device) -> String {
     let mut n = 0;
     if let Some(st) = sim.state(d.id) {
         for ((vlan, mac), e) in &st.macs {
-            if sim.now_us().saturating_sub(e.learned_us) >= netlabcraft_sim::MAC_AGING_US {
+            if sim.now_us().saturating_sub(e.learned_us) >= netlabcraft_sim::mac_aging_us(d) {
                 continue;
             }
             n += 1;
@@ -2790,12 +2790,22 @@ pub fn users(cli: &crate::Cli) -> String {
 }
 
 /// `show cdp`.
+/// Seconds between the device's CDP advertisements (`cdp timer`).
+fn cdp_timer(d: &Device) -> u64 {
+    netlabcraft_sim::knob_number(d, "cdp timer").filter(|n| *n > 0).unwrap_or(60)
+}
+
+/// Seconds a neighbour keeps the device's CDP advertisement (`cdp holdtime`).
+fn cdp_hold(d: &Device) -> u64 {
+    netlabcraft_sim::knob_number(d, "cdp holdtime").filter(|n| *n > 0).unwrap_or(180)
+}
+
 pub fn cdp(d: &Device) -> String {
     if d.cdp_off {
         return "Neighbour discovery is off on this device (`cdp run` turns it on).".into();
     }
     let off: Vec<String> = d.ports.iter().filter(|p| p.cdp_off).map(|p| ifname::short(&p.name)).collect();
-    let mut s = String::from("Neighbour discovery is on: advertisements every 60 s, kept for 180 s.");
+    let mut s = format!("Neighbour discovery is on: advertisements every {} s, kept for {} s.", cdp_timer(d), cdp_hold(d));
     if !off.is_empty() {
         let _ = write!(s, "\nOff on: {}", off.join(", "));
     }
@@ -2809,7 +2819,11 @@ pub fn cdp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> Strin
     }
     let list = netlabcraft_sim::cdp::neighbors(t, d);
     // Time left before an entry would expire, counting down between advertisements.
-    let hold = 180 - (sim.now_us() / 1_000_000 % 60);
+    let hold = |name: &str| {
+        let sender = t.devices.iter().find(|x| x.name == name);
+        let (every, ttl) = sender.map_or((60, 180), |x| (cdp_timer(x), cdp_hold(x)));
+        ttl.saturating_sub(sim.now_us() / 1_000_000 % every.max(1))
+    };
     let kind = |k: DeviceKind| if k == DeviceKind::Router { "router" } else { "switch" };
     let mut s = String::new();
     if detail {
@@ -2818,19 +2832,20 @@ pub fn cdp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> Strin
             let _ = writeln!(s, "  Seen on   {}, its port {}", n.local, n.remote);
             let _ = writeln!(s, "  Address   {}", n.address.map_or("none".to_string(), |a| a.addr.to_string()));
             let _ = writeln!(s, "  Software  NetLabCraft {}", env!("CARGO_PKG_VERSION"));
-            let _ = writeln!(s, "  Expires   in {hold} s\n");
+            let _ = writeln!(s, "  Expires   in {} s\n", hold(&n.name));
         }
     } else {
         let _ = writeln!(s, "{:<14} {:<14} {:<7} {:<9} {:<9} Expires", "Neighbour", "Platform", "Type", "Here", "There");
         for n in &list {
             let _ = writeln!(
                 s,
-                "{:<14} {:<14} {:<7} {:<9} {:<9} {hold} s",
+                "{:<14} {:<14} {:<7} {:<9} {:<9} {} s",
                 n.name,
                 n.platform,
                 kind(n.kind),
                 ifname::short(&n.local),
-                ifname::short(&n.remote)
+                ifname::short(&n.remote),
+                hold(&n.name)
             );
         }
     }
@@ -2843,11 +2858,8 @@ pub fn lldp(d: &Device) -> String {
     if !d.lldp_on {
         return "LLDP is off on this device (`lldp run` turns it on).".into();
     }
-    let mut s = format!(
-        "LLDP is on: advertisements every {} s, kept for {} s.",
-        netlabcraft_sim::lldp::LLDP_EVERY_US / 1_000_000,
-        netlabcraft_sim::lldp::HOLD_SECS
-    );
+    let mut s =
+        format!("LLDP is on: advertisements every {} s, kept for {} s.", netlabcraft_sim::lldp::timer_secs(d), netlabcraft_sim::lldp::hold_secs(d));
     let names = |f: fn(&netlabcraft_model::Port) -> bool| d.ports.iter().filter(|p| f(p)).map(|p| ifname::short(&p.name)).collect::<Vec<_>>();
     for (what, off) in [("Not sending on", names(|p| p.lldp_tx_off)), ("Not hearing on", names(|p| p.lldp_rx_off))] {
         if !off.is_empty() {
@@ -2863,8 +2875,13 @@ pub fn lldp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> Stri
         return "LLDP is off on this device.".into();
     }
     let list = netlabcraft_sim::lldp::neighbors(t, d);
-    let every = netlabcraft_sim::lldp::LLDP_EVERY_US / 1_000_000;
-    let hold = u64::from(netlabcraft_sim::lldp::HOLD_SECS) - (sim.now_us() / 1_000_000 % every);
+    // Time left on a neighbour's advertisement: its own holdtime less the time since its last one.
+    let hold = |name: &str| {
+        let sender = t.devices.iter().find(|x| x.name == name);
+        let every = sender.map_or(netlabcraft_sim::lldp::DEFAULT_TIMER_SECS, netlabcraft_sim::lldp::timer_secs).max(1);
+        let ttl = sender.map_or(netlabcraft_sim::lldp::HOLD_SECS, netlabcraft_sim::lldp::hold_secs);
+        u64::from(ttl).saturating_sub(sim.now_us() / 1_000_000 % every)
+    };
     let caps = |c: u16| {
         let mut v = Vec::new();
         if c & netlabcraft_sim::lldp::CAP_ROUTER != 0 {
@@ -2885,18 +2902,19 @@ pub fn lldp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> Stri
             let _ = writeln!(s, "  Description  {}", i.description);
             let _ = writeln!(s, "  Can act as   {}", caps(i.caps.0));
             let _ = writeln!(s, "  Address      {}", i.address.map_or("none".to_string(), |a| a.to_string()));
-            let _ = writeln!(s, "  Expires      in {hold} s\n");
+            let _ = writeln!(s, "  Expires      in {} s\n", hold(&i.system_name));
         }
     } else {
         let _ = writeln!(s, "{:<14} {:<9} {:<9} {:<15} Expires", "Neighbour", "Here", "There", "Can act as");
         for n in &list {
             let _ = writeln!(
                 s,
-                "{:<14} {:<9} {:<9} {:<15} {hold} s",
+                "{:<14} {:<9} {:<9} {:<15} {} s",
                 n.info.system_name,
                 ifname::short(&n.local),
                 ifname::short(&n.info.port),
-                caps(n.info.caps.0)
+                caps(n.info.caps.0),
+                hold(&n.info.system_name)
             );
         }
     }
