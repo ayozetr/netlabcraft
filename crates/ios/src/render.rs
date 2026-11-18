@@ -232,6 +232,7 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::l2sec::global_lines(&mut s, d);
     crate::exec::igmp::global_lines(&mut s, d);
+    crate::exec::srcguard::global_lines(&mut s, d);
     crate::exec::l2sec::relay_global_lines(&mut s, d);
     crate::exec::span::global_lines(&mut s, d);
     crate::exec::fhrp::global_lines(&mut s, d);

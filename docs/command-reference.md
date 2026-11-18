@@ -1695,6 +1695,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip igmp snooping mrouter` | user, privileged | switch | Ports that lead to a multicast router |
 | `show ip igmp snooping querier` | user, privileged | switch | The queries this switch sends |
 | `clear ip igmp snooping` | privileged | switch | Forget the groups and router ports learned |
+| `ip verify source` | interface | switch | IP source guard: only addresses with a binding on this port may send |
+| `ip verify source port-security` | interface | switch | IP source guard that also checks the source MAC address against the binding |
+| `no ip verify source` | interface | switch | No IP source guard on this port |
+| `ip source binding H.H.H vlan <1-4094> A.B.C.D interface <interface>` | config | switch | A binding typed by hand, for a host that does not use DHCP |
+| `no ip source binding H.H.H vlan <1-4094>` | config | switch | Remove a binding typed by hand |
+| `show ip verify source` | user, privileged | switch | Ports with IP source guard and the addresses each lets through |
+| `show ip source binding` | user, privileged | switch | Every binding: learned with DHCP snooping, or typed |
 | `ip dhcp snooping` | config | switch | Turn DHCP snooping on (then name its VLANs) |
 | `no ip dhcp snooping` | config | switch | Turn DHCP snooping off |
 | `ip dhcp snooping vlan <1-4094>[,-]` | config | switch | VLANs DHCP snooping watches |
