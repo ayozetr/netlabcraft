@@ -93,6 +93,7 @@ labs! {
     lab_51_ospf_flooding_retransmission_and_lsa_ageing => "51-ospf-flooding-retransmission-and-lsa-ageing.md",
     lab_52_ospf_nssa_only_type_7_lsas => "52-ospf-nssa-only-type-7-lsas.md",
     lab_57_bgp_prefix_limits_and_timers => "57-bgp-prefix-limits-and-timers.md",
+    lab_58_aliases_reload_extended_ping_and_telnet_by_name => "58-aliases-reload-extended-ping-and-telnet-by-name.md",
     lab_61_troubleshoot_site_to_site_vpn => "61-troubleshoot-site-to-site-vpn.md",
     lab_62_troubleshoot_remote_access_vpn => "62-troubleshoot-remote-access-vpn.md",
     lab_63_troubleshoot_wireless_clients => "63-troubleshoot-wireless-clients.md",
