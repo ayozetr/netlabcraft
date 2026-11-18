@@ -1146,8 +1146,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no snmp-server system-shutdown` | config | router, switch | Return this setting to its default |
 | `snmp-server trap-timeout <1-1000>` | config | router, switch | Seconds to retry sending a trap |
 | `no snmp-server trap-timeout` | config | router, switch | Return this setting to its default |
-| `logging monitor LEVEL` | config | router, switch | Most detailed severity shown on remote terminals |
-| `no logging monitor` | config | router, switch | Return this setting to its default |
 | `logging source-interface INTERFACE` | config | router, switch | Interface whose address log messages come from |
 | `no logging source-interface` | config | router, switch | Return this setting to its default |
 | `logging facility WORD` | config | router, switch | Syslog facility sent to servers |

@@ -3997,8 +3997,6 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("system-shutdown")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("snmp-server"), K("trap-timeout"), Arg("<1-1000>")], "Seconds to retry sending a trap"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("trap-timeout")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("logging"), K("monitor"), Arg("LEVEL")], "Most detailed severity shown on remote terminals"),
-    spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("monitor")], "Return this setting to its default"),
     spec!(
         Knob,
         Modes::CONFIG,
