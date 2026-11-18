@@ -345,6 +345,13 @@ pub enum Id {
     StpRoot,
     Portfast,
     NoPortfast,
+    IpSgOn,
+    IpSgPortSecurity,
+    IpSgOff,
+    IpSgBinding,
+    IpSgNoBinding,
+    IpSgShowVerify,
+    IpSgShowBinding,
     // ---- switch edge protection and tuning (exec/l2sec.rs) ----
     L2Snooping,
     L2NoSnooping,
@@ -5510,6 +5517,49 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowMstInstance, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("mst"), Arg("<0-15>")], "One instance's tree"),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
+    spec!(
+        IpSgOn,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("verify"), K("source")],
+        "IP source guard: only addresses with a binding on this port may send"
+    ),
+    spec!(
+        IpSgPortSecurity,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("verify"), K("source"), K("port-security")],
+        "IP source guard that also checks the source MAC address against the binding"
+    ),
+    spec!(IpSgOff, Modes::IF, Modes::SWITCH, [K("no"), K("ip"), K("verify"), K("source")], "No IP source guard on this port"),
+    spec!(
+        IpSgBinding,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("source"), K("binding"), Arg("H.H.H"), K("vlan"), Arg("<1-4094>"), Arg("A.B.C.D"), K("interface"), Rest("<interface>")],
+        "A binding typed by hand, for a host that does not use DHCP"
+    ),
+    spec!(
+        IpSgNoBinding,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("source"), K("binding"), Arg("H.H.H"), K("vlan"), Arg("<1-4094>")],
+        "Remove a binding typed by hand"
+    ),
+    spec!(
+        IpSgShowVerify,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("verify"), K("source")],
+        "Ports with IP source guard and the addresses each lets through"
+    ),
+    spec!(
+        IpSgShowBinding,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("source"), K("binding")],
+        "Every binding: learned with DHCP snooping, or typed"
+    ),
     // ---- switch edge protection and tuning (exec/l2sec.rs) ----
     spec!(L2Snooping, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping on (then name its VLANs)"),
     spec!(L2NoSnooping, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping off"),
