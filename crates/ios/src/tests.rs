@@ -38,6 +38,7 @@ mod ospf_areas;
 mod ospf_auth_rollover;
 mod ospf_database;
 mod ospf_debug;
+mod ospf_flooding;
 mod ospf_lsdb_copies;
 mod ospf_nssa_bits;
 mod pki;
@@ -53,6 +54,7 @@ mod span;
 mod stp_views;
 mod sweep;
 mod swroute;
+mod system_commands;
 mod track;
 mod troubleshoot;
 
@@ -877,20 +879,20 @@ fn ospf_by_typing() {
     lab.sim.run_for(&lab.t, 11_000_000);
     let log = lab.run(r1, "show logging");
     assert!(log.contains("OSPF hello: from 10.0.0.2 (router ID 172.16.2.1, area 0) on GigabitEthernet0/1, 1 neighbour listed"), "{log}");
-    // The neighbours exchanged their databases once, when they met.
+    // The neighbours exchanged their databases with real packets when they met: descriptions
+    // (one side first claims to be master), requests, updates and acknowledgements.
     let db: Vec<String> =
         lab.sim.trace().iter().filter(|e| e.summary.starts_with("OSPF") && !e.summary.contains("hello")).map(|e| e.summary.clone()).collect();
     for want in [
         "database description, first (master) from router 1.1.1.1",
-        "database description, 2 LSA headers",
-        "link-state request, 1 LSA",
-        "link-state update, 1 LSA from router 172.16.2.1",
+        "database description, first (master) from router 172.16.2.1",
+        "link-state request",
+        "link-state update",
         "link-state acknowledgement",
     ] {
         assert!(db.iter().any(|x| x.contains(want)), "{want}: {db:#?}");
     }
-    assert_eq!(db.len(), 10, "{db:#?}");
-    assert!(lab.try_run(r1, "debug ip ospf bogus").contains("lsa-generation, flood or packet"));
+    assert!(lab.try_run(r1, "debug ip ospf bogus").contains("lsa-generation, flood, packet or retransmission"));
     lab.run(r1, "no debug ip ospf");
     assert!(lab.run(r1, "show debugging").contains("No debugging"));
     lab.try_run(r1, "conf t");

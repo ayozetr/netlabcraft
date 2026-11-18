@@ -51,6 +51,33 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 };
                 let _ = write!(s, "\n{name:<9} {:<9} {transport:<12} {}", login_text(line), line.access_class.as_deref().unwrap_or("-"));
             }
+            // The asynchronous lines of an octal card: one row per line.
+            let d = c.d()?;
+            let lines = d.octal_lines().min(16);
+            if lines > 0 {
+                s.push_str("\n\nLine  Type  Speed  State     Transport in  Users      Cabled to");
+                for n in 1..=lines {
+                    let cabled = c.t.octal_at_line(d.id, n - 1).and_then(|o| c.t.device(o.device)).map(|x| x.name.clone());
+                    let owner = c.sim.async_owner(d.id, n).and_then(|o| c.t.device(o)).map(|x| x.name.clone());
+                    let state = match (&cabled, &owner) {
+                        (None, _) => "no cable",
+                        (Some(_), Some(_)) => "in use",
+                        (Some(_), None) => "idle",
+                    };
+                    let transport = match d.access.async_transport.get(&n) {
+                        None => "none".to_string(),
+                        Some(v) if v.is_empty() => "none".to_string(),
+                        Some(v) => v.iter().map(|p| p.name()).collect::<Vec<_>>().join(" "),
+                    };
+                    let speed = if cabled.is_some() { "9600" } else { "-" };
+                    let _ = write!(
+                        s,
+                        "\n{n:<5} TTY   {speed:<6} {state:<9} {transport:<13} {:<10} {}",
+                        owner.as_deref().unwrap_or("-"),
+                        cabled.as_deref().unwrap_or("-")
+                    );
+                }
+            }
             Ok(s)
         }
         Id::ShowCdpInterface => {

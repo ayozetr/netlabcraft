@@ -72,6 +72,8 @@ mod tests_lang;
 #[cfg(test)]
 mod tests_netflow;
 #[cfg(test)]
+mod tests_octal;
+#[cfg(test)]
 mod tests_parts;
 #[cfg(test)]
 mod tests_pictures;

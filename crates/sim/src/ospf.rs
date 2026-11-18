@@ -77,6 +77,8 @@ pub struct OspfState {
     pub translators: BTreeMap<u32, DeviceId>,
     /// The tag of each redistributed external route a router injects (0 is left out).
     pub external_tags: BTreeMap<(DeviceId, Ipv4Net), u32>,
+    /// Redistributed routes set to `nssa-only`: their type 7 LSAs are not translated.
+    pub nssa_only: BTreeSet<(DeviceId, Ipv4Net)>,
 }
 
 /// One `area N virtual-link ROUTER-ID` line, and what became of it.
@@ -816,6 +818,9 @@ pub fn compute_seeded(t: &Topology, seeds: &crate::redist::Seeds) -> OspfState {
             st.external_metrics.insert((*d, x.net), (x.metric, x.type1));
             if x.tag != 0 {
                 st.external_tags.insert((*d, x.net), x.tag);
+            }
+            if x.nssa_only {
+                st.nssa_only.insert((*d, x.net));
             }
         }
     }
