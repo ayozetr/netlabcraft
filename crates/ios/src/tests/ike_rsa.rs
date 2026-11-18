@@ -159,7 +159,7 @@ fn ikev2_ike_auth_signs_and_verifies_with_certificates() {
     let prof = lab.run(r1, "show crypto ikev2 profile");
     assert!(prof.contains("Authentication: local rsa-sig, remote rsa-sig") && prof.contains("Trustpoint: T"), "{prof}");
     let run = lab.run(r1, "show running-config");
-    assert!(run.contains(" authentication remote rsa-sig\n authentication local rsa-sig\n pki trustpoint T\n"), "{run}");
+    assert!(run.contains(" authentication remote rsa-sig\n authentication local rsa-sig\n keyring local KR\n pki trustpoint T\n"), "{run}");
 }
 
 #[test]
