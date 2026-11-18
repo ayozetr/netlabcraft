@@ -317,7 +317,7 @@ pub(crate) fn draw(app: &PacketApp, painter: &egui::Painter, rect: Rect, origin:
     }
     let spacing = app.ui.prefs.grid.spacing(level);
     let l = lines(rect, origin, zoom, spacing, metres_per_unit(level));
-    let stroke = Stroke::new(1.0, app.ui.prefs.grid.color32().gamma_multiply(0.7));
+    let stroke = Stroke::new(1.0, app.ui.prefs.grid.color32().gamma_multiply(0.55));
     for x in &l.xs {
         painter.line_segment([pos2(*x, rect.top()), pos2(*x, rect.bottom())], stroke);
     }
@@ -421,9 +421,13 @@ pub(crate) fn window(app: &mut PacketApp, ctx: &egui::Context) {
     let mut done = false;
     let mut prefs = app.ui.prefs.grid.clone();
     let mut picker = app.ui.physical.grid.picker;
-    egui::Window::new(tl("Grid Preferences")).id(egui::Id::unique("physical_grid_window")).open(&mut open).collapsible(false).resizable(false).show(
-        ctx,
-        |ui| {
+    egui::Window::new(tl("Grid Preferences"))
+        .id(egui::Id::unique("physical_grid_window"))
+        .default_pos([40.0, crate::BELOW_VIEW_BAR + 10.0])
+        .open(&mut open)
+        .collapsible(false)
+        .resizable(false)
+        .show(ctx, |ui| {
             ui.label(egui::RichText::new(tl("Grid Scale")).strong());
             egui::Frame::group(ui.style()).show(ui, |ui| {
                 ui.label(tl(
@@ -501,8 +505,7 @@ pub(crate) fn window(app: &mut PacketApp, ctx: &egui::Context) {
                     done = true;
                 }
             });
-        },
-    );
+        });
     app.ui.prefs.grid = prefs;
     app.ui.physical.grid.picker = picker;
     app.ui.physical.grid.open = open && !done;
