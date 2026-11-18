@@ -999,6 +999,17 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
     let end_pos = |e: End| sc.ports.iter().find(|(q, _)| *q == Pole::Device(e)).map(|(_, r)| r.center());
     let mut drawn: Vec<(End, Vec<Pos2>)> = Vec::new();
     let mut stubs: Vec<(Pos2, String, Color32)> = Vec::new();
+    // Backbone cables leave the closet: a stub up from the port, labelled with the place it goes to.
+    for w in t.backbones() {
+        let (here, far) = if t.pole_place(w.a) == Some(place) { (w.a, w.b) } else { (w.b, w.a) };
+        let Some(pt) = pole_pos(here).filter(|_| t.pole_place(here) == Some(place)) else { continue };
+        let fiber = matches!(here, Pole::Panel { fitting, .. } if t.fitting(fitting).is_some_and(|f| f.kind.is_fiber()));
+        let color = if fiber { Color32::from_rgb(0xd4, 0xa0, 0x17) } else { Color32::from_rgb(0x3a, 0x7b, 0xc8) };
+        let tip = pt - vec2(0.0, 34.0 * zoom);
+        p.add(egui::Shape::line(vec![pt, tip], Stroke::new((3.0 * zoom).clamp(1.8, 5.0), color)));
+        let far_name = t.pole_place(far).and_then(|q| t.place(q)).map(|q| tr(&q.name).to_string()).unwrap_or_default();
+        stubs.push((tip, trf("to {}", &[&far_name]), color));
+    }
     for (n, (a, b, kind, problem)) in cables.iter().enumerate() {
         let color = cable_color(*kind, &tk);
         let width = (2.4 * zoom).clamp(1.4, 4.0);
@@ -1574,12 +1585,49 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             }
         }
         Target::Port(pole) => {
-            if t.patch_wires_at(pole).is_empty() {
+            let wired = !t.patch_wires_at(pole).is_empty();
+            let unwire = json!({"a": pole_json(t, pole)});
+            let has_backbone = t.backbone_at(pole).is_some();
+            // The panels and wall mounts of other places that have a port left for a backbone.
+            let mut far: Vec<(u32, String)> = Vec::new();
+            if let Pole::Panel { fitting, .. } = pole
+                && let Some(f) = t.fitting(fitting)
+            {
+                far = t
+                    .physical
+                    .fittings
+                    .iter()
+                    .filter(|x| {
+                        x.kind.is_cabling() && x.kind.is_fiber() == f.kind.is_fiber() && x.place != f.place && t.first_free_cord_port(x.id).is_some()
+                    })
+                    .map(|x| (x.id, format!("{} ({})", x.name, t.place(x.place).map(|q| tr(&q.name).to_string()).unwrap_or_default())))
+                    .collect();
+            }
+            let is_panel = matches!(pole, Pole::Panel { .. });
+            if !wired {
                 ui.label(tl("Drag from this port to another to wire them."));
             } else if ui.button(tl("Remove Patch Wires")).clicked() {
-                let params = json!({"a": pole_json(t, pole)});
-                app.run("patch.unwire", params);
+                app.run("patch.unwire", unwire.clone());
                 ui.close();
+            }
+            if is_panel && has_backbone {
+                if ui.button(tl("Remove Backbone")).clicked() {
+                    app.run("backbone.remove", unwire);
+                    ui.close();
+                }
+            } else if is_panel {
+                ui.menu_button(tl("Backbone to"), |ui| {
+                    if far.is_empty() {
+                        ui.label(tl("No panel or wall mount with a free port in another place."));
+                    }
+                    for (id, label) in &far {
+                        if ui.button(label).clicked() {
+                            let port = app.session.topology.first_free_cord_port(*id).map_or(1, |n| n.saturating_add(1));
+                            app.run("backbone.add", json!({"a": unwire["a"].clone(), "b": {"panel": id, "port": port}}));
+                            ui.close();
+                        }
+                    }
+                });
             }
         }
         Target::Outlet(strip, outlet) => {

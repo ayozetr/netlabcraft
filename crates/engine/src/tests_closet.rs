@@ -366,3 +366,99 @@ fn the_loose_devices_of_a_closet_are_a_grid_or_a_list() {
     s.execute("closet.floor", json!({"layout": "grid"})).unwrap();
     assert_eq!(floor(&mut s), "grid");
 }
+
+/// Two closets with a switch and a patch panel in each; the first switch has its drop wired.
+fn annex() -> (Session, u64) {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"model": "Switch 24FE", "name": "SW1"})).unwrap();
+    s.execute("device.add", json!({"model": "Switch 24FE", "name": "SW2"})).unwrap();
+    let annex = s.execute("place.add", json!({"kind": "closet", "name": "Annex", "parent": 2})).unwrap();
+    let annex = annex["id"].as_u64().unwrap();
+    s.execute("device.place", json!({"device": "SW2", "place": annex, "x": 40, "y": 40})).unwrap();
+    s.execute("passive.add", json!({"kind": "copper-patch-panel", "name": "PP1"})).unwrap();
+    s.execute("passive.add", json!({"kind": "copper-patch-panel", "name": "PP2", "place": annex})).unwrap();
+    s.execute("patch.wire", json!({"a": {"device": "SW1", "port": "Fa0/1"}, "b": {"panel": "PP1", "port": 1}})).unwrap();
+    (s, annex)
+}
+
+#[test]
+fn a_backbone_cable_carries_a_link_between_two_closets() {
+    let (mut s, annex) = annex();
+    let wire = |s: &mut Session| s.execute("patch.wire", json!({"a": {"device": "SW2", "port": "Fa0/1"}, "b": {"panel": "PP2", "port": 5}}));
+    wire(&mut s).unwrap();
+    assert!(
+        s.execute("patch.wire", json!({"a": {"panel": "PP1", "port": 1}, "b": {"panel": "PP2", "port": 1}})).is_err(),
+        "a patch cord stays in its closet"
+    );
+    let r = s.execute("backbone.add", json!({"a": {"panel": "PP1", "port": 1}, "b": {"panel": "PP2", "port": 5}})).unwrap();
+    assert_eq!((r["from"].as_str(), r["to"].as_str()), (Some("Main Wiring Closet"), Some("Annex")));
+    assert_eq!(r["cables"].as_array().map(Vec::len), Some(1), "the path is complete: {r}");
+    let links = s.execute("link.list", json!({})).unwrap();
+    assert!(links.to_string().contains("SW1") && links.to_string().contains("SW2"), "{links}");
+    let list = s.execute("backbone.list", json!({})).unwrap();
+    assert_eq!(list[0]["from"], "Main Wiring Closet");
+    assert_eq!(list[0]["cable"].as_array().map(Vec::len), Some(2));
+    // Both closets list it, as a cable to the other place, and not as a patch wire.
+    let near = s.execute("closet.list", json!({"place": 3})).unwrap();
+    assert_eq!(near["backbones"][0]["place"], "Annex");
+    assert!(near["wires"].as_array().unwrap().iter().all(|w| !w.to_string().contains("PP2")));
+    let far = s.execute("closet.list", json!({"place": annex})).unwrap();
+    assert_eq!(far["backbones"][0]["place"], "Main Wiring Closet");
+    // Everything is one undo step, and taking the backbone away unplugs the cable.
+    s.execute("backbone.remove", json!({"a": {"panel": "PP1", "port": 1}})).unwrap();
+    assert!(s.execute("backbone.remove", json!({"a": {"panel": "PP1", "port": 1}})).is_err());
+    assert!(s.execute("backbone.list", json!({})).unwrap().as_array().unwrap().is_empty());
+    assert!(!s.execute("link.list", json!({})).unwrap().to_string().contains("SW2"));
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(s.execute("backbone.list", json!({})).unwrap().as_array().map(Vec::len), Some(1));
+    // Hostile or wrong calls are errors.
+    for bad in [
+        json!({}),
+        json!({"a": {"panel": "PP1", "port": 2}}),
+        json!({"a": {"panel": "PP1", "port": 2}, "b": {"panel": "PP1", "port": 3}}),
+        json!({"a": {"panel": "PP1", "port": 2}, "b": {"device": "SW2", "port": "Fa0/2"}}),
+        json!({"a": {"panel": "PP1", "port": 0}, "b": {"panel": "PP2", "port": 2}}),
+        json!({"a": {"panel": "PP1", "port": 2}, "b": {"panel": "PP2", "port": 99}}),
+        json!({"a": {"panel": "PP1", "port": 1}, "b": {"panel": "PP2", "port": 6}}),
+        json!({"a": {"panel": "Nope", "port": 1}, "b": {"panel": "PP2", "port": 2}}),
+    ] {
+        assert!(s.execute("backbone.add", bad.clone()).is_err(), "{bad}");
+    }
+    assert!(s.execute("backbone.remove", json!({})).is_err());
+}
+
+#[test]
+fn a_wall_mount_in_a_building_room_reaches_the_closet_by_a_backbone() {
+    let mut s = Session::new();
+    s.execute("device.add", json!({"model": "PC", "name": "PC1"})).unwrap();
+    s.execute("device.add", json!({"model": "Switch 24FE", "name": "SW1"})).unwrap();
+    s.execute("device.place", json!({"device": "PC1", "place": 2, "x": 40, "y": 40})).unwrap();
+    // A wall mount stands on a room's wall: in a building or a container, not in a city; a panel does not.
+    let w = s.execute("passive.add", json!({"kind": "copper-wall-mount", "name": "WM1", "place": 2})).unwrap();
+    assert_eq!(w["place"], 2);
+    assert!(s.execute("passive.add", json!({"kind": "copper-patch-panel", "place": 2})).is_err());
+    assert!(s.execute("passive.add", json!({"kind": "copper-wall-mount", "place": 1})).is_err());
+    let room = s.execute("place.add", json!({"kind": "container", "name": "Room 1", "parent": 2})).unwrap()["id"].as_u64().unwrap();
+    s.execute("passive.add", json!({"kind": "fiber-wall-mount", "name": "WM2", "place": room})).unwrap();
+    s.execute("passive.add", json!({"kind": "copper-patch-panel", "name": "PP1"})).unwrap();
+    s.execute("patch.wire", json!({"a": {"device": "PC1", "port": "FastEthernet0"}, "b": {"panel": "WM1", "port": 1}})).unwrap();
+    s.execute("patch.wire", json!({"a": {"device": "SW1", "port": "Fa0/1"}, "b": {"panel": "PP1", "port": 3}})).unwrap();
+    let r = s.execute("backbone.add", json!({"a": {"panel": "WM1", "port": 1}, "b": {"panel": "PP1", "port": 3}})).unwrap();
+    assert_eq!(r["from"], "Main Building");
+    assert_eq!(r["cables"].as_array().map(Vec::len), Some(1), "{r}");
+    assert!(
+        s.execute("backbone.add", json!({"a": {"panel": "WM2", "port": 1}, "b": {"panel": "PP1", "port": 4}})).is_err(),
+        "fiber does not join copper"
+    );
+    // The building lists its wall mounts, and the PC standing in it.
+    let list = s.execute("closet.list", json!({"place": 2})).unwrap();
+    assert_eq!(list["passive"][0]["name"], "WM1");
+    assert!(list["loose"].to_string().contains("PC1"), "{list}");
+    assert_eq!(list["backbones"][0]["place"], "Main Wiring Closet");
+    assert!(s.execute("closet.list", json!({"place": 1})).is_err(), "a city has no walls");
+    // A saved lab keeps all of it.
+    let text = netlabcraft_model::file::to_json(&s.topology).unwrap();
+    let back = netlabcraft_model::file::from_json(&text).unwrap();
+    assert_eq!(back.backbones().len(), 1);
+    assert_eq!(back.physical.fittings.len(), 3);
+}

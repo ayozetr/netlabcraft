@@ -175,7 +175,9 @@ impl Cable {
             Cable::Octal => {
                 "Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access"
             }
-            Cable::Usb => "USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal",
+            Cable::Usb => {
+                "USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal; or a host's USB port to a printer, a board or a USB stick"
+            }
         }
     }
 

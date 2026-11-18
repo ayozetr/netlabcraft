@@ -207,6 +207,8 @@ pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, 
         crate::icons_parts::mark(p, rect, model_id);
     } else if matches!(model_id, "Tablet" | "Smartphone") {
         touch_icon(p, rect, model_id == "Tablet");
+    } else if model_id == netlabcraft_model::usb::STICK_MODEL {
+        stick_icon(p, rect);
     } else {
         crate::icons::device(p, rect, kind, tk);
         if crate::icons_gear::is_gear(model_id) {
@@ -214,6 +216,34 @@ pub fn model_icon(p: &Painter, rect: Rect, kind: netlabcraft_model::DeviceKind, 
         }
         crate::icons::model_marks(p, rect, model_id, multilayer);
     }
+}
+
+/// A USB stick: a rounded body with a label and a lit light, and the metal plug with its two
+/// contacts on the right.
+pub fn stick_icon(p: &Painter, rect: Rect) {
+    let w = rect.width();
+    let c = rect.center();
+    let body = Rect::from_center_size(c - vec2(w * 0.1, 0.0), vec2(w * 0.56, w * 0.34));
+    let plug = Rect::from_min_max(egui::pos2(body.right() - 1.0, c.y - w * 0.11), egui::pos2(body.right() + w * 0.26, c.y + w * 0.11));
+    let steel = Color32::from_rgb(0xb8, 0xc0, 0xc8);
+    p.rect_filled(plug, w * 0.02, steel);
+    p.rect_stroke(plug, w * 0.02, Stroke::new(1.0, Color32::from_rgb(0x6b, 0x73, 0x7b)), egui::StrokeKind::Inside);
+    for dy in [-0.045, 0.045] {
+        p.rect_filled(
+            Rect::from_center_size(egui::pos2(plug.center().x, c.y + w * dy), vec2(w * 0.14, w * 0.03)),
+            0.0,
+            Color32::from_rgb(0x3a, 0x3f, 0x45),
+        );
+    }
+    let edge = Color32::from_rgb(0x1f, 0x3c, 0x6b);
+    p.rect_filled(body.translate(vec2(0.0, w * 0.02)), w * 0.07, crate::theme::shade(edge, 0.7));
+    p.rect_filled(body, w * 0.07, Color32::from_rgb(0x2f, 0x5f, 0xa8));
+    p.rect_filled(
+        Rect::from_center_size(body.center() - vec2(w * 0.03, 0.0), vec2(w * 0.26, w * 0.16)),
+        w * 0.02,
+        Color32::from_rgb(0xee, 0xf1, 0xf4),
+    );
+    p.circle_filled(egui::pos2(body.right() - w * 0.08, body.center().y), (w * 0.03).max(1.5), Color32::from_rgb(0x58, 0xd6, 0x7a));
 }
 
 /// A tablet (wide) or a smartphone (tall): a dark body, a bright screen with a few app squares

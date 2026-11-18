@@ -55,6 +55,7 @@ impl Model {
             "AccessPoint" | "LAP" | "WLC" | "Home-Router" | "Home-Gateway" | CELL_TOWER | CENTRAL_OFFICE => Group::Wireless,
             "Firewall-5" | "Firewall-3" => Group::Security,
             "Board-SBC" | "Board-MCU" | "IoT-Thing" => Group::Boards,
+            "USB-Storage" => Group::EndDevices,
             "IoT-Streetlight" | "IoT-Traffic" | "IoT-Parking" | "IoT-Drain" | "IoT-Air" => Group::SmartCity,
             "IoT-Pressure" | "IoT-Beacon" | "IoT-CO2" | "IoT-Fire" | "IoT-FireSprinkler" | "IoT-Car" | "IoT-RFIDCard" | "IoT-RFIDReader"
             | "IoT-LED" | "IoT-Trip" | "IoT-WindDet" => Group::SmartCity,
@@ -95,6 +96,7 @@ impl Model {
         match self.id {
             "IoT-LED" => &[Group::Industrial, Group::Actuators],
             "IoT-Sensor" | "IoT-Humidity" | "IoT-CO" => &[Group::SmartCity],
+            "USB-Storage" => &[Group::Boards],
             _ => &[],
         }
     }
@@ -716,6 +718,13 @@ pub static MODELS: &[Model] = &[
         label: "Board MCU",
         description: "Microcontroller board with Wi-Fi, 6 digital and 2 analog pins: runs a BoardScript program that reads and switches the smart things wired to its pins",
         ports: &[run("Wireless", 0, 0)],
+    },
+    Model {
+        id: "USB-Storage",
+        kind: DeviceKind::Iot,
+        label: "USB Storage",
+        description: "USB stick with a small list of files: plug it into a PC, laptop, server, router or switch with a USB cable and copy files to and from it",
+        ports: &[],
     },
     Model {
         id: "IoT-Device",
@@ -1346,6 +1355,7 @@ impl Model {
             "Tablet" => Some("Tablet"),
             "Smartphone" => Some("Smartphone"),
             "Board-SBC" | "Board-MCU" => Some("Board"),
+            "USB-Storage" => Some("Stick"),
             "Repeater" => Some("Repeater"),
             "Coax-Splitter" => Some("Splitter"),
             "Bridge-2" => Some("Bridge"),
@@ -1577,7 +1587,7 @@ mod tests {
         for want in groups {
             assert!(MODELS.iter().any(|m| m.group() == want), "{want:?} is empty");
         }
-        assert_eq!(MODELS.len(), 146);
+        assert_eq!(MODELS.len(), 147);
     }
 
     #[test]
@@ -1589,6 +1599,7 @@ mod tests {
         assert_eq!(groups("IoT-CO"), [Group::Home, Group::SmartCity]);
         assert_eq!(groups("IoT-Streetlight"), [Group::SmartCity]);
         assert_eq!(groups("Router-3"), [Group::Routers]);
+        assert_eq!(groups("USB-Storage"), [Group::EndDevices, Group::Boards]);
         for m in MODELS {
             assert_eq!(m.groups().first(), Some(&m.group()), "{}", m.id);
             let mut seen = std::collections::BTreeSet::new();
@@ -1623,7 +1634,7 @@ mod tests {
 
     #[test]
     fn every_part_and_thing_has_its_behaviour_and_every_new_name_is_free() {
-        for m in MODELS.iter().filter(|m| m.kind == DeviceKind::Iot && crate::board::pins(m).is_empty()) {
+        for m in MODELS.iter().filter(|m| m.kind == DeviceKind::Iot && crate::board::pins(m).is_empty() && m.id != crate::usb::STICK_MODEL) {
             assert!(crate::iot::thing_of(m.id).is_some(), "{} has no behaviour", m.id);
         }
         for m in MODELS.iter().filter(|m| matches!(m.group(), Group::Actuators | Group::Sensors)) {
@@ -1649,7 +1660,8 @@ mod tests {
         }
         for m in MODELS {
             let names = m.port_names();
-            assert!(!names.is_empty(), "{}", m.id);
+            // A USB stick is the one device with no network port.
+            assert!(!names.is_empty() || m.id == crate::usb::STICK_MODEL, "{}", m.id);
             for n in &names {
                 assert!(crate::ifname::parse(n).is_some(), "{n}");
             }
