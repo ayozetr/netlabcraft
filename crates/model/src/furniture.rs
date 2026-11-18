@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
-use crate::physical::{PlaceKind, clean_name};
+use crate::physical::clean_name;
 use crate::{End, Link, ModelError, Result, Topology, finite};
 
 /// Most pieces of furniture in a lab.
@@ -36,6 +36,17 @@ pub const MAX_ITEM_UNITS: u32 = 4;
 pub const SHELF_CAPACITY: usize = 4;
 /// Items a table holds.
 pub const TABLE_CAPACITY: usize = 8;
+/// Hooks in a row of a cable pegboard.
+pub const PEGS_PER_ROW: u32 = 6;
+/// Most cables hung on pegboards in a lab.
+pub const MAX_HANGS: usize = 2_000;
+
+/// Whether an industrial control panel's DIN rail takes a device of this catalogue model: PLCs,
+/// HMI panels, data historians, industrial switches and routers, signal generators and
+/// batteries (power supplies).
+pub fn icp_accepts(model: &str) -> bool {
+    matches!(model, "PLC" | "HMI-Panel" | "Data-Historian" | "Switch-IND-8" | "Router-IND" | "IoT-Signal" | "IoT-Battery")
+}
 
 /// What a piece of furniture is.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -44,16 +55,36 @@ pub enum FurnitureKind {
     Rack,
     Shelf,
     Table,
+    /// A shelf of labelled storage bins where devices wait in storage: they are switched off
+    /// when put there, and shown dimmed.
+    #[serde(rename = "inventory-shelf")]
+    InventoryShelf,
+    /// A board with rows of hooks to hang cables on; no device stands on it.
+    #[serde(rename = "pegboard")]
+    CablePegboard,
+    /// An industrial control panel: a wall panel with a DIN rail that industrial devices mount on.
+    #[serde(rename = "icp")]
+    ControlPanel,
 }
 
 impl FurnitureKind {
-    pub const ALL: [FurnitureKind; 3] = [FurnitureKind::Rack, FurnitureKind::Shelf, FurnitureKind::Table];
+    pub const ALL: [FurnitureKind; 6] = [
+        FurnitureKind::Rack,
+        FurnitureKind::Shelf,
+        FurnitureKind::Table,
+        FurnitureKind::InventoryShelf,
+        FurnitureKind::CablePegboard,
+        FurnitureKind::ControlPanel,
+    ];
 
     pub fn id(self) -> &'static str {
         match self {
             FurnitureKind::Rack => "rack",
             FurnitureKind::Shelf => "shelf",
             FurnitureKind::Table => "table",
+            FurnitureKind::InventoryShelf => "inventory-shelf",
+            FurnitureKind::CablePegboard => "pegboard",
+            FurnitureKind::ControlPanel => "icp",
         }
     }
 
@@ -62,14 +93,20 @@ impl FurnitureKind {
             FurnitureKind::Rack => "Rack",
             FurnitureKind::Shelf => "Shelf",
             FurnitureKind::Table => "Table",
+            FurnitureKind::InventoryShelf => "Inventory Shelf",
+            FurnitureKind::CablePegboard => "Cable Pegboard",
+            FurnitureKind::ControlPanel => "Industrial Control Panel",
         }
     }
 
     pub fn from_id(s: &str) -> Option<FurnitureKind> {
-        match s.trim().to_ascii_lowercase().as_str() {
+        match s.trim().to_ascii_lowercase().replace(['_', ' '], "-").as_str() {
             "rack" => Some(FurnitureKind::Rack),
             "shelf" => Some(FurnitureKind::Shelf),
             "table" => Some(FurnitureKind::Table),
+            "inventory-shelf" | "inventory" => Some(FurnitureKind::InventoryShelf),
+            "pegboard" | "cable-pegboard" => Some(FurnitureKind::CablePegboard),
+            "icp" | "control-panel" | "industrial-control-panel" => Some(FurnitureKind::ControlPanel),
             _ => None,
         }
     }
@@ -80,6 +117,29 @@ impl FurnitureKind {
             FurnitureKind::Rack => 12,
             FurnitureKind::Shelf => 4,
             FurnitureKind::Table => 1,
+            FurnitureKind::InventoryShelf => 4,
+            FurnitureKind::CablePegboard => 4,
+            FurnitureKind::ControlPanel => 12,
+        }
+    }
+
+    /// Whether it is laid out as a rack: numbered slots down it, an item taking several.
+    pub fn is_rack_like(self) -> bool {
+        matches!(self, FurnitureKind::Rack | FurnitureKind::ControlPanel)
+    }
+
+    /// Whether it is laid out as a shelf: levels holding a few items each.
+    pub fn is_shelf_like(self) -> bool {
+        matches!(self, FurnitureKind::Shelf | FurnitureKind::InventoryShelf)
+    }
+
+    /// What its size counts.
+    pub fn size_unit(self) -> &'static str {
+        match self {
+            FurnitureKind::Rack => "units",
+            FurnitureKind::ControlPanel => "DIN slots",
+            FurnitureKind::CablePegboard => "rows of hooks",
+            _ => "levels",
         }
     }
 
@@ -89,6 +149,9 @@ impl FurnitureKind {
             FurnitureKind::Rack => (4, 48),
             FurnitureKind::Shelf => (1, 8),
             FurnitureKind::Table => (1, 1),
+            FurnitureKind::InventoryShelf => (1, 8),
+            FurnitureKind::CablePegboard => (1, 8),
+            FurnitureKind::ControlPanel => (6, 24),
         }
     }
 }
@@ -315,6 +378,20 @@ pub struct Plug {
     pub outlet: u32,
 }
 
+/// A cable hung on a peg of a cable pegboard (named by its two ends, like a hand-set length).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Hang {
+    pub furniture: u32,
+    /// The hook, counted row by row from 0.
+    pub peg: u32,
+    pub a: End,
+    pub b: End,
+}
+
+fn is_cable(l: &Link, h: &Hang) -> bool {
+    (l.a == h.a && l.b == h.b) || (l.a == h.b && l.b == h.a)
+}
+
 /// Two devices cabled through patch panels: a drop, a patch cord and a drop.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatchPath {
@@ -327,7 +404,8 @@ pub struct PatchPath {
 fn check_slot(f: &Furniture, others: &[Mount], slot: u32, units: u32) -> Result<()> {
     let bad = |m: String| Err(ModelError::Invalid(m));
     match f.kind {
-        FurnitureKind::Rack => {
+        FurnitureKind::CablePegboard => return bad("devices cannot stand on a cable pegboard: hang cables on its pegs".into()),
+        FurnitureKind::Rack | FurnitureKind::ControlPanel => {
             if units == 0 || units > MAX_ITEM_UNITS {
                 return bad(format!("an item takes 1 to {MAX_ITEM_UNITS} rack units"));
             }
@@ -339,7 +417,7 @@ fn check_slot(f: &Furniture, others: &[Mount], slot: u32, units: u32) -> Result<
                 return bad(format!("{} units {} to {} are taken", f.name, slot.saturating_add(1), end));
             }
         }
-        FurnitureKind::Shelf => {
+        FurnitureKind::Shelf | FurnitureKind::InventoryShelf => {
             if units != 1 {
                 return bad("an item on a shelf takes one place".into());
             }
@@ -417,13 +495,13 @@ impl Topology {
     }
 
     fn closet_ids(&self) -> BTreeSet<u32> {
-        self.places().iter().filter(|p| p.kind == PlaceKind::Closet).map(|p| p.id).collect()
+        self.places().iter().filter(|p| p.kind.holds_things()).map(|p| p.id).collect()
     }
 
     fn closet_of(&self, place: u32) -> Result<()> {
         let p = self.place(place).ok_or_else(|| ModelError::Invalid(format!("no place {place}")))?;
-        if p.kind != PlaceKind::Closet {
-            return Err(ModelError::Invalid("furniture and passive devices stand in a wiring closet".into()));
+        if !p.kind.holds_things() {
+            return Err(ModelError::Invalid("furniture and passive devices stand in a wiring closet or a container".into()));
         }
         Ok(())
     }
@@ -437,11 +515,7 @@ impl Topology {
         let (lo, hi) = kind.size_range();
         let size = size.unwrap_or(kind.default_size());
         if !(lo..=hi).contains(&size) {
-            return Err(ModelError::Invalid(format!(
-                "a {} has {lo} to {hi} {}",
-                kind.label().to_lowercase(),
-                if kind == FurnitureKind::Rack { "units" } else { "levels" }
-            )));
+            return Err(ModelError::Invalid(format!("a {} has {lo} to {hi} {}", kind.label().to_lowercase(), kind.size_unit())));
         }
         self.materialize_places();
         let id = self.physical.furniture.iter().map(|f| f.id).max().unwrap_or(0).saturating_add(1);
@@ -500,6 +574,7 @@ impl Topology {
         let f = self.furniture_piece(id).cloned().ok_or_else(|| ModelError::Invalid(format!("no furniture {id}")))?;
         self.physical.furniture.retain(|x| x.id != id);
         self.physical.mounts.retain(|m| m.furniture != id);
+        self.physical.hangs.retain(|h| h.furniture != id);
         Ok(f)
     }
 
@@ -508,6 +583,9 @@ impl Topology {
         let f = self.furniture_piece(furniture)?;
         let others: Vec<Mount> = self.physical.mounts.iter().filter(|m| m.furniture == furniture && m.item != item).copied().collect();
         let slots = if f.kind == FurnitureKind::Table { 1 } else { f.size };
+        if f.kind == FurnitureKind::CablePegboard {
+            return None;
+        }
         (0..slots).find(|s| check_slot(f, &others, *s, units).is_ok())
     }
 
@@ -527,6 +605,7 @@ impl Topology {
                 }
             }
         }
+        self.check_accepts(&f, item)?;
         let units = units.unwrap_or(1);
         let slot = match slot {
             Some(s) => s,
@@ -551,7 +630,96 @@ impl Topology {
         let m = Mount { item, furniture, slot, units };
         self.physical.mounts.push(m);
         self.reconcile_places();
+        // Stored devices are unpowered. Taken out to a rack, a shelf or a table, a device keeps
+        // the power state it has: it stays off until someone switches it on.
+        if f.kind == FurnitureKind::InventoryShelf
+            && let Item::Device(d) = item
+            && let Some(dev) = self.device_mut(d)
+            && !dev.powered_off
+        {
+            dev.power_off();
+        }
         Ok(m)
+    }
+
+    /// Whether furniture takes an item at all: an industrial control panel takes industrial
+    /// devices only.
+    fn check_accepts(&self, f: &Furniture, item: Item) -> Result<()> {
+        if f.kind != FurnitureKind::ControlPanel {
+            return Ok(());
+        }
+        match item {
+            Item::Device(d) => {
+                let model = self.device(d).map(|x| x.model.clone()).unwrap_or_default();
+                if icp_accepts(&model) {
+                    Ok(())
+                } else {
+                    Err(ModelError::Invalid(format!(
+                        "{} is not industrial equipment: a control panel's DIN rail takes PLCs, HMIs, industrial switches and routers, signal generators and power supplies",
+                        self.item_name(item)
+                    )))
+                }
+            }
+            Item::Fitting(_) => Err(ModelError::Invalid("a control panel's DIN rail takes industrial devices only".into())),
+        }
+    }
+
+    /// The pegs of a cable pegboard.
+    pub fn peg_count(&self, furniture: u32) -> u32 {
+        self.furniture_piece(furniture).filter(|f| f.kind == FurnitureKind::CablePegboard).map_or(0, |f| f.size.saturating_mul(PEGS_PER_ROW))
+    }
+
+    /// The cables hung on a pegboard, by peg.
+    pub fn hangs_on(&self, furniture: u32) -> Vec<Hang> {
+        let mut v: Vec<Hang> = self.physical.hangs.iter().filter(|h| h.furniture == furniture).copied().collect();
+        v.sort_by_key(|h| h.peg);
+        v
+    }
+
+    /// Where the cable at `end` hangs.
+    pub fn hang_of(&self, end: End) -> Option<Hang> {
+        self.physical.hangs.iter().find(|h| h.a == end || h.b == end).copied()
+    }
+
+    /// Hangs the cable at `end` on a peg (else the first free one) of a pegboard standing in the
+    /// closet of one of its ends. A cable hangs on one peg: it moves from where it was.
+    pub fn hang_cable(&mut self, furniture: u32, end: End, peg: Option<u32>) -> Result<Hang> {
+        let f = self.furniture_piece(furniture).cloned().ok_or_else(|| ModelError::Invalid(format!("no furniture {furniture}")))?;
+        if f.kind != FurnitureKind::CablePegboard {
+            return Err(ModelError::Invalid(format!("{} has no pegs: cables hang on a cable pegboard", f.name)));
+        }
+        let l = *self.link_at(end).ok_or_else(|| ModelError::Invalid(format!("{} has no cable", self.end_label(end))))?;
+        let here = |e: End| self.home_of(e.device).map(|h| h.place) == Some(f.place);
+        if !here(l.a) && !here(l.b) {
+            return Err(ModelError::Invalid(format!("{} stands in another place: hang cables on a pegboard where one of their ends is", f.name)));
+        }
+        let pegs = self.peg_count(furniture);
+        let taken: BTreeSet<u32> = self.physical.hangs.iter().filter(|h| h.furniture == furniture && !is_cable(&l, h)).map(|h| h.peg).collect();
+        let peg = match peg {
+            Some(p) => p,
+            None => (0..pegs).find(|p| !taken.contains(p)).ok_or_else(|| ModelError::Invalid(format!("{} has no free peg", f.name)))?,
+        };
+        if peg >= pegs {
+            return Err(ModelError::Invalid(format!("{} has {pegs} pegs", f.name)));
+        }
+        if taken.contains(&peg) {
+            return Err(ModelError::Invalid(format!("peg {} of {} is taken", peg.saturating_add(1), f.name)));
+        }
+        if self.physical.hangs.len() >= MAX_HANGS && !self.physical.hangs.iter().any(|h| is_cable(&l, h)) {
+            return Err(ModelError::Invalid(format!("at most {MAX_HANGS} hung cables")));
+        }
+        self.materialize_places();
+        self.physical.hangs.retain(|h| !is_cable(&l, h));
+        let h = Hang { furniture, peg, a: l.a, b: l.b };
+        self.physical.hangs.push(h);
+        Ok(h)
+    }
+
+    /// Takes the cable at `end` off its peg; whether it was hung.
+    pub fn unhang_cable(&mut self, end: End) -> bool {
+        let before = self.physical.hangs.len();
+        self.physical.hangs.retain(|h| h.a != end && h.b != end);
+        self.physical.hangs.len() != before
     }
 
     /// Takes an item off its furniture; it stays in the closet. Whether it was on furniture.
@@ -892,6 +1060,14 @@ impl Topology {
         self.physical.plugs = plugs;
         let wires: Vec<PatchWire> = self.physical.patch_wires.iter().filter(|w| self.pole_ok(w.a) && self.pole_ok(w.b)).copied().collect();
         self.physical.patch_wires = wires;
+        let hangs: Vec<Hang> = self
+            .physical
+            .hangs
+            .iter()
+            .filter(|h| self.links.iter().any(|l| is_cable(l, h)) && self.peg_count(h.furniture) > h.peg)
+            .copied()
+            .collect();
+        self.physical.hangs = hangs;
         self.reconcile_places();
     }
 
@@ -928,7 +1104,7 @@ impl Topology {
                 continue;
             }
             let others: Vec<Mount> = kept.iter().filter(|k| k.furniture == m.furniture).copied().collect();
-            if check_slot(f, &others, m.slot, m.units).is_ok() {
+            if check_slot(f, &others, m.slot, m.units).is_ok() && self.check_accepts(f, m.item).is_ok() {
                 items.insert(m.item);
                 kept.push(m);
             }
@@ -961,6 +1137,18 @@ impl Topology {
             }
         }
         self.physical.patch_wires = kept;
+        // Hung cables: a real cable and peg, one cable to a peg and one peg to a cable.
+        let mut kept: Vec<Hang> = Vec::new();
+        for h in std::mem::take(&mut self.physical.hangs) {
+            let ok = kept.len() < MAX_HANGS
+                && self.links.iter().any(|l| is_cable(l, &h))
+                && self.peg_count(h.furniture) > h.peg
+                && !kept.iter().any(|k| (k.furniture == h.furniture && k.peg == h.peg) || (k.a == h.a && k.b == h.b) || (k.a == h.b && k.b == h.a));
+            if ok {
+                kept.push(h);
+            }
+        }
+        self.physical.hangs = kept;
     }
 }
 
@@ -976,6 +1164,8 @@ pub const SHELF_W: f32 = 800.0;
 pub const SHELF_LEVEL_H: f32 = 110.0;
 /// What an item on a shelf or a table is as wide as, with its gap.
 pub const CELL_W: f32 = 190.0;
+/// A row of hooks on a cable pegboard.
+pub const PEG_ROW_H: f32 = 70.0;
 /// The name bar at the top of a piece of furniture, and the foot below.
 pub const FRAME_HEAD: f32 = 36.0;
 pub const FRAME_FOOT: f32 = 14.0;
@@ -990,8 +1180,9 @@ impl Furniture {
     pub fn dims(&self) -> (f32, f32) {
         let levels = self.size as f32;
         match self.kind {
-            FurnitureKind::Rack => (RACK_W, FRAME_HEAD + levels * RACK_UNIT_H + FRAME_FOOT),
-            FurnitureKind::Shelf => (SHELF_W, FRAME_HEAD + levels * SHELF_LEVEL_H + FRAME_FOOT),
+            FurnitureKind::Rack | FurnitureKind::ControlPanel => (RACK_W, FRAME_HEAD + levels * RACK_UNIT_H + FRAME_FOOT),
+            FurnitureKind::CablePegboard => (SHELF_W, FRAME_HEAD + levels * PEG_ROW_H + FRAME_FOOT),
+            FurnitureKind::Shelf | FurnitureKind::InventoryShelf => (SHELF_W, FRAME_HEAD + levels * SHELF_LEVEL_H + FRAME_FOOT),
             FurnitureKind::Table => (SHELF_W, FRAME_HEAD + 2.0 * SHELF_LEVEL_H + FRAME_FOOT),
         }
     }
@@ -1004,8 +1195,9 @@ impl Furniture {
             return None;
         }
         match self.kind {
-            FurnitureKind::Rack => Some((rel / RACK_UNIT_H) as u32).filter(|s| *s < self.size),
-            FurnitureKind::Shelf => Some((rel / SHELF_LEVEL_H) as u32).filter(|s| *s < self.size),
+            FurnitureKind::Rack | FurnitureKind::ControlPanel => Some((rel / RACK_UNIT_H) as u32).filter(|s| *s < self.size),
+            FurnitureKind::Shelf | FurnitureKind::InventoryShelf => Some((rel / SHELF_LEVEL_H) as u32).filter(|s| *s < self.size),
+            FurnitureKind::CablePegboard => None,
             FurnitureKind::Table => Some(0),
         }
     }
@@ -1083,13 +1275,13 @@ impl Topology {
             for m in self.mounts_on(f.id).into_iter().filter(|m| self.item_place(m.item) == Some(place)) {
                 let top = f.y + FRAME_HEAD;
                 let cell = match f.kind {
-                    FurnitureKind::Rack => Cell {
+                    FurnitureKind::Rack | FurnitureKind::ControlPanel => Cell {
                         x: f.x + (RACK_W - RACK_ITEM_W) / 2.0,
                         y: top + m.slot as f32 * RACK_UNIT_H,
                         w: RACK_ITEM_W,
                         h: m.units as f32 * RACK_UNIT_H,
                     },
-                    FurnitureKind::Shelf => {
+                    FurnitureKind::Shelf | FurnitureKind::InventoryShelf => {
                         let n = count.entry(m.slot).or_insert(0);
                         let col = *n;
                         *n += 1;
@@ -1100,7 +1292,7 @@ impl Topology {
                             h: SHELF_LEVEL_H,
                         }
                     }
-                    FurnitureKind::Table => {
+                    FurnitureKind::Table | FurnitureKind::CablePegboard => {
                         let n = count.entry(0).or_insert(0);
                         let k = *n;
                         *n += 1;
@@ -1138,7 +1330,7 @@ impl Topology {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physical::DEFAULT_CLOSET;
+    use crate::physical::{DEFAULT_CLOSET, PlaceKind};
     use crate::{DeviceKind, file};
 
     fn lab() -> (Topology, DeviceId, DeviceId, DeviceId) {
@@ -1519,5 +1711,86 @@ mod tests {
         assert_eq!(FittingKind::from_id("Fiber Wall Mount"), Some(FittingKind::FiberWallMount));
         assert_eq!(FittingKind::from_id("pdu"), Some(FittingKind::PowerStrip));
         assert_eq!(FittingKind::from_id("nope"), None);
+    }
+
+    #[test]
+    fn containers_hold_furniture_and_the_new_kinds_follow_their_rules() {
+        use crate::physical::{DEFAULT_BUILDING, DEFAULT_CITY};
+        let (mut t, a, b, _) = lab();
+        // A container sits in a city or a building, never on the Intercity map or in a closet.
+        assert!(t.add_place(PlaceKind::Container, None, None, 0.0, 0.0).is_err());
+        assert!(t.add_place(PlaceKind::Container, None, Some(DEFAULT_CLOSET), 0.0, 0.0).is_err());
+        let in_city = t.add_place(PlaceKind::Container, None, Some(DEFAULT_CITY), 0.0, 0.0).unwrap();
+        let in_building = t.add_place(PlaceKind::Container, Some("Store"), Some(DEFAULT_BUILDING), 0.0, 0.0).unwrap();
+        assert_eq!(t.place(in_city).unwrap().name, "Container 1");
+        assert_eq!(t.city_of(in_city).map(|c| c.id), Some(DEFAULT_CITY));
+        assert_eq!(t.city_of(in_building).map(|c| c.id), Some(DEFAULT_CITY));
+        let rack = t.add_furniture(FurnitureKind::Rack, None, in_building, 0.0, 0.0, None).unwrap();
+        t.mount_item(Item::Device(a), rack, None, None).unwrap();
+        assert_eq!(t.home_of(a).unwrap().place, in_building);
+        // Inventory shelf: stored devices are switched off, and stay off on a rack.
+        let inv = t.add_furniture(FurnitureKind::InventoryShelf, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        assert_eq!(t.furniture_piece(inv).unwrap().name, "Inventory Shelf0");
+        assert!(!t.device(b).unwrap().powered_off);
+        t.mount_item(Item::Device(b), inv, None, None).unwrap();
+        assert!(t.device(b).unwrap().powered_off);
+        let table = t.add_furniture(FurnitureKind::Table, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        t.mount_item(Item::Device(b), table, None, None).unwrap();
+        assert!(t.device(b).unwrap().powered_off, "it keeps the power state it had");
+        // Cable pegboard: no devices, cables on pegs.
+        let peg = t.add_furniture(FurnitureKind::CablePegboard, None, DEFAULT_CLOSET, 0.0, 0.0, Some(2)).unwrap();
+        assert!(t.mount_item(Item::Device(b), peg, None, None).is_err());
+        let c = t.add_device(DeviceKind::Switch, None, 0.0, 0.0).unwrap();
+        let d = t.add_device(DeviceKind::Switch, None, 0.0, 0.0).unwrap();
+        t.set_home(c, DEFAULT_CLOSET, 0.0, 0.0).unwrap();
+        t.set_home(d, DEFAULT_CLOSET, 0.0, 0.0).unwrap();
+        let e = End { device: c, port: 0 };
+        assert!(t.hang_cable(peg, e, None).is_err(), "no cable yet");
+        t.connect(e, End { device: d, port: 0 }).unwrap();
+        assert_eq!(t.peg_count(peg), 2 * PEGS_PER_ROW);
+        assert_eq!(t.hang_cable(peg, e, None).unwrap().peg, 0);
+        assert_eq!(t.hang_cable(peg, End { device: d, port: 0 }, Some(3)).unwrap().peg, 3, "the same cable moves");
+        assert_eq!(t.hangs_on(peg).len(), 1);
+        assert!(t.hang_cable(peg, e, Some(2 * PEGS_PER_ROW)).is_err());
+        assert!(t.unhang_cable(e));
+        assert!(!t.unhang_cable(e));
+        t.hang_cable(peg, e, None).unwrap();
+        t.disconnect(e);
+        assert!(t.hangs_on(peg).is_empty(), "a cable that is gone leaves its peg");
+        // Control panel: industrial devices only.
+        let icp = t.add_furniture(FurnitureKind::ControlPanel, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        assert!(t.mount_item(Item::Device(c), icp, None, None).is_err(), "a plain switch is not industrial");
+        let plc = t.add_model(crate::models::find("PLC").unwrap(), None, 0.0, 0.0).unwrap();
+        t.set_home(plc, DEFAULT_CLOSET, 0.0, 0.0).unwrap();
+        t.mount_item(Item::Device(plc), icp, None, Some(2)).unwrap();
+        assert!(t.add_furniture(FurnitureKind::ControlPanel, None, DEFAULT_CLOSET, 0.0, 0.0, Some(5)).is_err());
+        assert!(t.add_furniture(FurnitureKind::CablePegboard, None, DEFAULT_CLOSET, 0.0, 0.0, Some(9)).is_err());
+        // Save, load, and a hostile file.
+        let text = file::to_json(&t).unwrap();
+        assert_eq!(file::from_json(&text).unwrap(), t);
+        let mut v: serde_json::Value = serde_json::from_str(&text).unwrap();
+        v["topology"]["physical"]["hangs"] =
+            serde_json::json!([{"furniture": 999, "peg": 0, "a": {"device": 1, "port": 0}, "b": {"device": 2, "port": 0}}]);
+        v["topology"]["physical"]["working"] = serde_json::json!(4000);
+        assert!(file::from_json(&v.to_string()).unwrap().physical.hangs.is_empty());
+        assert_eq!(file::from_json(&v.to_string()).unwrap().physical.working, None);
+        v["topology"]["physical"]["furniture"][0]["kind"] = serde_json::json!("sofa");
+        assert!(file::from_json(&v.to_string()).is_err(), "an unknown kind is refused, not guessed");
+    }
+
+    #[test]
+    fn the_working_closet_defaults_to_the_first_and_can_be_set() {
+        use crate::physical::DEFAULT_BUILDING;
+        let (mut t, ..) = lab();
+        assert_eq!(t.working_closet(), Some(DEFAULT_CLOSET));
+        let c2 = t.add_place(PlaceKind::Closet, None, Some(DEFAULT_BUILDING), 0.0, 0.0).unwrap();
+        assert_eq!(t.working_closet(), Some(DEFAULT_CLOSET));
+        assert!(t.set_working_closet(DEFAULT_BUILDING).is_err());
+        assert!(t.set_working_closet(999).is_err());
+        t.set_working_closet(c2).unwrap();
+        assert_eq!(t.working_closet(), Some(c2));
+        assert_eq!(file::from_json(&file::to_json(&t).unwrap()).unwrap().working_closet(), Some(c2));
+        t.remove_place(c2).unwrap();
+        assert_eq!(t.working_closet(), Some(DEFAULT_CLOSET), "it falls back when the marked closet is gone");
     }
 }

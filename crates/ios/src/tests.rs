@@ -23,6 +23,7 @@ mod interface_counters;
 mod ipsec_crypto;
 mod ipv6_ra;
 mod knobs;
+mod knobs_routing;
 mod leftovers;
 mod line_protocol;
 mod name_resolution;
@@ -45,6 +46,7 @@ mod routing;
 mod security;
 mod span;
 mod stp_views;
+mod sweep;
 mod swroute;
 mod troubleshoot;
 

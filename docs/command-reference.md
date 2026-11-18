@@ -138,7 +138,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `view.enter_place` | Open place |  |  | `{"id": place number} → {"physical", "place", "kind", "path"} (switches to the physical view)` |
 | `view.place_up` | Back to the enclosing place |  |  | `{} → {"physical", "place", "kind", "path"}` |
 | `view.intercity` | Back to the Intercity map |  |  | `{} → {"physical", "place": null, "path": []}` |
-| `place.add` | New place |  |  | `{"kind": "city"\|"building"\|"closet", "name"?, "parent"?: place number (a building goes in a city, a closet in a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}` |
+| `place.add` | New place |  |  | `{"kind": "city"\|"building"\|"closet"\|"container", "name"?, "parent"?: place number (a building goes in a city, a closet in a building, a container in a city or a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}` |
 | `place.rename` | Rename place |  |  | `{"id", "name"}` |
 | `place.move` | Move place |  |  | `{"id", "x", "y", "transient"?: false}: its icon on the map it sits in` |
 | `place.remove` | Remove place |  |  | `{"id"}: with the places inside it; their devices go to the building above, else the default closet (the last city stays)` |
@@ -157,13 +157,17 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.place` | Move to place |  |  | `{"device" \| "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building` |
 | `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)` |
 | `closet.list` | List a wiring closet |  |  | `{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" \| "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}` |
-| `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table", "name"?, "place"?: wiring closet number, "size"?: rack units 4-48 (default 12) or shelf levels 1-8 (default 4), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets` |
+| `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table" \| "inventory-shelf" \| "pegboard" \| "icp", "name"?, "place"?: wiring closet or container number, "size"?: rack units 4-48 (default 12), shelf or inventory shelf levels 1-8 (default 4), pegboard rows of hooks 1-8 (default 4) or control panel DIN slots 6-24 (default 12), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets and containers; a device put on an inventory shelf is switched off; a control panel takes industrial devices only; a pegboard takes cables, not devices` |
 | `furniture.rename` | Rename furniture |  |  | `{"furniture": name or number, "name"}` |
 | `furniture.resize` | Resize furniture |  |  | `{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size` |
 | `furniture.move` | Move furniture |  |  | `{"furniture", "x", "y", "transient"?: false}: where it stands in the closet` |
 | `furniture.remove` | Remove furniture |  |  | `{"furniture"}: what stood on it stays in the closet, loose` |
 | `furniture.mount` | Put on furniture |  |  | `{"device" \| "passive": name or number, "furniture": name or number, "slot"?: rack unit or shelf level counted from 1 at the top (default: the first free one), "units"?: 1-4 rack units (default 1)} → {"furniture", "slot", "units"}: the item moves into the furniture's closet; a rack takes no overlapping units, a shelf level holds 4 items, a table 8` |
 | `furniture.unmount` | Take off furniture |  |  | `{"device" \| "passive"}: it stays in the closet, loose` |
+| `furniture.hang` | Hang a cable |  |  | `{"furniture": cable pegboard name or number, "device", "port": either end of the cable, "peg"?: hook counted from 1 (default: the first free one)} → {"furniture", "peg"}: one of the cable's ends stands in the pegboard's place; a cable hangs on one peg` |
+| `furniture.unhang` | Take a cable off its peg |  |  | `{"device", "port": either end of the cable}` |
+| `place.working.set` | Set as working closet |  |  | `{"id"?: wiring closet number (default: the closet being viewed)} → {"id", "name"}: the closet the Home button goes to` |
+| `place.working.get` | Working closet |  |  | `{} → {"id", "name"}: the marked closet, else the first closet; null when there is none` |
 | `passive.add` | Add a passive device |  |  | `{"kind": "copper-patch-panel" \| "fiber-patch-panel" \| "copper-wall-mount" \| "fiber-wall-mount" \| "power-strip", "name"?, "place"?, "ports"?: ports or outlets (panels 4-48, wall mounts 1-4, power strip 2-16), "furniture"?, "slot"?, "units"?} → {"id", "name", "kind", "ports", "place"}` |
 | `passive.rename` | Rename a passive device |  |  | `{"passive": name or number, "name"}` |
 | `passive.remove` | Remove a passive device |  |  | `{"passive"}: with its patch wires (a cable they carried is unplugged) and its plugs` |
@@ -273,6 +277,26 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
 | `clear mac address-table` | privileged | switch | Forget learned MAC addresses |
 | `clear arp-cache` | privileged | router | Forget ARP entries |
+| `show mac-address-table` | user, privileged | switch | Learned MAC addresses |
+| `show mac-address-table dynamic` | user, privileged | switch | Learned MAC addresses |
+| `clear mac-address-table dynamic` | privileged | switch | Forget learned MAC addresses |
+| `clear arp` | privileged | router | Forget ARP entries |
+| `show derived-config` | privileged | router, switch, firewall | Current configuration (the same text as running-config) |
+| `write terminal` | privileged | router, switch, firewall | Show the current configuration |
+| `write erase` | privileged | router, switch, firewall | Delete the saved configuration |
+| `erase nvram:` | privileged | router, switch, firewall | Delete the saved configuration |
+| `configure memory` | privileged | router, switch | Merge the saved configuration into the running one |
+| `show terminal` | user, privileged | router, switch | Terminal length, width and history of this session |
+| `show line` | user, privileged | router, switch | How the console and the remote login lines are set up |
+| `show cdp interface` | user, privileged | router, switch | CDP timers on each interface that sends them |
+| `show mac address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `show mac-address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `more system:running-config\|nvram:startup-config` | privileged | router, switch | Show the running or the saved configuration |
+| `pwd` | privileged | router, switch | The file system commands work in |
+| `show snmp community` | user, privileged | router, switch | SNMP communities and what they may do |
+| `show snmp host` | user, privileged | router, switch | The managers that get SNMP notifications |
+| `show snmp group` | user, privileged | router, switch | SNMPv3 groups |
+| `show snmp user` | user, privileged | router, switch | SNMPv3 users |
 | `hostname WORD` | config | router, switch, firewall | Set the device name |
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
@@ -1342,6 +1366,60 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no transport output {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
 | `transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Protocol assumed for a host name typed alone |
 | `no transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
+| `maximum-paths <1-32>` |  | router, switch | Most equal-cost routes RIP installs |
+| `no maximum-paths` |  | router, switch | Return this setting to its default |
+| `distance <1-255>` |  | router, switch | Administrative distance of RIP routes |
+| `no distance` |  | router, switch | Return this setting to its default |
+| `output-delay <8-50>` |  | router, switch | Milliseconds between the packets of an update |
+| `no output-delay` |  | router, switch | Return this setting to its default |
+| `validate-update-source` |  | router, switch | Accept updates only from a neighbour on the same subnet (on) |
+| `no validate-update-source` |  | router, switch | Turn this off (it is on by default) |
+| `eigrp stub` |  | router, switch | Act as a stub router that advertises only what it is told to |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `eigrp stub [connected] [static] [summary] [receive-only] [redistributed]` |  | router, switch | Act as a stub router that advertises only the routes named |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `distance eigrp <1-255> <1-255>` |  | router, switch | Administrative distances of internal and external EIGRP routes |
+| `no distance eigrp` |  | router, switch | Return this setting to its default |
+| `eigrp log-neighbor-changes` |  | router, switch | Log the neighbours that come and go |
+| `no eigrp log-neighbor-changes` |  | router, switch | Return this setting to its default |
+| `metric weights <0-8> <0-255> <0-255> <0-255> <0-255> <0-255>` |  | router, switch | The K values of the metric |
+| `no metric weights` |  | router, switch | Return this setting to its default |
+| `ip rip send version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface sends |
+| `no ip rip send version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip receive version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface accepts |
+| `no ip rip receive version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication mode {md5\|text}` | interface, subinterface | router | How RIP updates are authenticated here |
+| `no ip rip authentication mode {md5\|text}` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication key-chain WORD` | interface, subinterface | router | The key chain that authenticates RIP updates here |
+| `no ip rip authentication key-chain` | interface, subinterface | router | Return this setting to its default |
+| `ip rip v2-broadcast` | interface, subinterface | router | Send RIP version 2 updates as broadcasts |
+| `no ip rip v2-broadcast` | interface, subinterface | router | Return this setting to its default |
+| `ip rip triggered` | interface, subinterface | router | Send RIP updates only when the table changes |
+| `no ip rip triggered` | interface, subinterface | router | Return this setting to its default |
+| `ip bandwidth-percent eigrp <1-65535> <1-999999>` | interface, subinterface | router | Percent of the bandwidth EIGRP may use |
+| `no ip bandwidth-percent eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Sign EIGRP packets here with MD5 |
+| `no ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication key-chain eigrp <1-65535> WORD` | interface, subinterface | router | The key chain that signs EIGRP packets here |
+| `no ip authentication key-chain eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers <1-254> <1-254>` | interface, subinterface | router | HSRP hello and hold times in seconds |
+| `no standby <0-255> timers` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers msec <15-999> msec <50-3000>` | interface, subinterface | router | HSRP hello and hold times in milliseconds |
+| `no standby <0-255> timers msec` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> authentication [text\|md5 key-string] KEY` | interface, subinterface | router | HSRP authentication string |
+| `no standby <0-255> authentication` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> name WORD` | interface, subinterface | router | A name for the HSRP group |
+| `no standby <0-255> name` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> preempt delay minimum <0-3600>` | interface, subinterface | router | Seconds to wait before taking over |
+| `no standby <0-255> preempt delay minimum` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> mac-address H.H.H` | interface, subinterface | router | The virtual MAC address of the HSRP group |
+| `no standby <0-255> mac-address` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> follow WORD` | interface, subinterface | router | Follow another HSRP group |
+| `no standby <0-255> follow` | interface, subinterface | router | Return this setting to its default |
+| `standby use-bia` | interface, subinterface | router | Use the interface MAC address as the virtual one |
+| `no standby use-bia` | interface, subinterface | router | Return this setting to its default |
+| `vrrp <1-255> description TEXT` | interface, subinterface | router | A note on the VRRP group |
+| `no vrrp <1-255> description` | interface, subinterface | router | Return this setting to its default |
 | `ipv6 access-list WORD` | config | router, switch | Create or edit an IPv6 access list |
 | `no ipv6 access-list WORD` | config | router, switch | Delete an IPv6 access list |
 | `permit {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Allow matching packets |
