@@ -511,9 +511,8 @@ struct Link6 {
     next_hop: Ipv6Addr,
     /// The link-local next hop that goes with it (external sessions on a shared link).
     link_local: Option<Ipv6Addr>,
-    /// This router's settings for the neighbour, and the neighbour's for this router.
+    /// This router's settings for the neighbour.
     n: conf::Neighbor,
-    m: conf::Neighbor,
 }
 
 fn global_of(i: &L3If6) -> Option<Ipv6Addr> {
@@ -539,7 +538,9 @@ fn links(
                 continue;
             }
             let Some(b) = t.device(p.peer).filter(|b| routes6(b)) else { continue };
-            let Some(m) = b.bgp.as_ref().and_then(|bb| bb.neighbor(p.local)).filter(|m| m.af6.activated && !m.shutdown) else { continue };
+            if !b.bgp.as_ref().and_then(|bb| bb.neighbor(p.local)).is_some_and(|m| m.af6.activated && !m.shutdown) {
+                continue;
+            }
             // Over an IPv4 session the IPv6 next hop is this router's address on the interface the
             // session leaves by; without one it is the IPv4-mapped form, which no table resolves.
             let (next_hop, link_local) = match ifs.iter().find(|i| i.name == p.out_iface) {
@@ -554,7 +555,6 @@ fn links(
                 next_hop,
                 link_local,
                 n: n.clone(),
-                m: m.clone(),
             });
         }
         for n in ab.neighbors6.iter().filter(|n| n.af6.activated && !n.shutdown) {
@@ -565,7 +565,9 @@ fn links(
                 continue;
             }
             let Some(b) = t.device(p.peer).filter(|b| routes6(b)) else { continue };
-            let Some(m) = b.bgp.as_ref().and_then(|bb| bb.neighbor6(p.local)).filter(|m| m.af6.activated && !m.shutdown) else { continue };
+            if !b.bgp.as_ref().and_then(|bb| bb.neighbor6(p.local)).is_some_and(|m| m.af6.activated && !m.shutdown) {
+                continue;
+            }
             out.entry(a.id).or_default().push(Link6 {
                 key: Peer::V6(addr),
                 peer: p.peer,
@@ -574,7 +576,6 @@ fn links(
                 next_hop: p.local,
                 link_local: p.ebgp.then_some(p.local_link),
                 n: n.clone(),
-                m: m.clone(),
             });
         }
     }
