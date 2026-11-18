@@ -8,7 +8,7 @@ use super::Lab;
 
 /// Two routers on one link, OSPF area 0, the given extra lines typed on both (interface lines
 /// first, in `g0/0`, then router lines).
-fn ospf_pair(extra_a: &str, extra_b: &str) -> (Lab, netlabcraft_core::DeviceId, netlabcraft_core::DeviceId) {
+pub(super) fn ospf_pair(extra_a: &str, extra_b: &str) -> (Lab, netlabcraft_core::DeviceId, netlabcraft_core::DeviceId) {
     let mut lab = Lab::new();
     let r1 = lab.add(DeviceKind::Router);
     let r2 = lab.add(DeviceKind::Router);
@@ -25,7 +25,7 @@ fn ospf_pair(extra_a: &str, extra_b: &str) -> (Lab, netlabcraft_core::DeviceId, 
 }
 
 /// The authentication fields of the OSPF packets on the wire.
-fn ospf_auth_on_wire(lab: &Lab) -> Vec<(OspfAuth, Vec<u8>)> {
+pub(super) fn ospf_auth_on_wire(lab: &Lab) -> Vec<(OspfAuth, Vec<u8>)> {
     lab.sim
         .trace()
         .iter()
@@ -37,7 +37,7 @@ fn ospf_auth_on_wire(lab: &Lab) -> Vec<(OspfAuth, Vec<u8>)> {
         .collect()
 }
 
-fn settle(lab: &mut Lab) {
+pub(super) fn settle(lab: &mut Lab) {
     lab.sim.run_for(&lab.t, 60_000_000);
     lab.sim.clear_trace();
     lab.sim.run_for(&lab.t, 30_000_000);
