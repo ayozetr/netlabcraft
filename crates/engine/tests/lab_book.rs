@@ -88,6 +88,8 @@ labs! {
     lab_46_route_tags_and_bgp_peer_groups => "46-route-tags-and-bgp-peer-groups.md",
     lab_47_bgp_passwords_and_conditional_default => "47-bgp-passwords-and-conditional-default.md",
     lab_48_dial_up => "48-dial-up.md",
+    lab_73_python_on_a_board => "73-python-on-a-board.md",
+    lab_74_javascript_on_a_microcontroller => "74-javascript-on-a-microcontroller.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up

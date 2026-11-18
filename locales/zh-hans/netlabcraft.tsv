@@ -1043,6 +1043,18 @@
 	Show All/None	全部显示/全部隐藏
 	Show as text	以文本显示
 	Show grid	显示网格
+	Grid Preferences	网格首选项
+	Grid Preferences…	网格首选项…
+	Grid Scale	网格比例
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	为物理工作区的每个层级设置网格间距（单位：米）。勾选某一层级后才会绘制它的网格。
+	Grid-X (m)	网格 X（米）
+	Grid-Y (m)	网格 Y（米）
+	Generic Container	通用容器
+	A wiring closet has no scale, so it has no grid.	配线间没有比例，因此没有网格。
+	Grid Line Color	网格线颜色
+	Select Grid Color	选择网格颜色
+	Grid color {}	网格颜色 {}
+	{}: zoom in to see the lines	{}：放大后才能看到线条
 	Device windows as separate windows	设备窗口独立显示
 	Not available in the web version	网页版不可用
 	shown when it fails	失败时显示
@@ -2374,6 +2386,8 @@ furniture	Table	桌子
 	Application size	程序字号
 	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。
 	Port, {}	端口，{}
+	Language:	语言：
+	Program ({})	程序 ({})
 	Up	正常
 	Down	断开
 	Properties…	属性…

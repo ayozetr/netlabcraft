@@ -38,6 +38,7 @@ pub mod bgp;
 pub mod channel;
 pub mod control;
 pub mod debug;
+mod debug_watch;
 pub use debug::DebugKind;
 pub mod dhcpsrv;
 pub mod eigrp;
@@ -50,6 +51,8 @@ pub mod ikev1;
 pub mod ikev2;
 pub mod iot;
 pub mod l2sec;
+pub mod lang;
+mod lang_parse;
 pub mod logcfg;
 pub mod mgmt;
 pub mod netflow;
@@ -77,6 +80,8 @@ pub mod stp;
 mod tests;
 #[cfg(test)]
 mod tests_cell;
+#[cfg(test)]
+mod tests_lang;
 pub mod v6;
 pub mod voice;
 pub mod vpn;
@@ -954,6 +959,10 @@ pub struct DevState {
     pub debug_packet_acl: Option<String>,
     /// Messages waiting for the terminal-monitor sessions of this device.
     monitor: Vec<String>,
+    /// What each watched debug topic found at the last look (see `debug_watch.rs`).
+    debug_prev: BTreeMap<DebugKind, BTreeMap<String, String>>,
+    /// When a periodic debug topic last reported.
+    debug_tick: BTreeMap<DebugKind, u64>,
     /// The highest message-digest sequence number heard from each sender, by (port, sender
     /// address, key id): a packet below it is a replay.
     ospf_seq: BTreeMap<(String, Ipv4Addr, u8), u32>,
@@ -1589,6 +1598,7 @@ impl Sim {
     fn advance(&mut self, t: &Topology, deadline: u64, mut stop: impl FnMut(&Sim) -> bool) -> bool {
         self.storm = false;
         self.refresh_stp(t);
+        self.debug_watch(t);
         self.send_rstp_handshakes(t);
         self.l2_tick(t);
         self.wlan_sync(t);
@@ -1919,6 +1929,23 @@ impl Sim {
         let out = rewrite(ip, true, entry.inside_global, entry.global_id);
         if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Nat)) {
             self.log(d.id, &format!("NAT debug: new translation, source {} → {}, to {}", ip.src, entry.inside_global, ip.dst));
+        }
+        if self.debug_on(d.id, DebugKind::NatDetailed) {
+            let at = |a: Ipv4Addr, id: Option<u16>| id.map_or(a.to_string(), |i| format!("{a}:{i}"));
+            let proto = match entry.protocol {
+                PROTO_ICMP => "icmp",
+                PROTO_TCP => "tcp",
+                PROTO_UDP => "udp",
+                _ => "ip",
+            };
+            let line = format!(
+                "{proto} inside local {} becomes inside global {} towards {}{}",
+                at(entry.inside_local, entry.local_id),
+                at(entry.inside_global, entry.global_id),
+                entry.outside,
+                if entry.local_id.is_some() { " (port translation, overload)" } else { "" }
+            );
+            self.debug_log(d.id, DebugKind::NatDetailed, &line);
         }
         let st = self.st(d.id);
         if st.nat.len() >= MAX_NAT_ENTRIES {
@@ -2558,6 +2585,7 @@ impl Sim {
         }
         // Spanning tree takes its BPDUs (the tree itself is computed), LLDP its advertisements.
         if netlabcraft_wire::control::link_local(f.dst) {
+            self.debug_link_local(d, in_port, &f);
             return self.l2_bpdu_in(t, d, in_port, &f);
         }
         // Off a lightweight AP's radio, a centrally switched host's frame goes to the controller.
@@ -2792,10 +2820,12 @@ impl Sim {
         }
         // Spanning-tree BPDUs and LLDP stay on the link (neighbours are computed).
         if netlabcraft_wire::control::link_local(f.dst) {
+            self.debug_link_local(d, in_port, &f);
             return Ok(());
         }
         // PPPoE discovery and session frames, which a dialer takes before it has an address.
         if f.ethertype == netlabcraft_wire::pppoe::ETHERTYPE_DISCOVERY || f.ethertype == netlabcraft_wire::pppoe::ETHERTYPE_SESSION {
+            self.debug_pppoe(d, in_port, &f);
             return self.pppoe_in(t, d, in_port, &f);
         }
         // A host (or a router's `ip address dhcp` port) waiting for DHCP takes answers before
@@ -2832,6 +2862,14 @@ impl Sim {
 
     fn arp_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, payload: &[u8]) -> Result<(), String> {
         let a = Arp::decode(payload).map_err(|e| e.to_string())?;
+        if self.debug_on(d.id, DebugKind::Arp) {
+            let line = if a.op == ArpOp::Request {
+                format!("who has {}? {} ({}) asks on {}", a.target_ip, a.sender_ip, a.sender_mac.dotted(), ifc.name)
+            } else {
+                format!("{} is at {}, answer received on {}", a.sender_ip, a.sender_mac.dotted(), ifc.name)
+            };
+            self.debug_log(d.id, DebugKind::Arp, &line);
+        }
         // An off-subnet sender is only accepted as the answer to our own question (a proxy
         // ARP reply for a route out of this interface).
         let asked = a.op == ArpOp::Reply && self.state.get(&d.id).is_some_and(|st| st.arp_asked.contains_key(&a.sender_ip));
@@ -3016,6 +3054,31 @@ impl Sim {
                     let more = if routes.len() > 8 { format!(" and {} more", routes.len() - 8) } else { String::new() };
                     self.log(d.id, &format!("RIP debug: version {v} update from {} on {}: {}{more}", ip.src, ifc.name, listed.join(", ")));
                 }
+            }
+            if hsrp
+                && self.debug_on(d.id, DebugKind::Standby)
+                && let Some(h) =
+                    Udp::decode(&ip.payload, ip.src, ip.dst).ok().and_then(|u| netlabcraft_wire::control::HsrpHello::decode(&u.payload).ok())
+            {
+                let who = if h.active { "the active router" } else { "the standby router" };
+                self.debug_log(
+                    d.id,
+                    DebugKind::Standby,
+                    &format!(
+                        "hello from {} on {}: {who} of group {} (virtual address {}, priority {})",
+                        ip.src, ifc.name, h.group, h.virtual_ip, h.priority
+                    ),
+                );
+            }
+            if ip.protocol == netlabcraft_wire::vrrp::PROTO_VRRP
+                && self.debug_on(d.id, DebugKind::Vrrp)
+                && let Ok(v) = netlabcraft_wire::vrrp::Vrrp::decode(&ip.payload, ip.src, ip.dst)
+            {
+                self.debug_log(
+                    d.id,
+                    DebugKind::Vrrp,
+                    &format!("advertisement from {} on {}: group {}, priority {}, version {}", ip.src, ifc.name, v.vrid, v.priority, v.version),
+                );
             }
             return match (ip.protocol, rip) {
                 (netlabcraft_wire::control::PROTO_OSPF, _) if d.ospf.is_some() => Ok(()),
@@ -3435,6 +3498,7 @@ impl Sim {
             let req = Arp { op: ArpOp::Request, sender_mac: out.mac, sender_ip: out.net.addr, target_mac: MacAddr::ZERO, target_ip: nh };
             let frame = Frame { dst: MacAddr::BROADCAST, src: out.mac, vlan: out.vlan, ethertype: ETHERTYPE_ARP, payload: req.encode() };
             self.l3_emit(t, d, out, frame);
+            self.debug_log(d.id, DebugKind::Arp, &format!("asking who has {nh} on {}", out.name));
         }
         if host { Ok(()) } else { Err(format!("waiting for ARP of {nh}; packet dropped")) }
     }

@@ -12,7 +12,7 @@ use netlabcraft_wire::radius::{RADIUS_PORT, Radius, reveal_password};
 use netlabcraft_wire::snmp::{self, PduKind, SNMP_PORT, Snmp};
 use netlabcraft_wire::{Ipv4, PROTO_UDP, Udp};
 
-use crate::{L3If, Sim, SimError, default_ttl};
+use crate::{DebugKind, L3If, Sim, SimError, default_ttl};
 
 /// Most messages a syslog server keeps.
 pub const MAX_SYSLOG: usize = 500;
@@ -52,6 +52,7 @@ impl Sim {
                         return Some(Err("no NTP service here".into()));
                     }
                     let (now, _) = self.clock(d.id);
+                    self.debug_log(d.id, DebugKind::Ntp, &format!("time request from {}: answered from this device's own clock", ip.src));
                     let stratum = if master { d.mgmt.ntp_master.unwrap_or(8) } else { 1 };
                     let reply = Ntp { server: true, stratum, time: now }.encode();
                     // Signed with the key the request was signed with, when this device has it.
@@ -67,10 +68,16 @@ impl Sim {
                             d.mgmt.ntp_trusted.contains(&k.id) && ntp_key_id(&u.payload) == Some(k.id) && ntp_verify(&u.payload, &k.key)
                         });
                         if !ok {
+                            self.debug_log(d.id, DebugKind::Ntp, &format!("answer from {} is not signed with a trusted key: ignored", ip.src));
                             return Some(Err(format!("NTP time from {} failed authentication: ignored", ip.src)));
                         }
                     }
                     let before = self.clock(d.id).0;
+                    self.debug_log(
+                        d.id,
+                        DebugKind::Ntp,
+                        &format!("answer from {} (stratum {}): the clock is {} s away from it", ip.src, n.stratum, (before - n.time).abs()),
+                    );
                     self.set_clock(d.id, n.time);
                     if (before - n.time).abs() > 1 {
                         self.log(d.id, &format!("Clock set from NTP server {}", ip.src));
@@ -128,8 +135,14 @@ impl Sim {
                 let Ok(req) = Snmp::decode(&u.payload) else { return Some(Err("not an SNMP message".into())) };
                 // A wrong community gets no answer at all, as on real agents.
                 let Some((_, rw)) = d.snmp.communities.iter().find(|(c, _)| *c == req.community) else {
+                    self.debug_log(d.id, DebugKind::Snmp, &format!("request from {} with an unknown community: no answer is sent", ip.src));
                     return Some(Err(format!("SNMP community `{}` not known here", req.community)));
                 };
+                self.debug_log(
+                    d.id,
+                    DebugKind::Snmp,
+                    &format!("request from {} accepted ({} access)", ip.src, if *rw { "read-write" } else { "read-only" }),
+                );
                 let answer = self.snmp_answer(t, d, &req, *rw);
                 self.udp_out(t, d, me, ip.src, SNMP_PORT, u.src_port, answer.encode())
             }
