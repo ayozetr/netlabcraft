@@ -121,6 +121,12 @@ new mistake worth not repeating, add it in the same change.
 - **A raw string ends at the first `"#`.** A command description written as `r#"... "#rrggbb" ..."#` stops inside the
   text and breaks the whole file. Say `hex rrggbb` in a catalog description, or use `r##"…"##`.
 
+- **A route that follows a tracked object cannot ask the routing table about itself.** `track N ip route …` reads the routing
+  table, whose static rows read the object: `netlabcraft_sim::track` sets a thread-local flag while an object reads the
+  table, and tracked routes count as up then. A tracked state that has delays is not a pure function of the lab: it is
+  settled by `track::tick` after every engine command (`Session::apply_track`), and the simulator reads the settled
+  state (`track::is_up`); a test that only runs console lines sees the live state.
+
 ## Device box
 
 - **A model with a tile in more than one group is found more than once by a search.** Tiles are made per (model, group), so

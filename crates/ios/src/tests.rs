@@ -61,6 +61,7 @@ mod stp_views;
 mod sweep;
 mod swroute;
 mod system_commands;
+mod track;
 mod troubleshoot;
 
 struct Lab {
@@ -446,6 +447,7 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nint fa0/1",
                     "en\nconf t\nvlan 5",
                     "en\nconf t\nrouter eigrp 1",
+                    "en\nconf t\ntrack 1 list boolean and",
                     "en\nconf t\nrouter bgp 65001",
                     "en\nconf t\nroute-map RM permit 10",
                     "en\nconf t\nint lo0",

@@ -42,6 +42,7 @@ pub(crate) mod span;
 pub(crate) mod srcguard;
 pub(crate) mod sweep;
 pub(crate) mod swroute;
+pub(crate) mod track;
 pub(crate) mod voice;
 mod vpn;
 mod wlan;
@@ -129,6 +130,8 @@ pub enum Mode {
     /// `FW1(config-network-object-group)#` / `(config-service-object-group)#`: an object group
     /// (its name, and whether it is a service group).
     ObjectGroup(String, bool),
+    /// `R1(config-track)#`: the tracked object's number.
+    Track(u32),
     /// `R1(config-telephony)#`
     Telephony,
     /// `R1(config-ephone-dn)#`: the directory number's tag.
@@ -205,6 +208,7 @@ impl Mode {
             Mode::BbaGroup(_) => Modes::BBA_GROUP,
             Mode::VirtualTemplate(_) => Modes::VTEMPLATE,
             Mode::Dialer(_) => Modes::DIALER,
+            Mode::Track(_) => Modes::TRACK,
             Mode::ClassMap(_) => Modes::CLASS_MAP,
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
@@ -691,6 +695,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::ClientGroup(_) => format!("{n}(config-isakmp-group)#"),
         Mode::BbaGroup(_) => format!("{n}(config-bba-group)#"),
         Mode::VirtualTemplate(_) | Mode::Dialer(_) => format!("{n}(config-if)#"),
+        Mode::Track(_) => format!("{n}(config-track)#"),
         Mode::ClassMap(_) => format!("{n}(config-cmap)#"),
         Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
         Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
@@ -1134,6 +1139,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::BbaGroup(_)
                 | Mode::VirtualTemplate(_)
                 | Mode::Dialer(_)
+                | Mode::Track(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::PolicyClass(..)
@@ -1220,6 +1226,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::BbaGroup(_)
                 | Mode::VirtualTemplate(_)
                 | Mode::Dialer(_)
+                | Mode::Track(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::Object(_)
@@ -1268,6 +1275,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.cli.dialog = Some(Dialog::new(kind));
             Ok("Answer the questions one by one: an empty answer takes the default, `abort` gives up.".into())
         }
+        Id::TrackInterface
+        | Id::TrackIpRoute
+        | Id::TrackSla
+        | Id::TrackList
+        | Id::TrackEnter
+        | Id::NoTrack
+        | Id::TrackDelay
+        | Id::NoTrackDelay
+        | Id::TrackObject
+        | Id::TrackObjectNot
+        | Id::NoTrackObject
+        | Id::ShowTrack => track::command(&mut c, spec.id, &args),
         Id::PingRepeat => c.ping_extended(arg(0), arg(1)),
         Id::ShowIpTraffic => Ok(render::ip_traffic(c.sim, c.dev)),
         Id::ShowTcpBrief => Ok(render::tcp_brief(c.sim, c.dev)),
@@ -2017,6 +2036,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.d()?;
             let idx = d.port_index(arg(1));
             let name = match idx.and_then(|i| d.ports.get(i)) {
+                // A number is a tracked object (`track N …`), not an interface.
+                _ if track::object_word(arg(1)).is_some() => arg(1).trim().to_string(),
                 Some(p) => p.name.clone(),
                 None if arg(1).to_ascii_lowercase().starts_with("vlan") && arg(1).get(4..).is_some_and(|n| n.parse::<u16>().is_ok()) => {
                     format!("Vlan{}", arg(1).get(4..).unwrap_or(""))
@@ -5852,6 +5873,14 @@ impl Ctx<'_> {
         if n.network() != n {
             return Err(format!("% {n} has host bits set; the network is {}", n.network()));
         }
+        let (target, permanent, track) = match target {
+            Some(t) => {
+                let (rest, permanent, track) = routing::split_route_flags(t)?;
+                (Some(rest), permanent, track)
+            }
+            None => (None, false, None),
+        };
+        let target = target.as_deref();
         let (target, distance, tag) = match target {
             Some(t) => {
                 let (t, tag) = routing::split_tag(t)?;
@@ -5890,6 +5919,10 @@ impl Ctx<'_> {
         if add {
             let Some(via) = via else { return Err("% Give a next-hop address or an exit interface".into()) };
             let route = StaticRoute { net: n, via, distance, tag };
+            let key = netlabcraft_model::track::route_key(&route.net, &route.via);
+            if track.is_some() && d.track.route_track.len() >= netlabcraft_model::track::MAX_BOUND_ROUTES {
+                return Err("% Too many routes follow a tracked object".into());
+            }
             // One route per network and next hop: typing it again changes its distance.
             d.routes.retain(|r| !(r.net == route.net && r.via == route.via));
             if !d.routes.contains(&route) {
@@ -5899,11 +5932,29 @@ impl Ctx<'_> {
                 d.routes.push(route);
                 d.routes.sort();
             }
+            d.track.route_track.remove(&key);
+            d.track.permanent.remove(&key);
+            if let Some(id) = track {
+                d.track.route_track.insert(key.clone(), id);
+            }
+            if permanent {
+                d.track.permanent.insert(key);
+            }
         } else {
+            let gone: Vec<String> = d
+                .routes
+                .iter()
+                .filter(|r| r.net == n && via.as_ref().is_none_or(|v| *v == r.via))
+                .map(|r| netlabcraft_model::track::route_key(&r.net, &r.via))
+                .collect();
             let before = d.routes.len();
             d.routes.retain(|r| !(r.net == n && via.as_ref().is_none_or(|v| *v == r.via)));
             if d.routes.len() == before {
                 return Err("% No such static route".into());
+            }
+            for key in gone {
+                d.track.route_track.remove(&key);
+                d.track.permanent.remove(&key);
             }
         }
         Ok(String::new())
