@@ -142,6 +142,7 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Ping, Some(_)) => crate::i18n::tl("Simple PDU: now click the destination device.").into(),
         (Tool::Inspect, _) => crate::i18n::tl("Inspect: click a device to see its ARP, MAC and routing tables.").into(),
         (Tool::Delete, _) => crate::i18n::tl("Click a device or a cable to delete it.").into(),
+        (Tool::Resize, _) => crate::i18n::tl("Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.").into(),
         _ => String::new(),
     }
 }
@@ -1148,6 +1149,11 @@ fn resizable(a: &netlabcraft_model::Annotation) -> bool {
     matches!(a.shape, Shape::Rectangle | Shape::Ellipse | Shape::Line)
 }
 
+/// The topmost resizable drawing under the screen point `p` in this view.
+fn hit_resizable(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
+    app.session.topology.annotations.iter().rev().find(|a| a.cluster == view.level && resizable(a) && shape_hit(view, a, p)).map(|a| a.id)
+}
+
 /// The selected drawing, when it is resizable and shown in this view.
 fn selected_drawing<'a>(app: &'a PacketApp, view: &View) -> Option<&'a netlabcraft_model::Annotation> {
     let n = app.ui.selected_note?;
@@ -1464,7 +1470,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     }
 
     // Resize handles of the selected drawing.
-    if app.ui.tool == Tool::Select && !middle {
+    if matches!(app.ui.tool, Tool::Select | Tool::Resize) && !middle {
         // The drag starts a few pixels after the press: the handle is where the button went down.
         if resp.drag_started()
             && let Some(p) = ui.input(|i| i.pointer.press_origin()).or(pointer)
@@ -1726,6 +1732,10 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             }
         }
         Tool::Draw(_) => {}
+        Tool::Resize => {
+            // Picks a drawing to resize (or nothing); devices are left alone.
+            app.ui.selected_note = hit_resizable(app, view, p);
+        }
         Tool::Inspect => {
             if hit.is_some() {
                 app.ui.inspect = hit;
