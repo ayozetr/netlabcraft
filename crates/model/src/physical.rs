@@ -155,6 +155,9 @@ pub struct Physical {
     /// Devices plugged into a power distribution device's outlets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub plugs: Vec<Plug>,
+    /// What each place shows: its background, its icon and its size in metres.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scenes: Vec<crate::backdrop::Scene>,
     /// The lab ignores cable lengths: a copper run over [`COPPER_MAX_M`] (or another medium's
     /// limit) still carries frames. Not set, lengths count, as they always did.
     #[serde(default, skip_serializing_if = "is_false")]
@@ -175,6 +178,7 @@ impl Physical {
             && self.mounts.is_empty()
             && self.patch_wires.is_empty()
             && self.plugs.is_empty()
+            && self.scenes.is_empty()
             && !self.ignore_lengths
     }
 }
@@ -402,6 +406,7 @@ impl Topology {
         }
         self.prune_furniture();
         self.prune_environments();
+        self.prune_scenes();
         Ok(p)
     }
 
@@ -443,6 +448,12 @@ impl Topology {
         let (Some(ha), Some(hb)) = (self.home_of(l.a.device), self.home_of(l.b.device)) else {
             return Length { meters: SAME_PLACE_M, manual: false };
         };
+        // Two devices in one place whose map has a scale of its own (its size was set, perhaps
+        // with a plan of the floor as its background): the distance on the map is the cable.
+        if ha.place == hb.place && self.map_scale_is_custom(ha.place) {
+            let d = ((ha.x - hb.x).powi(2) + (ha.y - hb.y).powi(2)).sqrt() * self.map_scale(ha.place);
+            return Length { meters: to_meters(d).max(1), manual: false };
+        }
         Length { meters: self.distance(ha.place, hb.place), manual: false }
     }
 
@@ -457,13 +468,14 @@ impl Topology {
                 return SAME_BUILDING_M;
             }
             if x.parent.is_some() && x.parent == y.parent {
-                let d = ((x.x - y.x).powi(2) + (x.y - y.y).powi(2)).sqrt() * CITY_UNIT_M;
+                let scale = x.parent.map_or(CITY_UNIT_M, |c| self.map_scale(c));
+                let d = ((x.x - y.x).powi(2) + (x.y - y.y).powi(2)).sqrt() * scale;
                 return to_meters(d).saturating_add(SAME_BUILDING_M);
             }
         }
         let (ca, cb) = (self.city_of(a), self.city_of(b));
         let d = match (ca, cb) {
-            (Some(x), Some(y)) => ((x.x - y.x).powi(2) + (x.y - y.y).powi(2)).sqrt() * INTERCITY_UNIT_M,
+            (Some(x), Some(y)) => ((x.x - y.x).powi(2) + (x.y - y.y).powi(2)).sqrt() * self.map_scale(crate::backdrop::INTERCITY),
             _ => 0.0,
         };
         to_meters(d).saturating_add(SAME_BUILDING_M.saturating_mul(2))

@@ -1417,6 +1417,8 @@ dependencies = [
  "num-traits",
  "png",
  "tiff",
+ "zune-core",
+ "zune-jpeg",
 ]
 
 [[package]]
@@ -1819,6 +1821,7 @@ dependencies = [
 name = "netlabcraft-engine"
 version = "0.8.0"
 dependencies = [
+ "image",
  "log",
  "netlabcraft-core",
  "netlabcraft-ios",
@@ -1853,6 +1856,7 @@ name = "netlabcraft-model"
 version = "0.8.0"
 dependencies = [
  "netlabcraft-core",
+ "netlabcraft-wire",
  "serde",
  "serde_json",
  "thiserror 2.0.21",

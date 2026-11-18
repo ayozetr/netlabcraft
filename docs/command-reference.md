@@ -141,6 +141,17 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `place.move` | Move place |  |  | `{"id", "x", "y", "transient"?: false}: its icon on the map it sits in` |
 | `place.remove` | Remove place |  |  | `{"id"}: with the places inside it; their devices go to the building above, else the default closet (the last city stays)` |
 | `place.list` | List places |  |  | `{} → {"implicit": true while the default layout is shown, "places": [{"id", "kind", "name", "x", "y", "parent", "devices": [names]}], "cables": [{"a", "b", "meters", "manual", "problem"}]}` |
+| `place.scene.set` | Set place pictures |  |  | `{"place"?: number, name or "intercity" (default: the place being viewed), "background"?: {"data": base64 PNG or JPEG \| "path": file (desktop and CLI) \| "image": id of a picture the lab holds (none: the one there now), "mode"?: "original"\|"tiled"\|"fit"\|"width"\|"height", "custom"?: width or height in map units for the last two} or null, "icon"?: {"data" \| "path" \| "image"} or null, "size"?: {"width", "length"?, "height"? in metres, "scale"? metres per map unit} or null}: what is left out stays, null clears; one undo step. Pictures are checked, stripped of metadata and scaled down to 4096 pixels and 8 MiB; at most 64 pictures and 32 MiB in a lab → {"place", "background", "icon", "size", "scale", "scaled_from"?: [w, h]}` |
+| `place.background.set` | Set place background |  |  | `{"place"?, "data" \| "path" \| "image", "mode"?: "original"\|"tiled"\|"fit"\|"width"\|"height", "custom"?: map units} → as place.scene.set: the picture under the map inside the place (the Intercity map is place 0)` |
+| `place.background.clear` | Clear place background |  |  | `{"place"?} → as place.scene.set` |
+| `place.icon.set` | Set place icon |  |  | `{"place": a city, building or closet, "data" \| "path" \| "image"} → as place.scene.set: the picture the place wears on the map above it, clipped to a rounded square` |
+| `place.icon.clear` | Clear place icon |  |  | `{"place"} → as place.scene.set` |
+| `place.size.set` | Set place size |  |  | `{"place"?, "width": metres (kept when left out), "length"?: metres (default: the proportions of the background), "height"?: metres (default 3), "scale"?: metres per map unit (default: width over the width the background is drawn at)} → as place.scene.set: the scale replaces the built-in one (1 m on a city, 100 m on the Intercity map) for cable lengths, cell tower reach and the Wi-Fi range of devices in the same place` |
+| `place.size.clear` | Clear place size |  |  | `{"place"?} → as place.scene.set` |
+| `workspace.background.set` | Set workspace background |  |  | `{"data" \| "path" \| "image", "mode"?: "original"\|"tiled"\|"fit"\|"width"\|"height", "custom"?: map units} → {"background": {"image", "mode", "custom", "pixels", "shown"}, "scaled_from"?}: the picture under the logical workspace` |
+| `workspace.background.clear` | Clear workspace background |  |  | `{}` |
+| `image.list` | List pictures |  |  | `{} → {"images": [{"id", "kind", "w", "h", "bytes"}], "uses": [{"kind": "logical"\|"background"\|"icon", "place", "place_name", "image"}], "total_bytes", "limits"}` |
+| `image.remove` | Remove picture |  |  | `{"kind": "logical"\|"background"\|"icon", "place"? (not for logical)} → image.list: stops using the picture there; the picture goes when nothing else uses it` |
 | `device.place` | Move to place |  |  | `{"device" \| "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building` |
 | `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)` |
 | `closet.list` | List a wiring closet |  |  | `{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" \| "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}` |
@@ -493,6 +504,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no logging trap` | config | router, switch | Syslog servers get informational and above |
 | `logging console <0-7>\|LEVEL` | config | router, switch | The most detailed severity shown on the console |
 | `no logging console` | config | router, switch | The console shows every severity |
+| `logging monitor <0-7>\|LEVEL` | config | router, switch | The most detailed severity shown in terminal-monitor sessions |
+| `no logging monitor` | config | router, switch | Monitor sessions show every severity |
+| `no logging buffered` | config | router, switch | The logging buffer keeps every severity again |
 | `ntp master` | config | router, switch | Serve NTP from this device's own clock |
 | `ntp master <1-15>` | config | router, switch | Serve NTP from this device's own clock, at this stratum |
 | `no ntp master` | config | router, switch | Stop serving NTP |
@@ -517,6 +531,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `copy tftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from a TFTP server into flash |
 | `show users` | user, privileged | router, switch | Who is logged in, and where |
 | `terminal length N \| width N \| monitor` | user, privileged | router, switch | Terminal settings (output here is never paged) |
+| `no terminal monitor` | user, privileged | router, switch | Stop copying log messages to this session |
 | `cdp run` | config | router, switch | Discover neighbouring routers and switches |
 | `no cdp run` | config | router, switch | Stop neighbour discovery on this device |
 | `cdp enable` | interface | router, switch | Discover neighbours on this port |
@@ -548,19 +563,79 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `logging buffered [size] [level]` | config | router, switch | Keep messages in the logging buffer, up to a severity |
 | `logging buffered` | config | router, switch | Keep every severity in the logging buffer |
 | `debug ip icmp` | privileged | router, switch | Report echo requests and replies this device receives |
+| `debug ip rip` | privileged | router, switch | Report the RIP updates this router hears |
+| `debug ip rip events` | privileged | router, switch | Report the routes RIP learns, refreshes and drops |
+| `debug ip packet` | privileged | router, switch | Report each packet this device routes |
+| `debug ip packet ACL` | privileged | router, switch | Report the routed packets an access list permits |
+| `debug ip nat` | privileged | router, switch | Report new NAT translations |
+| `debug ip nat detailed` | privileged | router, switch | Report NAT translations with their ports and tables |
+| `debug ip dhcp server events` | privileged | router, switch | Report the addresses this DHCP server hands out |
+| `debug eigrp packets` | privileged | router, switch | Report the EIGRP packets this router hears |
+| `debug eigrp fsm` | privileged | router, switch | Report the EIGRP route computations |
+| `debug eigrp neighbors` | privileged | router, switch | Report EIGRP neighbours coming and going |
+| `debug arp` | privileged | router, switch | Report the ARP requests and replies this device handles |
+| `debug spanning-tree events` | privileged | router, switch | Report spanning-tree port role and state changes |
+| `debug spanning-tree bpdu` | privileged | router, switch | Report the BPDUs this device receives |
+| `debug spanning-tree root` | privileged | router, switch | Report the root bridge changing |
+| `debug cdp packets` | privileged | router, switch | Report the CDP advertisements this device receives |
+| `debug cdp events` | privileged | router, switch | Report CDP neighbours added and aged out |
+| `debug lldp` | privileged | router, switch | Report the LLDP advertisements this device receives |
+| `debug ppp negotiation` | privileged | router, switch | Report PPP link and address negotiation |
+| `debug ppp authentication` | privileged | router, switch | Report PPP PAP and CHAP exchanges |
+| `debug ppp packet` | privileged | router, switch | Report every PPP frame |
+| `debug pppoe events` | privileged | router, switch | Report PPPoE discovery and session changes |
+| `debug pppoe packets` | privileged | router, switch | Report the PPPoE frames this device handles |
+| `debug ip http` | privileged | router, switch | Report the requests this device's web server handles |
+| `debug standby` | privileged | router, switch | Report HSRP hellos and state changes |
+| `debug vrrp` | privileged | router, switch | Report VRRP advertisements and state changes |
+| `debug ip routing` | privileged | router, switch | Report routes being added and removed |
+| `debug ntp events` | privileged | router, switch | Report NTP exchanges and clock changes |
+| `debug ntp packets` | privileged | router, switch | Report NTP exchanges and clock changes |
+| `debug snmp packets` | privileged | router, switch | Report SNMP requests, answers and traps |
+| `debug dot1x events` | privileged | router, switch | Report 802.1X port authentication |
+| `debug dot1x packets` | privileged | router, switch | Report 802.1X port authentication |
+| `debug ip ssh` | privileged | router, switch | Report SSH logins to this device |
+| `debug crypto isakmp` | privileged | router, switch | Report the IKE exchanges of this device |
+| `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
-| `debug ip rip` | privileged | router, switch | Report the RIP updates this router hears |
-| `debug ip packet` | privileged | router, switch | Report each packet this device routes |
-| `debug ip nat` | privileged | router, switch | Report new NAT translations |
-| `debug ip dhcp server events` | privileged | router, switch | Report the addresses this DHCP server hands out |
+| `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
+| `no debug ip rip events` | privileged | router, switch | Stop reporting RIP route events |
 | `no debug ip packet` | privileged | router, switch | Stop reporting packets |
+| `no debug ip packet ACL` | privileged | router, switch | Stop reporting packets |
 | `no debug ip nat` | privileged | router, switch | Stop reporting NAT |
+| `no debug ip nat detailed` | privileged | router, switch | Stop reporting detailed NAT |
 | `no debug ip dhcp server events` | privileged | router, switch | Stop reporting DHCP |
+| `no debug eigrp packets` | privileged | router, switch | Stop reporting EIGRP packets |
+| `no debug eigrp fsm` | privileged | router, switch | Stop reporting EIGRP route computations |
+| `no debug eigrp neighbors` | privileged | router, switch | Stop reporting EIGRP neighbours |
+| `no debug arp` | privileged | router, switch | Stop reporting ARP |
+| `no debug spanning-tree events` | privileged | router, switch | Stop reporting spanning-tree events |
+| `no debug spanning-tree bpdu` | privileged | router, switch | Stop reporting BPDUs |
+| `no debug spanning-tree root` | privileged | router, switch | Stop reporting root changes |
+| `no debug cdp packets` | privileged | router, switch | Stop reporting CDP packets |
+| `no debug cdp events` | privileged | router, switch | Stop reporting CDP events |
+| `no debug lldp` | privileged | router, switch | Stop reporting LLDP |
+| `no debug ppp negotiation` | privileged | router, switch | Stop reporting PPP negotiation |
+| `no debug ppp authentication` | privileged | router, switch | Stop reporting PPP authentication |
+| `no debug ppp packet` | privileged | router, switch | Stop reporting PPP frames |
+| `no debug pppoe events` | privileged | router, switch | Stop reporting PPPoE events |
+| `no debug pppoe packets` | privileged | router, switch | Stop reporting PPPoE frames |
+| `no debug ip http` | privileged | router, switch | Stop reporting web requests |
+| `no debug standby` | privileged | router, switch | Stop reporting HSRP |
+| `no debug vrrp` | privileged | router, switch | Stop reporting VRRP |
+| `no debug ip routing` | privileged | router, switch | Stop reporting route changes |
+| `no debug ntp events` | privileged | router, switch | Stop reporting NTP |
+| `no debug ntp packets` | privileged | router, switch | Stop reporting NTP |
+| `no debug snmp packets` | privileged | router, switch | Stop reporting SNMP |
+| `no debug dot1x events` | privileged | router, switch | Stop reporting 802.1X |
+| `no debug dot1x packets` | privileged | router, switch | Stop reporting 802.1X |
+| `no debug ip ssh` | privileged | router, switch | Stop reporting SSH |
+| `no debug crypto isakmp` | privileged | router, switch | Stop reporting ISAKMP |
+| `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
 | `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
 | `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
@@ -741,8 +816,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip eigrp neighbors` | user, privileged | router, switch | EIGRP neighbours |
 | `show ip eigrp topology` | user, privileged | router, switch | Successors and feasible successors |
 | `show ip eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP |
-| `debug eigrp packets` | privileged | router, switch | Report the EIGRP hellos this router hears |
-| `no debug eigrp packets` | privileged | router, switch | Stop reporting EIGRP hellos |
 | `router bgp <1-4294967295>` | config | router, switch | Start or configure BGP in this autonomous system |
 | `no router bgp <1-4294967295>` | config | router, switch | Stop BGP |
 | `bgp router-id A.B.C.D` |  | router, switch | Set the BGP router id |
