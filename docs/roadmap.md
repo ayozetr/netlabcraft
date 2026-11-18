@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (the beta gate counts the 63 numbered labs and 19 over MCP: labs 61 to 72) · also merged with minor (consistency pass: the beta gate counts the 48 numbered labs and 16 over MCP, the current focus lists gaps 1 to 16, the packaging hold wording dropped) · earlier: minor (BGP session passwords, a route map on `default-originate` and lab 47) · also merged with minor (OSPF stub, NSSA and virtual-link areas, LSA ages and lab 45) · also merged with minor (route tags and BGP peer groups, lab 46) · also merged with minor (PPPoE on routers and lab 43) · also merged with minor (wireless security and lab 44) · earlier: minor (real PPPoE frames and lab 41) · earlier: minor (BGP route reflectors, confederations and lab 42) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (port mirroring and lab 38) · earlier: minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (consistency pass: the beta gate counts the 48 numbered labs and 16 over MCP, the current focus lists gaps 1 to 16, the packaging hold wording dropped) · earlier: minor (BGP session passwords, a route map on `default-originate` and lab 47) · also merged with minor (OSPF stub, NSSA and virtual-link areas, LSA ages and lab 45) · also merged with minor (route tags and BGP peer groups, lab 46) · also merged with minor (PPPoE on routers and lab 43) · also merged with minor (wireless security and lab 44) · earlier: minor (real PPPoE frames and lab 41) · earlier: minor (BGP route reflectors, confederations and lab 42) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (port mirroring and lab 38) · earlier: minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -53,10 +53,10 @@ the reference app:
 
 1. A CCNA-style lab book (VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch
    security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): **met**.
-   [docs/labs/](labs/README.md) holds 63 numbered original labs (4 for CCNA 1, 24 for CCNA 2, 32 for
-   CCNA 3, one wireless-security lab for both of the first two and two board-programming labs, counted by the course column of
-   the table; 19 are troubleshooting labs and 6 labs on reading output) and one unnumbered cellular lab; each one's blocks run as
-   written in `crates/engine/tests/lab_book.rs`, and 19 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
+   [docs/labs/](labs/README.md) holds 49 numbered original labs (4 for CCNA 1, 17 for CCNA 2, 27 for
+   CCNA 3 and one wireless-security lab for both of the first two, counted by the course column of
+   the table; 11 are troubleshooting labs and 2 inspection labs) and one unnumbered cellular lab; each one's blocks run as
+   written in `crates/engine/tests/lab_book.rs`, and 16 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
    turned up landed with regression tests (M8.1).
 2. Activities with scoring: met.
 3. Spanish interface: met (every window, tab and page, checked by tests).
@@ -69,7 +69,6 @@ the reference app:
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-18 | minor | Labs 61 to 72 join the lab book: the beta gate counts 63 numbered labs (4, 24 and 32 by course, and three follow-ups) and 19 over MCP. The console has a `debug` framework. |
 | 2026-11-17 | minor | Consistency pass: the beta gate counts the 48 numbered labs (4, 17 and 26 by course) and 16 over MCP, the current focus lists gaps 1 to 16, and the packaging hold wording is dropped (packages are built). |
 | 2026-11-16 | minor | BGP session passwords and a route map on `default-originate`, and lab 47 join the lab book (47 labs). |
 | 2026-11-16 | minor | OSPF NSSA and virtual-link areas, LSA sequence numbers and ages, and lab 45 (OSPF stub, NSSA and virtual-link areas) join the lab book (45 labs, 16 over MCP); the gaps table's item 1 narrowed. |

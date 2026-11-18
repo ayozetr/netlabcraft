@@ -45,6 +45,7 @@ mod routing;
 mod security;
 mod span;
 mod stp_views;
+mod sweep;
 mod swroute;
 mod troubleshoot;
 

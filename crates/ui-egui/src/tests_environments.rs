@@ -256,6 +256,31 @@ mod t {
     }
 
     #[test]
+    fn custom_environment_defaults_and_shows_have_their_controls() {
+        let mut h = harness("iot");
+        h.state_mut().open_environments();
+        h.state_mut().ui.env_ui.edit = true;
+        h.state_mut().ui.env_ui.tab = Tab::Advanced;
+        h.run_steps(3);
+        let place = current_place(h.state());
+        click(&mut h, Role::Button, "Desert");
+        assert_eq!(h.state().session.topology.place_env(place).map(|e| e.name.clone()), Some("Desert".to_string()));
+        click(&mut h, Role::Button, "Show Only Actives");
+        let hidden = &h.state().ui.env_ui.hidden;
+        assert!(!hidden.contains("humidity") && hidden.contains("gravity"), "only what the place sets is shown");
+        assert!(h.state().session.topology.env_hidden(place).is_some_and(|x| x.1.contains(&"gravity".to_string())), "and it is saved with the lab");
+        click(&mut h, Role::Button, "Show All");
+        assert!(h.state().session.topology.env_hidden(place).is_some_and(|x| x.1.is_empty()));
+        h.state_mut().ui.env_ui.custom_id = "wave".into();
+        h.state_mut().ui.env_ui.custom_formula = "hour * 2".into();
+        h.run_steps(2);
+        click(&mut h, Role::Button, "Add Variable");
+        assert!(h.state().session.topology.env_custom_read(place, "wave", 3_600).is_some_and(|r| r.value == 2.0));
+        assert!(h.state().ui.env_ui.custom_id.is_empty(), "the form is ready for the next one");
+        assert!(has(&h, "wave = hour * 2"));
+    }
+
+    #[test]
     fn the_location_list_is_the_tree_of_places() {
         let mut s = Session::new();
         s.execute("file.new", json!({"sample": "iot"})).unwrap();
