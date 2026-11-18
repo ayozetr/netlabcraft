@@ -960,6 +960,11 @@ pub struct DevState {
     pub debug_packet_acl: Option<String>,
     /// Messages waiting for the terminal-monitor sessions of this device.
     monitor: Vec<String>,
+    /// How many times SPF ran here (its database changed), when it last ran (simulated µs) and
+    /// the hold interval now in force (ms; see `timers throttle spf`).
+    pub spf_runs: u32,
+    pub spf_last_us: Option<u64>,
+    pub spf_hold_ms: u32,
     /// What each watched debug topic found at the last look (see `debug_watch.rs`).
     debug_prev: BTreeMap<DebugKind, BTreeMap<String, String>>,
     /// When a periodic debug topic last reported.
@@ -1188,6 +1193,8 @@ pub struct Sim {
     ospf: Option<ospf::OspfState>,
     /// The sequence numbers and ages of OSPF's LSAs.
     lsa_stamps: ospf_lsdb::Stamps,
+    /// What each router's database held when SPF last ran for it.
+    ospf_db_hash: BTreeMap<DeviceId, u64>,
     ospf6_for: u64,
     ospf6: Option<ospf6::Ospf6State>,
     eigrp6_for: u64,
@@ -2965,6 +2972,29 @@ impl Sim {
             let debug = self.state.get(&d.id).map_or((false, false, false, false), |s| {
                 (s.debug_on(DebugKind::Rip), s.debug_on(DebugKind::OspfHello), s.debug_on(DebugKind::OspfAdj), s.debug_on(DebugKind::OspfEvents))
             });
+            if ip.protocol == netlabcraft_wire::control::PROTO_OSPF && d.ospf.is_some() && self.debug_on(d.id, DebugKind::OspfPacket) {
+                let p = &ip.payload;
+                let kind = match p.get(1) {
+                    Some(1) => "hello",
+                    Some(2) => "database description",
+                    Some(3) => "link-state request",
+                    Some(4) => "link-state update",
+                    Some(5) => "link-state acknowledgement",
+                    _ => "packet of an unknown type",
+                };
+                let word = |at: usize| p.get(at..at + 4).and_then(|b| <[u8; 4]>::try_from(b).ok());
+                let rid = word(4).map_or("?".to_string(), |b| Ipv4Addr::from(b).to_string());
+                let area = word(8).map_or(0, u32::from_be_bytes);
+                let auth = p.get(14..16).and_then(|b| <[u8; 2]>::try_from(b).ok()).map_or(0, u16::from_be_bytes);
+                let text = format!(
+                    "{kind} from {} to {} on {}, {} bytes, router ID {rid}, area {area}, authentication type {auth}",
+                    ip.src,
+                    ip.dst,
+                    ifc.name,
+                    p.len()
+                );
+                self.debug_log(d.id, DebugKind::OspfPacket, &text);
+            }
             // Message-digest packets carry a sequence number that never goes back: one below the
             // highest heard from that sender under that key is a replay and is thrown away.
             if ip.protocol == netlabcraft_wire::control::PROTO_OSPF

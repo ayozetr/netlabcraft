@@ -365,6 +365,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `show ip ospf maxage-database` | user, privileged | router, switch | LSAs this router still holds at MaxAge, withdrawn by their originator |
+| `timers throttle spf <0-600000> <0-600000> <0-600000>` |  | router, switch | Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to |
+| `no timers throttle spf` |  | router, switch | The default SPF delays again (50, 200 and 5000 ms) |
 | `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |
 | `no ip ospf authentication key-chain` | interface, subinterface | router, switch | Stop reading the keys from a key chain |
 | `key chain NAME` | config | router, switch | Create or edit a chain of keys with lifetimes |
@@ -655,8 +658,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
-| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
+| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
+| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
