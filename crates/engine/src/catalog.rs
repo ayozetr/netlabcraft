@@ -181,8 +181,16 @@ pub static CATALOG: &[CommandInfo] = &[
         "Login: 802.1X status",
         "",
         None,
-        r#"{"device": host, "port"?: "Wireless0"} → {"login": user or null, "validate", "server_name", "trusted_cas": [subjects], "associated": bool (through the login and the handshake), "server_certificate": null | {"presented", "subject", "issuer", "not_after", "chain_length", "verified", "error", "suite"}}: what the host saw of the RADIUS server's certificate in its PEAP tunnel (run `sim.advance` first: the login takes simulated time)"#,
+        r#"{"device": host, "port"?: "Wireless0" (a wired port gives {"wired": true, "login", "authenticated", "refused", "eapol_received", "eapol_sent"} instead)} → {"login": user or null, "validate", "server_name", "trusted_cas": [subjects], "associated": bool (through the login and the handshake), "server_certificate": null | {"presented", "subject", "issuer", "not_after", "chain_length", "verified", "error", "suite"}}: what the host saw of the RADIUS server's certificate in its PEAP tunnel (run `sim.advance` first: the login takes simulated time)"#,
         false
+    ),
+    c!(
+        "dot1x.supplicant",
+        "Wired 802.1X login",
+        "",
+        None,
+        r#"{"device": PC, laptop or server, "port"?: "FastEthernet0" (default: the one that has a login, else the first wired port), "user": "login name", "password"?: text, "validate"?: true|false (refuse a RADIUS server whose certificate is not trusted; the CAs are those of dot1x.trust), "clear"?: true (no login)} → {"port", "user"}: the login this wired port answers a switch's EAPOL identity request with (the same PEAP login a Wi-Fi client uses); a switch port with `authentication port-control auto` lets the host through once the Server's RADIUS service accepts it"#,
+        true
     ),
     c!(
         "vpnclient.status",
