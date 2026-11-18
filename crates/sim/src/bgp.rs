@@ -132,6 +132,9 @@ pub struct Peering {
     pub confed: bool,
     /// The TTL of what this router sends.
     pub ttl: u8,
+    /// The `local-as` this router really presents on this session: only an external session
+    /// between two ASes uses it, and a `dual-as` neighbour that kept the real AS number does not.
+    pub local_as: Option<conf::LocalAs>,
 }
 
 /// What the lab allows, before any time has passed: the sessions that can come up, why the
@@ -228,6 +231,8 @@ pub struct NeighborView {
     pub ebgp: bool,
     /// The session joins two member autonomous systems of a confederation.
     pub confed: bool,
+    /// The `local-as` this router presents to the neighbour (when the session uses it).
+    pub local_as: Option<conf::LocalAs>,
     pub error: Option<String>,
     pub received: usize,
     pub sent: usize,
@@ -428,9 +433,23 @@ fn attempt(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, a: &Device,
     // known by its identifier.
     let same_confed = ab.confed_id.is_some() && ab.confed_id == bb.confed_id;
     let (their_as, my_as) = if same_confed { (bb.asn, ab.asn) } else { (bb.outer_as(), ab.outer_as()) };
-    if n.remote_as != Some(their_as) || m.remote_as != Some(my_as) {
-        return Attempt::BadAs(bkey, n.remote_as != Some(their_as));
+    // `local-as` changes the AS number a router presents to an external neighbour; `dual-as` lets
+    // the neighbour use the real one as well.
+    let between_ases = !same_confed && ab.outer_as() != bb.outer_as();
+    let (la, lb) = (n.local_as.filter(|_| between_ases), m.local_as.filter(|_| between_ases));
+    let accepts = |remote: Option<u32>, real: u32, shown: Option<conf::LocalAs>| match shown {
+        Some(l) => remote == Some(l.asn) || (l.dual_as && remote == Some(real)),
+        None => remote == Some(real),
+    };
+    let (mine_ok, theirs_ok) = (accepts(n.remote_as, their_as, lb), accepts(m.remote_as, my_as, la));
+    if !mine_ok || !theirs_ok {
+        return Attempt::BadAs(bkey, !mine_ok);
     }
+    // A `dual-as` router whose neighbour was configured with the real AS number is seen under it.
+    let (la, lb) = (
+        la.filter(|l| !(l.dual_as && m.remote_as == Some(my_as) && m.remote_as != Some(l.asn))),
+        lb.filter(|l| !(l.dual_as && n.remote_as == Some(their_as) && n.remote_as != Some(l.asn))),
+    );
     let confed = same_confed && ab.asn != bb.asn;
     if confed && !(ab.confed_peers.contains(&bb.asn) && bb.confed_peers.contains(&ab.asn)) {
         return Attempt::No;
@@ -458,6 +477,7 @@ fn attempt(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, a: &Device,
         ebgp,
         confed,
         ttl: ttl(multihop(n)),
+        local_as: la,
     };
     let theirs = Peering {
         peer: a.id,
@@ -468,6 +488,7 @@ fn attempt(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, a: &Device,
         ebgp,
         confed,
         ttl: ttl(multihop(m)),
+        local_as: lb,
     };
     Attempt::Ok(Box::new(mine), Box::new(theirs), bkey)
 }
@@ -763,6 +784,16 @@ fn strip_private(path: Vec<u32>, n: &conf::Neighbor) -> Vec<u32> {
     if path.iter().all(|a| conf::is_private_as(*a)) { Vec::new() } else { path }
 }
 
+/// The AS numbers a router puts in front of the paths it sends to an external neighbour: its own AS,
+/// preceded by the `local-as` the session presents (alone with `replace-as`).
+fn ebgp_head(ab: &conf::Bgp, p: &Peering) -> Vec<u32> {
+    match p.local_as {
+        Some(l) if l.replace_as => vec![l.asn],
+        Some(l) => vec![l.asn, ab.outer_as()],
+        None => vec![ab.outer_as()],
+    }
+}
+
 /// What a router tells a neighbour about one of its best paths, if it tells it at all: the
 /// neighbour's outbound prefix list and route map decide, and the map's `set` lines change what
 /// is told (the weight stays here: it is never sent).
@@ -827,7 +858,7 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
     // A path this router originates names its own address, unless a map named another next hop.
     let own = if path.from.is_none() && !path.next_hop.is_unspecified() { path.next_hop } else { p.local };
     if external {
-        let mut as_path = vec![ab.outer_as()];
+        let mut as_path = ebgp_head(ab, p);
         as_path.extend(strip_private(tail, n));
         return Some(msg::PathAttrs {
             origin,
@@ -884,7 +915,7 @@ fn default_attrs(ab: &conf::Bgp, p: &Peering) -> msg::PathAttrs {
     let external = p.ebgp && !p.confed;
     msg::PathAttrs {
         origin: msg::ORIGIN_IGP,
-        as_path: if external { vec![ab.outer_as()] } else { Vec::new() },
+        as_path: if external { ebgp_head(ab, p) } else { Vec::new() },
         next_hop: p.local,
         med: if external { None } else { Some(0) },
         local_pref: if external { None } else { Some(ab.local_pref()) },
@@ -998,6 +1029,10 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
     // An external neighbour's local preference is ignored; internal and confederation neighbours carry it.
     let local_pref = sets.local_pref.unwrap_or_else(|| if external { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
     let mut as_path = sets.prepend.clone();
+    // The local AS goes in front of what an external neighbour sent, unless `no-prepend`.
+    if let Some(l) = p.local_as.filter(|l| !l.no_prepend && external) {
+        as_path.push(l.asn);
+    }
     as_path.extend(attrs.as_path.iter().copied());
     Some(Path {
         net,
@@ -1217,6 +1252,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 local: peering.map(|p| p.local),
                 ebgp: peering.is_some_and(|p| p.ebgp),
                 confed: peering.is_some_and(|p| p.confed),
+                local_as: peering.and_then(|p| p.local_as),
                 error,
                 received: rib.get(&d.id).map_or(0, |m| m.keys().filter(|(a, _)| *a == n.addr).count()),
                 sent,
@@ -1408,10 +1444,16 @@ impl Sim {
         }
         let Some(d) = t.device(key.0) else { return };
         let hold_secs = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).map_or(conf::HOLD_SECS, |n| timers_at(t, key, n).1);
-        let open = msg::Message::Open(msg::Open { asn: d.bgp.as_ref().map_or(0, |x| x.asn), hold_secs, bgp_id: router_id(d) });
+        let open = msg::Message::Open(msg::Open { asn: self.bgp_open_as(key, d), hold_secs, bgp_id: router_id(d) });
         let now = self.now;
         self.bgp_send(t, key, &open, now.saturating_add(1_000_000));
         self.bgp_send(t, key, &msg::Message::Keepalive, now.saturating_add(2_000_000));
+    }
+
+    /// The AS number a router puts in its OPEN: the `local-as` of the session, else its own.
+    fn bgp_open_as(&self, key: SessKey, d: &Device) -> u32 {
+        let own = d.bgp.as_ref().map_or(0, |x| x.asn);
+        self.bgp.analysis.peerings.get(&key).and_then(|p| p.local_as).map_or(own, |l| l.asn)
     }
 
     fn bgp_debug(&self, d: DeviceId) -> bool {
@@ -1732,6 +1774,7 @@ mod tests {
             ebgp: true,
             confed: false,
             ttl: 1,
+            local_as: None,
         };
         let mut learned = path("10.9.0.0/16", &[65_005]);
         learned.from = Some(Ipv4Addr::new(10, 0, 9, 9));
@@ -1772,6 +1815,7 @@ mod tests {
             ebgp: true,
             confed: false,
             ttl: 1,
+            local_as: None,
         };
         let attrs = msg::PathAttrs {
             origin: 0,
@@ -1789,6 +1833,45 @@ mod tests {
         assert_eq!((got.local_pref, got.weight, got.ebgp), (100, 0, true));
         let looped = msg::PathAttrs { as_path: vec![65_001, 65_002], ..attrs };
         assert!(import(&b, &m, &p, &looped, Ipv4Addr::new(1, 1, 1, 1), net, &[]).is_none());
+    }
+
+    #[test]
+    fn local_as_changes_the_path_sent_and_the_path_received() {
+        let a = speaker(65_001);
+        let ab = conf::Bgp::new(65_001);
+        let n = conf::Neighbor { remote_as: Some(65_100), ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 2)) };
+        let la = |no_prepend, replace_as| Some(conf::LocalAs { asn: 65_050, no_prepend, replace_as, dual_as: false });
+        let p = |local_as| Peering {
+            peer: DeviceId(2),
+            peer_addr: n.addr,
+            local: Ipv4Addr::new(10, 0, 0, 1),
+            out_iface: "g0/0".into(),
+            next_hop: n.addr,
+            ebgp: true,
+            confed: false,
+            ttl: 1,
+            local_as,
+        };
+        let mut learned = path("10.9.0.0/16", &[65_005]);
+        learned.from = Some(Ipv4Addr::new(10, 0, 9, 9));
+        let sent = |local_as| export(&a, &ab, &n, &p(local_as), &learned).unwrap().as_path;
+        assert_eq!(sent(None), vec![65_001, 65_005]);
+        assert_eq!(sent(la(false, false)), vec![65_050, 65_001, 65_005], "the local AS, then the real one");
+        assert_eq!(sent(la(true, false)), vec![65_050, 65_001, 65_005], "no-prepend only concerns what is received");
+        assert_eq!(sent(la(true, true)), vec![65_050, 65_005], "replace-as hides the real AS");
+        // Received: the local AS goes in front of what the neighbour sent, unless no-prepend.
+        let b = speaker(65_001);
+        let m = conf::Neighbor { remote_as: Some(65_100), ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 2)) };
+        let attrs = msg::PathAttrs { as_path: vec![65_100], next_hop: m.addr, ..msg::PathAttrs::default() };
+        let net: Ipv4Net = "10.1.0.0/16".parse().unwrap();
+        let got = |local_as| import(&b, &m, &p(local_as), &attrs, Ipv4Addr::new(1, 1, 1, 1), net, &[]).unwrap().as_path;
+        assert_eq!(got(None), vec![65_100]);
+        assert_eq!(got(la(false, false)), vec![65_050, 65_100]);
+        assert_eq!(got(la(true, false)), vec![65_100]);
+        // A session inside the AS ignores it.
+        let int = Peering { ebgp: false, ttl: 255, ..p(la(false, false)) };
+        let n_int = conf::Neighbor { remote_as: Some(65_001), ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 5, 2)) };
+        assert_eq!(import(&b, &n_int, &int, &attrs, Ipv4Addr::new(1, 1, 1, 1), net, &[]).map(|x| x.as_path), Some(vec![65_100]));
     }
 
     #[test]
@@ -1816,6 +1899,7 @@ mod tests {
             ebgp: true,
             confed: false,
             ttl: 1,
+            local_as: None,
         };
         let attrs = msg::PathAttrs {
             origin: 0,
@@ -1859,6 +1943,7 @@ mod tests {
             ebgp: true,
             confed: false,
             ttl: 1,
+            local_as: None,
         };
         (n, p)
     }
