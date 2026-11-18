@@ -92,6 +92,8 @@ labs! {
     lab_50_ospf_adjacency_states_and_dr_bdr => "50-ospf-adjacency-states-and-dr-bdr.md",
     lab_51_ospf_flooding_retransmission_and_lsa_ageing => "51-ospf-flooding-retransmission-and-lsa-ageing.md",
     lab_52_ospf_nssa_only_type_7_lsas => "52-ospf-nssa-only-type-7-lsas.md",
+    lab_53_ike_with_certificates_and_expiry => "53-ike-with-certificates-and-expiry.md",
+    lab_54_pki_enrolment_by_hand_and_ca_grant => "54-pki-enrolment-by-hand-and-ca-grant.md",
     lab_57_bgp_prefix_limits_and_timers => "57-bgp-prefix-limits-and-timers.md",
     lab_61_troubleshoot_site_to_site_vpn => "61-troubleshoot-site-to-site-vpn.md",
     lab_62_troubleshoot_remote_access_vpn => "62-troubleshoot-remote-access-vpn.md",
