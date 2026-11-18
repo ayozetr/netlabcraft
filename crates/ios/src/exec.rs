@@ -368,6 +368,9 @@ pub fn connect_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cl
             "Trying {dst}, {port} ...\n% Port {port} is no line: lines are reached at 2001, 2002 ... on a router with an octal card and a cable on that line"
         );
     };
+    if let Some(why) = t.run_problem(netlabcraft_model::cable::Cable::Octal, router, cable.device) {
+        return format!("Trying {dst}, {port} ...\n% Line {line}: the octal cable carries nothing ({why})");
+    }
     if let Err(e) = sim.tcp_connect(t, dev, dst, port) {
         let e = e.to_string();
         let name = t.device(router).map_or(String::new(), |d| d.name.clone());
@@ -4462,6 +4465,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::BgpMaximumPathsIbgp
         | Id::NoBgpMaximumPathsIbgp
         | Id::ShowIpBgpReceived
+        | Id::BgpTimers
+        | Id::NoBgpTimers
         | Id::ShowIpBgpAdvertised
         | Id::ShowIpBgpNeighborRoutes
         | Id::ShowIpBgpRegexp

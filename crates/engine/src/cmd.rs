@@ -1170,24 +1170,26 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             out.extend(t.consoles.iter().map(|c| {
                 let off = t.device(c.pc).is_some_and(|d| d.powered_off) || t.device(c.device).is_some_and(|d| d.powered_off);
                 let (host, dev, id) = if c.usb { (USB_PORT, USB_CONSOLE_PORT, "usb") } else { (RS232_PORT, CONSOLE_PORT, "console") };
+                let problem = t.run_problem(if c.usb { Cable::Usb } else { Cable::Console }, c.pc, c.device);
                 json!({
                     "a": format!("{} {host}", name(c.pc)),
                     "b": format!("{} {dev}", name(c.device)),
                     "cable": id,
                     "resolved": id,
-                    "up": !off,
-                    "problem": Value::Null,
+                    "up": !off && problem.is_none(),
+                    "problem": problem,
                 })
             }));
             out.extend(t.octals.iter().map(|o| {
                 let off = t.device(o.router).is_some_and(|d| d.powered_off) || t.device(o.device).is_some_and(|d| d.powered_off);
+                let problem = t.run_problem(Cable::Octal, o.router, o.device);
                 json!({
                     "a": format!("{} Async line {}", name(o.router), o.line),
                     "b": format!("{} {CONSOLE_PORT}", name(o.device)),
                     "cable": "octal",
                     "resolved": "octal",
-                    "up": !off,
-                    "problem": Value::Null,
+                    "up": !off && problem.is_none(),
+                    "problem": problem,
                 })
             }));
             out.extend(crate::board::links(s));
@@ -1205,6 +1207,10 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                     "{pc_name} has no console cable: join its {RS232_PORT} port to a router's or switch's {CONSOLE_PORT} port (link.add with \"cable\": \"console\")"
                 ))
             })?;
+            let usb = s.topology.consoles.iter().any(|c| c.pc == pc && c.usb);
+            if let Some(why) = s.topology.run_problem(if usb { Cable::Usb } else { Cable::Console }, pc, target) {
+                return Err(EngineError::Failed(why));
+            }
             let target_name = s.topology.device(target).map_or(String::new(), |d| d.name.clone());
             let prompt = prompt_of(s, target);
             let log = s.console(target).log.clone();
@@ -1217,6 +1223,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             let target = s.topology.octal_at_line(router, line).map(|o| o.device).ok_or_else(|| {
                 EngineError::Failed(format!("line {line} of {rname} has no octal cable (link.add with \"cable\": \"octal\")"))
             })?;
+            if let Some(why) = s.topology.run_problem(Cable::Octal, router, target) {
+                return Err(EngineError::Failed(why));
+            }
             let target_name = s.topology.device(target).map_or(String::new(), |d| d.name.clone());
             let prompt = prompt_of(s, target);
             let log = s.console(target).log.clone();
@@ -1649,6 +1658,7 @@ fn link_info_json(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) 
         "manual": len.manual,
         "up": up,
         "problem": netlabcraft_sim::cable_problem(t, l.a),
+        "reach": kind.reach().map(|r| json!({"max_m": r.meters, "standard": r.standard})),
         "why_down": if up { None } else { netlabcraft_sim::link_why_down(t, l) },
         "transceivers": transceivers,
         "budget": t.fiber_budget(l).map(|b| {

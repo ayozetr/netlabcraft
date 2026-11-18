@@ -321,6 +321,9 @@ pub struct Bgp {
     /// `bgp log-neighbor-changes`.
     #[serde(default)]
     pub log_neighbor_changes: bool,
+    /// `timers bgp KEEPALIVE HOLD`: the timers of every neighbour that has none of its own.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub timers: Option<(u16, u16)>,
     /// `bgp default local-preference N` (100 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_local_pref: Option<u32>,
@@ -372,6 +375,12 @@ pub struct Bgp {
 impl Bgp {
     pub fn new(asn: u32) -> Bgp {
         Bgp { asn, ..Bgp::default() }
+    }
+
+    /// The keepalive interval and hold time of a neighbour: its own, else the process's, else the
+    /// defaults.
+    pub fn timers_for(&self, n: &Neighbor) -> (u16, u16) {
+        n.timers.or(self.timers).unwrap_or((KEEPALIVE_SECS, HOLD_SECS))
     }
 
     pub fn neighbor(&self, addr: Ipv4Addr) -> Option<&Neighbor> {
