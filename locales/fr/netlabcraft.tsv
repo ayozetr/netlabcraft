@@ -2379,3 +2379,26 @@ furniture	Table	Table
 	{}, {} rows of hooks	{}, {} rangées de crochets
 	Hang on a Peg	Accrocher à un crochet
 	Take off the Peg	Décrocher
+	Create New…	Créer…
+	Create New City	Créer une ville
+	Create New Building	Créer un bâtiment
+	Create New Closet	Créer une armoire
+	Create New Generic Container	Créer un conteneur générique
+	Create New Rack	Créer une baie
+	Create New Table	Créer une table
+	Create New Shelf	Créer une étagère
+	Create New Inventory Shelf	Créer une étagère d'inventaire
+	Create New Cable Pegboard	Créer un panneau perforé pour câbles
+	Create New Industrial Control Panel (ICP)	Créer un panneau de commande industriel (ICP)
+	Switch to the Physical view first.	Passez d'abord à la vue physique.
+	Go to the Intercity map to create a city.	Allez à la carte Intercity pour créer une ville.
+	Open a city first.	Ouvrez d'abord une ville.
+	Open a building first.	Ouvrez d'abord un bâtiment.
+	Open a city or a building first.	Ouvrez d'abord une ville ou un bâtiment.
+	Open a wiring closet or a container first.	Ouvrez d'abord une armoire de brassage ou un conteneur.
+	No wiring closet yet: create one with +	Pas encore d'armoire de brassage : créez-en une avec +
+	Go to Working Closet	Aller à l'armoire de travail
+	Go to Working Closet ({})	Aller à l'armoire de travail ({})
+	Added {}.	{} ajouté.
+	Set as Working Closet	Définir comme armoire de travail
+	New Generic Container	Nouveau conteneur générique
