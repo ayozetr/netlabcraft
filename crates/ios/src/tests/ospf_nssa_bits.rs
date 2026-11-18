@@ -92,3 +92,28 @@ fn the_translate_option_is_checked() {
     assert!(lab.try_run(r2, "area 1 nssa no-summary translate type7 always").is_empty());
     assert!(lab.run(r2, "do show running-config").contains(" area 1 nssa no-summary translate type7 always"));
 }
+
+#[test]
+fn nssa_only_keeps_a_redistributed_route_inside_the_area() {
+    let (mut lab, r1, _r2, r3, _r4) = nssa();
+    assert!(lab.run(r1, "show ip ospf database external").contains("192.168.50.0"));
+    lab.run(r3, "conf t\nrouter ospf 1\nredistribute static subnets nssa-only\nend");
+    lab.sim.run_for(&lab.t, 10_000_000);
+    assert!(lab.run(r3, "show running-config").contains("redistribute static subnets nssa-only"));
+    let t7 = lab.run(r3, "show ip ospf database nssa-external");
+    assert!(t7.contains("192.168.50.0") && t7.contains("P bit clear"), "{t7}");
+    let t5 = lab.run(r1, "show ip ospf database external");
+    assert!(!t5.contains("192.168.50.0"), "{t5}");
+    // Without the option it is translated again.
+    lab.run(r3, "conf t\nrouter ospf 1\nredistribute static subnets\nend");
+    lab.sim.run_for(&lab.t, 10_000_000);
+    assert!(lab.run(r1, "show ip ospf database external").contains("192.168.50.0"));
+}
+
+#[test]
+fn nssa_only_on_the_default_route_is_kept_and_shown() {
+    let (mut lab, _r1, r2, _r3, _r4) = nssa();
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 nssa default-information-originate nssa-only\nend");
+    assert!(lab.run(r2, "show running-config").contains(" area 1 nssa default-information-originate nssa-only"));
+    assert!(lab.run(r2, "show ip ospf").contains("nssa-only: P bit clear"));
+}
