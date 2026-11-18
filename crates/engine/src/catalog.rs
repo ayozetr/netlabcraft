@@ -971,7 +971,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Cable length",
         "",
         None,
-        r#"{"device", "port": "interface", "meters": 1-20000000 | null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)"#,
+        r#"{"device", "port": "interface", "meters": 1-20000000 | null (the length the places give)} → {"meters", "manual", "problem"} (a cable longer than its medium reaches carries nothing: copper 100 m, multi-mode fiber 550 m, single-mode fiber 10 km, coaxial 500 m, phone line 5 km, serial 1200 m; console and octal cables 15 m and USB cables 5 m, which the Terminal and `link.list` check from where their ends stand)"#,
         true
     ),
     c!(
@@ -1144,7 +1144,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Cable information",
         "",
         None,
-        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}, "budget": null | {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" | "degraded" | "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)"#,
+        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "reach": {"max_m", "standard"} | null, "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}, "budget": null | {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" | "degraded" | "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)"#,
         false
     ),
     c!(

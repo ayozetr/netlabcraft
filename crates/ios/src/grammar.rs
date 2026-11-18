@@ -1044,6 +1044,8 @@ pub enum Id {
     BgpMaximumPathsIbgp,
     NoBgpMaximumPathsIbgp,
     ShowIpBgpReceived,
+    BgpTimers,
+    NoBgpTimers,
     ShowIpBgpAdvertised,
     ShowIpBgpNeighborRoutes,
     ShowIpBgpRegexp,
@@ -3898,6 +3900,14 @@ pub static SPECS: &[Spec] = &[
         [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D"), K("received-routes")],
         "What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound)"
     ),
+    spec!(
+        BgpTimers,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("timers"), K("bgp"), Arg("<0-65535>"), Arg("<0|3-65535>")],
+        "Keepalive interval and hold time of every neighbour that has none of its own (seconds)"
+    ),
+    spec!(NoBgpTimers, Modes::BGP, Modes::BOTH, [K("no"), K("timers"), K("bgp")], "Keepalive 60 and hold time 180 again"),
     spec!(
         ShowIpBgpAdvertised,
         EXECS,
