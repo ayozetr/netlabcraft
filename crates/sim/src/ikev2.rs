@@ -98,6 +98,8 @@ pub struct V2State {
     ah_pending: Option<(Vec<u8>, u32, u32, bool)>,
     /// With RSA signatures: the subject of the certificate the peer proved itself with.
     pub peer_cert: String,
+    /// The authorities the peer's certificate request named.
+    pub peer_wants: crate::pki::Wanted,
 }
 
 /// An IKE SA rekey request in flight: the new SPI, nonce and Diffie-Hellman value this router
@@ -540,11 +542,20 @@ fn auth_payloads(
     peer_nonce: &[u8],
     sk_p: &[u8],
     id_body: &[u8],
+    wanted: &crate::pki::Wanted,
 ) -> Result<Vec<Payload>, String> {
     if prof.rsa_local() {
-        let me = crate::pki::ike_identity(d, prof.trustpoint.as_deref()).ok_or("this router has no certificate with its key pair to sign with")?;
+        // The certificate the peer's request (CERTREQ, in IKE_SA_INIT) asks for, with the chain
+        // up to the authority this router holds.
+        let me = crate::pki::ike_identity_for(d, prof.trustpoint.as_deref(), wanted)
+            .ok_or("this router has no certificate with its key pair to sign with")?;
+        if !wanted.accepts(&me.chain) {
+            return Err(crate::pki::unwanted(&me));
+        }
         let sig = me.sign(&ikev2::signed_octets(prf, message, peer_nonce, sk_p, id_body)).ok_or("the key pair is too small to sign with")?;
-        return Ok(vec![Payload::cert(me.cert.der()), Payload::Auth { method: ikev2::AUTH_RSA_SIG, data: sig }]);
+        let mut out: Vec<Payload> = me.chain.iter().map(|c| Payload::cert(c.der())).collect();
+        out.push(Payload::Auth { method: ikev2::AUTH_RSA_SIG, data: sig });
+        return Ok(out);
     }
     let (my_key, _) = d.crypto.ikev2.keys_for(prof, peer).ok_or("the IKEv2 profile has no key for the peer")?;
     Ok(vec![Payload::Auth { method: ikev2::AUTH_SHARED_KEY, data: ikev2::psk_auth_with(prf, my_key.as_bytes(), message, peer_nonce, sk_p, id_body) }])
@@ -722,14 +733,12 @@ impl Sim {
         let dh_priv = dh_private(&seed, group);
         let ke = ke_public(group, &dh_priv, &seed);
         let ni = filler(&[&seed[..], b"ni"].concat(), 32);
-        let m = Message {
-            spi_i,
-            spi_r: [0; 8],
-            exchange: ikev2::IKE_SA_INIT,
-            flags: ikev2::FLAG_INITIATOR,
-            message_id: 0,
-            payloads: vec![Payload::Sa(proposals), Payload::Ke { group, data: ke.clone() }, Payload::Nonce(ni.clone())],
-        };
+        let mut payloads = vec![Payload::Sa(proposals), Payload::Ke { group, data: ke.clone() }, Payload::Nonce(ni.clone())];
+        // A profile that verifies the peer by certificate says which authorities it accepts.
+        if entry.ikev2_profile.as_deref().and_then(|n| d.crypto.ikev2.profile(n)).is_some_and(|p| p.rsa_remote()) {
+            payloads.push(Payload::cert_request(&crate::pki::request_hashes(d)));
+        }
+        let m = Message { spi_i, spi_r: [0; 8], exchange: ikev2::IKE_SA_INIT, flags: ikev2::FLAG_INITIATOR, message_id: 0, payloads };
         let raw = m.encode();
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         *sa = IpsecSa {
@@ -871,7 +880,13 @@ impl Sim {
             exchange: ikev2::IKE_SA_INIT,
             flags: ikev2::FLAG_RESPONSE,
             message_id: m.message_id,
-            payloads: vec![Payload::Sa(vec![chosen.clone()]), Payload::Ke { group, data: ke_r.clone() }, Payload::Nonce(nr.clone())],
+            payloads: {
+                let mut p = vec![Payload::Sa(vec![chosen.clone()]), Payload::Ke { group, data: ke_r.clone() }, Payload::Nonce(nr.clone())];
+                if d.crypto.ikev2.profiles.iter().any(|x| x.rsa_remote()) {
+                    p.push(Payload::cert_request(&crate::pki::request_hashes(d)));
+                }
+                p
+            },
         };
         let msg2 = reply.encode();
         let keys = Keys::derive_with(ike_suite(&chosen), &shared, &ni, &nr, &m.spi_i, &spi_r);
@@ -889,6 +904,7 @@ impl Sim {
             msg1: raw.to_vec(),
             msg2: msg2.clone(),
             keys: Some(keys),
+            peer_wants: crate::pki::Wanted::from_v2(&m.payloads),
             ..V2State::default()
         }));
         self.ike2_send(t, d, local, peer, msg2);
@@ -956,7 +972,8 @@ impl Sim {
         let my_id = entry.ikev2_profile.as_deref().and_then(|n| d.crypto.ikev2.profile(n)).and_then(|p| p.local_id).unwrap_or(local);
         let idi = id_body(my_id);
         let mut payloads = vec![Payload::IdI { kind: ikev2::ID_IPV4_ADDR, data: my_id.octets().to_vec() }];
-        match auth_payloads(d, prof, peer, keys.suite.prf, &v2.msg1, &nr, &keys.sk_pi, &idi) {
+        v2.peer_wants = crate::pki::Wanted::from_v2(&m.payloads);
+        match auth_payloads(d, prof, peer, keys.suite.prf, &v2.msg1, &nr, &keys.sk_pi, &idi, &v2.peer_wants) {
             Ok(p) => payloads.extend(p),
             Err(why) => {
                 self.ike2_fail(d, peer, why);
@@ -1103,7 +1120,7 @@ impl Sim {
         let my_id = profile.local_id.unwrap_or(local);
         let idr = id_body(my_id);
         let mut payloads = vec![Payload::IdR { kind: ikev2::ID_IPV4_ADDR, data: my_id.octets().to_vec() }];
-        match auth_payloads(d, profile, peer, keys.suite.prf, &v2.msg2, &v2.ni, &keys.sk_pr, &idr) {
+        match auth_payloads(d, profile, peer, keys.suite.prf, &v2.msg2, &v2.ni, &keys.sk_pr, &idr, &v2.peer_wants) {
             Ok(p) => payloads.extend(p),
             Err(why) => {
                 self.ike2_fail(d, peer, format!("{why}; answered AUTHENTICATION_FAILED"));

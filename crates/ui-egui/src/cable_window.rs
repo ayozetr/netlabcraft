@@ -7,6 +7,7 @@
 
 use egui::Ui;
 use netlabcraft_model::End;
+use netlabcraft_model::cable_ref::CableRef;
 use serde_json::json;
 
 use crate::i18n::{tl, tr, tr_any};
@@ -16,13 +17,13 @@ use crate::{PacketApp, physical};
 /// Selects the cable plugged into `end` and opens its window.
 pub(crate) fn open(app: &mut PacketApp, end: End) {
     let first = app.session.topology.link_at(end).map_or(end, |l| l.a);
-    app.ui.selected_cable = Some(first);
-    app.ui.cable_window = Some(first);
+    app.ui.selected_cable = Some(CableRef::Link(first));
+    app.ui.cable_window = Some(CableRef::Link(first));
 }
 
 /// Selects the cable plugged into `end` (the window stays as it is).
 pub(crate) fn select(app: &mut PacketApp, end: End) {
-    app.ui.selected_cable = Some(app.session.topology.link_at(end).map_or(end, |l| l.a));
+    app.ui.selected_cable = Some(CableRef::Link(app.session.topology.link_at(end).map_or(end, |l| l.a)));
 }
 
 /// The name of the port at `end`.
@@ -41,10 +42,10 @@ pub(crate) fn delete(app: &mut PacketApp, end: End) {
 
 /// Drops the selection and the window of a cable that is gone.
 pub(crate) fn forget(app: &mut PacketApp, first: End) {
-    if app.ui.selected_cable == Some(first) {
+    if app.ui.selected_cable == Some(CableRef::Link(first)) {
         app.ui.selected_cable = None;
     }
-    if app.ui.cable_window == Some(first) {
+    if app.ui.cable_window == Some(CableRef::Link(first)) {
         app.ui.cable_window = None;
     }
 }
@@ -145,7 +146,10 @@ fn mode_text(single: bool) -> &'static str {
 /// The Cable Properties window: kind, both ends, length, status and why it is down, the
 /// transceivers of a fiber cable, and Delete.
 pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
-    let Some(end) = app.ui.cable_window else { return };
+    let Some(CableRef::Link(end)) = app.ui.cable_window else {
+        app.ui.cable_window = None;
+        return;
+    };
     let Some(f) = facts(app, end) else {
         app.ui.cable_window = None;
         return;

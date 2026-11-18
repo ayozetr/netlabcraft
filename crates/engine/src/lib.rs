@@ -213,6 +213,7 @@ impl Session {
         }
         self.apply_sim_events();
         self.apply_pppoe_ended();
+        self.apply_sla();
         self.apply_track();
         // A new cable or trunk can join switches into a VTP domain.
         if netlabcraft_sim::vtp::sync(&mut self.topology) {
@@ -336,6 +337,16 @@ impl Session {
             }
         }
         if any {
+            self.changed();
+        }
+    }
+
+    /// Sends the IP SLA probes that are due; a changed outcome is picked up by the tracked
+    /// objects that follow it (next step).
+    fn apply_sla(&mut self) {
+        let changed =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| netlabcraft_sim::sla::step(&mut self.sim, &mut self.topology))).unwrap_or(false);
+        if changed {
             self.changed();
         }
     }
