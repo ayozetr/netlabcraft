@@ -55,6 +55,7 @@ mod routing;
 mod security;
 mod shallow_settings;
 mod span;
+mod srcguard;
 mod stp_views;
 mod sweep;
 mod swroute;
