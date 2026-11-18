@@ -27,6 +27,8 @@ enum Target {
 struct WebShell {
     app: PacketApp,
     inbox: Inbox,
+    /// Pictures the picker read, waiting for the next frame.
+    pictures: Arc<Mutex<Vec<Vec<u8>>>>,
     /// Unsaved changes, read by the page's `beforeunload` handler.
     dirty: Arc<AtomicBool>,
 }
@@ -92,6 +94,9 @@ impl eframe::App for WebShell {
                 Target::Environment(place) => self.app.environment_imported(place, &text),
             }
         }
+        for bytes in std::mem::take(&mut *self.pictures.lock()) {
+            self.app.image_picked(bytes);
+        }
         self.app.ui(ui);
         self.dirty.store(self.app.session.dirty, Ordering::Relaxed);
         for r in self.app.take_requests() {
@@ -153,6 +158,17 @@ impl eframe::App for WebShell {
                         }
                     });
                 }
+                UiRequest::PickImage => {
+                    let pictures = self.pictures.clone();
+                    let ctx = ui.ctx().clone();
+                    wasm_bindgen_futures::spawn_local(async move {
+                        if let Some(f) = rfd::AsyncFileDialog::new().add_filter("Picture", &["png", "jpg", "jpeg"]).pick_file().await {
+                            let bytes = f.read().await;
+                            pictures.lock().push(bytes);
+                            ctx.request_repaint();
+                        }
+                    });
+                }
                 UiRequest::PlaySound(bytes) => play_sound(&bytes),
                 // The browser keeps no folders or backups for the page.
                 UiRequest::PickFolder | UiRequest::Backup { .. } => {}
@@ -191,7 +207,7 @@ pub fn start() {
                     app.apply_theme(&cc.egui_ctx);
                     let dirty = Arc::new(AtomicBool::new(false));
                     guard_unsaved_changes(dirty.clone());
-                    Ok(Box::new(WebShell { app, inbox: Inbox::default(), dirty }))
+                    Ok(Box::new(WebShell { app, inbox: Inbox::default(), pictures: Arc::default(), dirty }))
                 }),
             )
             .await;
