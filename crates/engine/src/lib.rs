@@ -25,6 +25,7 @@ mod closet;
 mod cmd;
 mod controller;
 mod dialup;
+mod dot1x;
 mod envs;
 mod families;
 mod hardware;
@@ -41,7 +42,6 @@ mod pppoe;
 pub mod settings;
 mod traffic;
 mod voice;
-mod dot1x;
 mod vpnclient;
 
 pub mod sample;
@@ -58,6 +58,8 @@ mod tests_closet;
 mod tests_debug;
 #[cfg(test)]
 mod tests_dialup;
+#[cfg(test)]
+mod tests_dot1x;
 #[cfg(test)]
 mod tests_envcustom;
 #[cfg(test)]
@@ -99,7 +101,6 @@ mod tests_traffic;
 #[cfg(test)]
 mod tests_vpnclient;
 #[cfg(test)]
-mod tests_dot1x;
 mod tests_wifisec;
 
 pub use catalog::{CATALOG, CommandInfo};
