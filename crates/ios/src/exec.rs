@@ -21,6 +21,7 @@ pub(crate) mod families;
 pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
+pub(crate) mod knobs;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod netflow;
@@ -4532,6 +4533,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if warn { "Login is on but the line has no password yet: it won't ask for one until you set it.".into() } else { String::new() })
         }
         Id::Accepted => Ok("Accepted (not simulated yet).".into()),
+        Id::Knob | Id::NoKnob => knobs::command(&mut c, spec, &args),
         Id::BannerMotd => {
             let text = arg(0);
             let mut chars = text.chars();

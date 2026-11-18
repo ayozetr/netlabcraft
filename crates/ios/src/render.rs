@@ -44,6 +44,7 @@ pub fn running_config(d: &Device) -> String {
     if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() || s.len() != before {
         let _ = writeln!(s, "!");
     }
+    crate::exec::knobs::global_config(&mut s, d);
     if d.ipv6_routing {
         let _ = writeln!(s, "ipv6 unicast-routing\n!");
     }
@@ -375,6 +376,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::qos::service_policy_lines(&mut s, d, &p.name);
         crate::exec::security::iface_lines(&mut s, d, &p.name);
         crate::exec::netflow::iface_lines(&mut s, d, &p.name);
+        crate::exec::knobs::iface_lines(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -406,6 +408,7 @@ pub fn running_config(d: &Device) -> String {
             crate::exec::qos::service_policy_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::security::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::netflow::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::knobs::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
@@ -435,6 +438,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::fhrp::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
+        crate::exec::knobs::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
         let _ = writeln!(s, "!");
     }
@@ -705,6 +709,7 @@ pub fn running_config(d: &Device) -> String {
         if let Some(a) = &line.access_class {
             let _ = writeln!(s, " access-class {a} in");
         }
+        crate::exec::knobs::line_lines(&mut s, d, if name == "line con 0" { "con" } else { "vty" });
         let _ = writeln!(s, "!");
     }
     s.push_str("end");

@@ -18,6 +18,7 @@ mod error_counters;
 mod families;
 mod inspections;
 mod interface_counters;
+mod knobs;
 mod ipsec_crypto;
 mod leftovers;
 mod line_protocol;

@@ -3522,6 +3522,9 @@ impl Sim {
             let (pool, allowed) = Sim::fw_dhcp_pool(d, ifc)?;
             (pool, Some(allowed))
         } else {
+            if d.knobs.is_off("service dhcp") {
+                return Err("the DHCP service is turned off (no service dhcp)".to_string());
+            }
             let p = d
                 .dhcp_pools
                 .iter()
