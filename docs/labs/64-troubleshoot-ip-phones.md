@@ -7,8 +7,8 @@
 - Build a small call-control setup: a PoE switch with a data VLAN and a voice VLAN, a router that
   hands out addresses (with the call server's address in option 150) and serves as the call
   server (`telephony-service`, `ephone-dn`, `auto assign`).
-- Find two reasons a phone does not register: it is in the wrong VLAN and never learns where the
-  call server is, and the call server is told to accept one phone only.
+- Find two reasons a phone does not register: its port names a voice VLAN that does not exist, so
+  it never gets an address, and the call server is told to accept one phone only.
 - Read what the phone says (`phone.status`), what the call server says (`show ephone`,
   `show ephone-dn`, `show telephony-service`), and place a call.
 
@@ -42,8 +42,9 @@ link.add {"a": "Phone2", "a_port": "fa0", "b": "S1", "b_port": "fa0/2"}
 
 ## Part 1 — The network, with two mistakes in it
 
-The switch is configured from a note that forgot the voice VLAN on Fa0/2. The router is set
-up to accept one phone, which is a left-over of a first test.
+The switch is configured from a note with a typo: Fa0/2's voice VLAN is written 101, and the
+voice VLAN is 100. The router is set up to accept one phone, which is a left-over of a first
+test.
 
 ```console S1
 enable
@@ -60,6 +61,7 @@ switchport voice vlan 100
 interface fa0/2
 switchport mode access
 switchport access vlan 10
+switchport voice vlan 101
 interface g0/1
 switchport mode trunk
 end
@@ -104,22 +106,20 @@ end
 ipconfig /renew
 ```
 
-```console Phone2
-ipconfig /renew
-```
-
 ```lab
 sim.advance {"seconds": 5}
 ```
 
-## Part 2 — Phone2: in the wrong VLAN
+## Part 2 — Phone2: a voice VLAN that does not exist
 
-Phone1 registered; Phone2 did not.
+Phone1 registered; Phone2 did not, and it cannot even get an address.
 
 ```verify
 run phone.status {"device": "Phone1"}
   expect: "registered":true
   expect: "number":"1001"
+Phone2> ipconfig /renew
+  expect: DHCP failed
 run phone.status {"device": "Phone2"}
   expect: "registered":false
 R1# show ephone
@@ -129,24 +129,24 @@ R1# show ephone
 ```
 
 A phone that does not register is either not reaching the call server or being refused by
-it. The call server has not refused anything (there is no message), so start from what the
-phone has: its address and where it was told to register.
+it. The call server has not refused anything (there is no message), and the phone has no
+address, so the problem is before DHCP: the phone's own frames. The phone says which VLAN it
+tags its traffic with, and the switch says what the port expects.
 
 ```verify
-run phone.status {"device": "Phone2"}
-  expect: "voice_vlan":null
 run phone.status {"device": "Phone1"}
   expect: "voice_vlan":100
+run phone.status {"device": "Phone2"}
+  expect: "voice_vlan":101
 S1# show interfaces fa0/1 switchport
   expect: Voice VLAN: 100
 S1# show interfaces fa0/2 switchport
-  reject: Voice VLAN
+  expect: Voice VLAN: 101 (not in the VLAN database)
 ```
 
-Phone1's port has a voice VLAN and Phone2's has none: Phone2 sends its frames untagged into
-the data VLAN, where the DHCP pool has no option 150, so it has an address and no call server.
-Give the port the voice VLAN, and renew the phone's address, because it learns the call server
-only when it asks DHCP again.
+Phone1's port names the voice VLAN, which exists. Phone2's port names VLAN 101, which the
+switch does not have: the phone tags its frames for a VLAN that is not there, and the switch
+drops them. Fix the number and let the phone ask DHCP again.
 
 ```console S1
 configure terminal
@@ -155,11 +155,7 @@ switchport voice vlan 100
 end
 ```
 
-A phone that already holds an address asks the server that gave it, which is not on the
-voice VLAN: let go of the address first.
-
 ```console Phone2
-ipconfig /release
 ipconfig /renew
 ```
 
@@ -190,7 +186,6 @@ end
 ```
 
 ```console Phone2
-ipconfig /release
 ipconfig /renew
 ```
 
@@ -231,6 +226,7 @@ run phone.hangup {"device": "Phone1"}
 
 1. What is the difference between a phone that does not register and says nothing, and one that
    is refused and says so? Which one is a network problem?
-2. Why must the phone ask DHCP again after the voice VLAN is fixed?
+2. Why must the phone ask DHCP again after the voice VLAN is fixed, and what does it learn from
+   DHCP besides its address?
 3. What does `auto assign 1 to 4` save you from typing, and what does it not decide?
 4. A third phone is added to Fa0/3. Which of the two limits you found would it meet first?
