@@ -875,7 +875,7 @@ fn ospf_by_typing() {
         assert!(db.iter().any(|x| x.contains(want)), "{want}: {db:#?}");
     }
     assert_eq!(db.len(), 10, "{db:#?}");
-    assert!(lab.try_run(r1, "debug ip ospf bogus").contains("adj, events or hello"));
+    assert!(lab.try_run(r1, "debug ip ospf bogus").contains("lsa-generation, flood or packet"));
     lab.run(r1, "no debug ip ospf");
     assert!(lab.run(r1, "show debugging").contains("No debugging"));
     lab.try_run(r1, "conf t");

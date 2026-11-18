@@ -131,11 +131,10 @@ fn the_lsa_debugs_report_what_is_originated_flooded_and_heard() {
     // The flush is reported too.
     lab.run(r1, "conf t\nrouter ospf 1\nno redistribute static\nend");
     lab.sim.run_for(&lab.t, 1_000_000);
-    assert!(
-        lab.run(r1, "show logging")
-            .contains("OSPF LSA debug: external LSA 192.168.50.0 advertised by 1.1.1.1 withdrawn: flushed with the age MaxAge")
-    );
-    assert!(lab.run(r3, "show logging").contains("OSPF flood debug: external LSA 192.168.50.0 advertised by 1.1.1.1 received with MaxAge"));
+    let own = lab.run(r1, "show logging");
+    assert!(own.contains("OSPF LSA debug: external LSA 192.168.50.0 advertised by 1.1.1.1 withdrawn: flushed with the age MaxAge"), "{own}");
+    let far = lab.run(r3, "show logging");
+    assert!(far.contains("OSPF flood debug: external LSA 192.168.50.0 advertised by 1.1.1.1 received with MaxAge"), "{far}");
     lab.run(r1, "undebug all");
     assert!(lab.run(r1, "show debugging").contains("No debugging"));
     assert!(lab.try_run(r1, "debug ip ospf nonsense").starts_with("% "));
