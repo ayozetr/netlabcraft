@@ -36,6 +36,10 @@ the PNGs as the `snapshots` artifact. It is not a gate. Start it with **Actions 
 the label `snapshots` on a pull request, or by pushing a branch named `visual/*`; download the artifact from the run page
 or with `gh run download <run-id> -n snapshots -D <directory outside the repository>`. The PNGs are never committed.
 
+The same workflow has a `readme` job that renders the seven README screenshots of `docs/images` with the recipes in
+`.github/scripts/readme-images.sh` (artifact `readme-images`). To refresh them, run it, look at every PNG, then optimise
+and strip the metadata (`optipng -strip all`) before committing; the closet picture is `closet-light.png` of the `snapshots` artifact.
+
 ## Adding a debug topic
 
 The `debug` commands share one framework (`crates/sim/src/debug.rs`, `crates/ios/src/exec/debug.rs`): each device holds a set

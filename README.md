@@ -25,7 +25,7 @@
 <br>
 
 <p align="center">
-  <img src="docs/images/hero-multilayer.png" alt="NetLabCraft's main window: a multilayer switch in the middle routes between four PCs in two VLANs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
+  <img src="docs/images/hero-multilayer.png" alt="NetLabCraft's main window: a multilayer switch in the middle serves four PCs and reaches a router and a server above it; menus and two toolbars on top, the device box, scenario list and PDU table at the bottom" width="100%">
   <br><sub><b>Inter-VLAN routing on a multilayer switch</b>: one of the thirty-three sample labs (<code>File → New → Sample</code>), built entirely from NetLabCraft commands.</sub>
 </p>
 
@@ -46,16 +46,19 @@
 
 <table>
 <tr>
-<td width="50%" valign="top"><img src="docs/images/router-cli.png" alt="A router window on its CLI tab: enable, show ip ospf neighbor listing two neighbours in FULL state, and show ip route ospf listing three OSPF routes" width="100%"><p align="center"><sub><b>The console.</b> User, privileged and configuration modes, abbreviations, <code>?</code> help, Tab completion, history and debugs.</sub></p></td>
+<td width="50%" valign="top"><img src="docs/images/router-cli.png" alt="A router window on its CLI tab: enable, show ip ospf neighbor listing two neighbours in FULL state, and show ip interface brief listing three interfaces with addresses, all up" width="100%"><p align="center"><sub><b>The console.</b> User, privileged and configuration modes, abbreviations, <code>?</code> help, Tab completion, history and debugs.</sub></p></td>
 <td width="50%" valign="top"><img src="docs/images/simulation-mode.png" alt="Simulation mode: an envelope travels along the cable between a switch and a router, and the Simulation Panel on the right lists ARP events with their time, last device, device and type" width="100%"><p align="center"><sub><b>Simulation mode.</b> Every frame in an event list, replayed on the canvas, decoded layer by layer and exportable to pcap.</sub></p></td>
 </tr>
 <tr>
-<td width="50%" valign="top"><img src="docs/images/home-router.png" alt="A home router's window on its Home Router page: LAN address and DHCP range, static Internet settings and the Wi-Fi network; beside it the router, a PC, two Wi-Fi laptops linked by dashed lines and an ISP router" width="100%"><p align="center"><sub><b>Wireless.</b> Home routers with DHCP, NAT and Wi-Fi out of the box, access points, Wi-Fi laptops with WPA2.</sub></p></td>
-<td width="50%" valign="top"><img src="docs/images/activity.png" alt="The Instructions window of a graded activity: the title Your first router, numbered steps, Completion 0% of 9 points, the time left and the Check Results and Reset Activity buttons" width="100%"><p align="center"><sub><b>Activities.</b> Instructions, checks worth points, hints, a time limit and a password lock, built with the Activity Wizard.</sub></p></td>
+<td width="50%" valign="top"><img src="docs/images/home-router.png" alt="A home router's window on its Home Router page: LAN address and DHCP range, static Internet settings and the Wi-Fi network; beside it the provider's router above the home router, with a PC below it and two Wi-Fi laptops linked by dashed lines" width="100%"><p align="center"><sub><b>Wireless.</b> Home routers with DHCP, NAT and Wi-Fi out of the box, access points, Wi-Fi laptops with WPA2.</sub></p></td>
+<td width="50%" valign="top"><img src="docs/images/activity.png" alt="The Instructions window of a graded activity: the title Your first router, numbered steps, Completion 0% of 10 points, the time left, and the Check Results, Reset Activity, Compare, Connectivity Tests and Save results buttons" width="100%"><p align="center"><sub><b>Activities.</b> Instructions, checks worth points, hints, a time limit and a password lock, built with the Activity Wizard.</sub></p></td>
 </tr>
 <tr>
 <td width="50%" valign="top"><img src="docs/images/pc-ip-configuration.png" alt="A PC's Desktop with the IP Configuration app open: IPv4 settings on top, and IPv6 set to Automatic with an address learned from the router, the link-local address and the router's link-local address as gateway" width="100%"><p align="center"><sub><b>PC desktop.</b> IP Configuration with DHCP, static and IPv6 autoconfiguration; Command Prompt and Web Browser.</sub></p></td>
 <td width="50%" valign="top"><img src="docs/images/serial-wan.png" alt="Two routers joined by a red serial cable with a zigzag in the middle and a small clock next to the DCE end, each with a PC below it" width="100%"><p align="center"><sub><b>Serial WAN links.</b> DCE and DTE ends, clock rate, HDLC or PPP with PAP and CHAP; the clock marks the DCE end.</sub></p></td>
+</tr>
+<tr>
+<td colspan="2" valign="top" align="center"><img src="docs/images/wiring-closet.png" alt="The Physical workspace inside a wiring closet: a rack with a router, switches, a firewall and a copper patch panel, cabled in green, orange and black, beside a shelf holding a server, an access point, a cable modem, a DSL modem and a home router, and a table below" width="66%"><p align="center"><sub><b>Physical workspace.</b> Cities, buildings and wiring closets with racks, shelves, tables, patch panels and cables between ports.</sub></p></td>
 </tr>
 </table>
 
