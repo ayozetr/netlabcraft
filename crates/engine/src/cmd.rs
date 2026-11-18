@@ -1080,6 +1080,25 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 return octal_add(s, a, b, p);
             }
             let named = [opt_str(p, "a_port"), opt_str(p, "b_port")];
+            let usb_named = named.into_iter().flatten().any(|n| netlabcraft_model::usb::port_index(n).is_some());
+            // A USB cable between a host and a printer, a board, a stick…: a data cable.
+            if (cable == Cable::Usb || (cable == Cable::Auto && usb_named))
+                && let Some((host, dev)) = s.topology.usb_pair(a, b)
+            {
+                let host_port = if host == a { opt_str(p, "a_port") } else { opt_str(p, "b_port") }.and_then(netlabcraft_model::usb::port_index);
+                let mut t = s.topology.clone();
+                let c = t.connect_usb_data(host, dev, host_port)?;
+                s.checkpoint();
+                s.topology = t;
+                s.changed();
+                let name = |id| s.topology.device(id).map_or(String::new(), |d| d.name.clone());
+                return Ok(json!({
+                    "a": format!("{} USB{}", name(c.host), u16::from(c.host_port) + 1),
+                    "b": format!("{} {USB_PORT}", name(c.device)),
+                    "cable": "usb",
+                    "resolved": "usb",
+                }));
+            }
             let console_named = named.into_iter().flatten().any(is_console_port_name);
             if cable.is_console_like() || console_named {
                 if a == b {
@@ -1184,6 +1203,18 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                     "problem": problem,
                 })
             }));
+            out.extend(t.usbs.iter().map(|c| {
+                let off = t.device(c.host).is_some_and(|d| d.powered_off) || t.device(c.device).is_some_and(|d| d.powered_off);
+                let problem = t.run_problem(Cable::Usb, c.host, c.device);
+                json!({
+                    "a": format!("{} USB{}", name(c.host), u16::from(c.host_port) + 1),
+                    "b": format!("{} {USB_PORT}", name(c.device)),
+                    "cable": "usb",
+                    "resolved": "usb",
+                    "up": !off && problem.is_none(),
+                    "problem": problem,
+                })
+            }));
             out.extend(t.octals.iter().map(|o| {
                 let off = t.device(o.router).is_some_and(|d| d.powered_off) || t.device(o.device).is_some_and(|d| d.powered_off);
                 let problem = t.run_problem(Cable::Octal, o.router, o.device);
@@ -1241,6 +1272,19 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
                 && let Some(pin) = netlabcraft_model::board::find_pin(dev, str_param(p, "port")?)
             {
                 return crate::board::unwire(s, d, &pin);
+            }
+            if let Some(idx) = netlabcraft_model::usb::port_index(str_param(p, "port")?) {
+                // A USB device's one port, or the numbered port of a host that has a cable in it.
+                let device = match s.topology.usb_of_device(d) {
+                    Some(c) => Some(c.device),
+                    None => s.topology.usb_in_port(d, idx).map(|c| c.device),
+                };
+                if let Some(device) = device {
+                    s.checkpoint();
+                    s.topology.disconnect_usb_data(device);
+                    s.changed();
+                    return Ok(Value::Null);
+                }
             }
             if s.topology.octal_at_device(d).is_some() && s.topology.console_at(d).is_none() && is_console_port_name(str_param(p, "port")?) {
                 s.checkpoint();

@@ -209,6 +209,8 @@
 	Blue	Blau
 	Board MCU	Board MCU
 	Board SBC	Board SBC
+	USB Storage	USB-Speicher
+	USB stick with a small list of files: plug it into a PC, laptop, server, router or switch with a USB cable and copy files to and from it	USB-Stick mit einer kleinen Dateiliste: Mit einem USB-Kabel an einen PC, ein Notebook, einen Server, einen Router oder einen Switch anschließen und Dateien darauf und davon kopieren
 	Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.	Board1 führt ein BoardScript-Programm aus (Board1 > Programmierung): es liest Temp1 an Pin A0, schaltet Fan1 an Pin D0 über 28 Grad ein, lässt Light1 an D1 blinken und meldet den Messwert alle 2 s simulierter Zeit an den IoT-Dienst des Heim-Gateways. Den Messwert von Temp1 erhöhen (Temp1 > IoT), dann die Zeit vorspulen. Weitere Geräte mit dem Kabel IoT individuell anschließen.
 	Body (JSON or XML)	Inhalt (JSON oder XML)
 	Both router interfaces need their address and `no shutdown`.	Beide Router-Schnittstellen brauchen ihre Adresse und `no shutdown`.
@@ -1875,7 +1877,7 @@ event	write request for	Schreibanfrage für
 	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal	USB: vom USB-Port eines PCs oder Laptops zum USB-Konsolenport eines Routers oder Switches, für das Terminal des PCs
 	8-line async card	Asynchrone 8-Leitungs-Karte
 	Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)	Acht asynchrone Leitungen für ein Oktalkabel: jede Leitung führt zum Console-Port eines anderen Routers oder Switches (es sind Leitungen, keine Schnittstellen)
-	USB cable: click a PC or laptop (USB) and a router or switch (USB console).	USB-Kabel: Klicken Sie auf einen PC oder Laptop (USB) und einen Router oder Switch (USB-Konsole).
+	USB cable: click a PC or laptop (USB) and a router or switch (USB console), or a host and a printer, board or USB stick.	USB-Kabel: Klicke auf einen PC oder ein Notebook (USB) und einen Router oder Switch (USB-Konsole) oder auf einen Host und einen Drucker, ein Board oder einen USB-Stick.
 	Octal cable: click a router with an octal card, then a router or switch (Console).	Oktalkabel: Klicken Sie auf einen Router mit Oktalkarte, dann auf einen Router oder Switch (Console).
 	{} has no octal card or Console port.	{} hat weder eine Oktalkarte noch einen Console-Port.
 	{} has no USB port.	{} hat keinen USB-Port.

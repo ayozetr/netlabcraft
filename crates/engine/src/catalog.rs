@@ -1144,7 +1144,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Connect with a cable",
         "Insert",
         None,
-        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "console" | "straight-through" | "cross-over" | "fiber-single-mode" | "fiber-multi-mode" | "phone" | "coaxial" | "serial-dce" | "serial-dte" | "octal" | "iot-custom" | "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)"#,
+        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "console" | "straight-through" | "cross-over" | "fiber-single-mode" | "fiber-multi-mode" | "phone" | "coaxial" | "serial-dce" | "serial-dte" | "octal" | "iot-custom" | "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, or (a data cable) a host's USB port (PC, laptop, server: two each, router and switch: one) to a printer, a board, a USB stick, a tablet or a smartphone, the host's port named `USB1`, `USB2` in `a_port` or `b_port` (default: the first free one) and reaching 5 m, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)"#,
         true
     ),
     c!(
@@ -1152,7 +1152,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Remove cable",
         "Edit",
         None,
-        r#"{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}"#,
+        r#"{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable (a USB device's one port, or "USB1", "USB2" on a host), "Console" on the far device or "Async" on the card's router for an octal cable}"#,
         true
     ),
     c!(
@@ -1160,7 +1160,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "List cables",
         "",
         None,
-        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")"#,
+        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables and USB data cables "usb"; octal cables "octal")"#,
         false
     ),
     c!(
