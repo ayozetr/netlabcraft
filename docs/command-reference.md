@@ -1589,10 +1589,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `switchport port-security mac-address H.H.H` | interface | switch | Allow this address |
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
-| `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
+| `telnet A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with Telnet, by address or name |
 | `telnet A.B.C.D <port>` | user, privileged | router | Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it) |
 | `clear line <1-16>` | privileged | router | End the reverse Telnet session held on a line of an octal card |
-| `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
+| `ssh -l USER A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with SSH, by address or name |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
 | `ip ssh time-out <1-120>` | config | router, switch | Seconds an SSH login may take |
@@ -1682,6 +1682,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show spanning-tree mst <0-15>` | user, privileged | switch | One instance's tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
+| `ip verify source` | interface | switch | IP source guard: only addresses with a binding on this port may send |
+| `ip verify source port-security` | interface | switch | IP source guard that also checks the source MAC address against the binding |
+| `no ip verify source` | interface | switch | No IP source guard on this port |
+| `ip source binding H.H.H vlan <1-4094> A.B.C.D interface <interface>` | config | switch | A binding typed by hand, for a host that does not use DHCP |
+| `no ip source binding H.H.H vlan <1-4094>` | config | switch | Remove a binding typed by hand |
+| `show ip verify source` | user, privileged | switch | Ports with IP source guard and the addresses each lets through |
+| `show ip source binding` | user, privileged | switch | Every binding: learned with DHCP snooping, or typed |
 | `ip dhcp snooping` | config | switch | Turn DHCP snooping on (then name its VLANs) |
 | `no ip dhcp snooping` | config | switch | Turn DHCP snooping off |
 | `ip dhcp snooping vlan <1-4094>[,-]` | config | switch | VLANs DHCP snooping watches |
