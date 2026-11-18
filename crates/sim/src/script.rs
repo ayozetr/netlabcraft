@@ -539,12 +539,51 @@ pub struct Machine {
     pub line: usize,
     /// Steps taken since it started.
     pub steps: u64,
+    /// The program, when it is Python or JavaScript (`program` is then empty).
+    lang: Option<Box<crate::lang::Vm>>,
 }
 
 impl Machine {
     /// A machine about to run `program` at `now`.
     pub fn new(program: Program, now: u64) -> Machine {
-        Machine { program, pc: 0, vars: BTreeMap::new(), log: Vec::new(), state: RunState::Waiting(now), line: 1, steps: 0 }
+        Machine { program, pc: 0, vars: BTreeMap::new(), log: Vec::new(), state: RunState::Waiting(now), line: 1, steps: 0, lang: None }
+    }
+
+    /// A machine about to run a Python or JavaScript program at `now`.
+    pub fn new_lang(vm: crate::lang::Vm, now: u64) -> Machine {
+        Machine { lang: Some(Box::new(vm)), ..Machine::new(Program::default(), now) }
+    }
+
+    /// Runs a Python or JavaScript slice and takes what it did.
+    fn run_lang(&mut self, io: &mut dyn Io, now: u64) {
+        let Some(vm) = self.lang.as_mut() else { return };
+        let mut printed = Vec::new();
+        let result = vm.run(io, now, &mut printed);
+        self.line = vm.line;
+        self.steps = vm.steps;
+        self.vars = vm
+            .variables()
+            .into_iter()
+            .map(|(k, text)| {
+                let v = vm.is_whole(&k).map_or(Val::Text(text), Val::Int);
+                (k, v)
+            })
+            .collect();
+        for l in printed {
+            self.note(l);
+        }
+        match result {
+            crate::lang::Out::Sleep(us) => self.state = RunState::Waiting(now.saturating_add(us)),
+            crate::lang::Out::End => {
+                self.note("stopped: the program ended".into());
+                self.state = RunState::Stopped(None);
+            }
+            crate::lang::Out::Error(line, why) => {
+                let msg = format!("line {line}: {why}");
+                self.note(format!("stopped: {msg}"));
+                self.state = RunState::Stopped(Some(msg));
+            }
+        }
     }
 
     /// When it runs next, if it isn't stopped.
@@ -573,6 +612,10 @@ impl Machine {
     /// Runs from where it is until a `sleep`, the end, a `stop`, an error or the step cap.
     pub fn run(&mut self, io: &mut dyn Io, now: u64) {
         if self.due().is_none_or(|at| at > now) {
+            return;
+        }
+        if self.lang.is_some() {
+            self.run_lang(io, now);
             return;
         }
         let mut requests = 0usize;
