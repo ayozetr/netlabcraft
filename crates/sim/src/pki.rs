@@ -407,7 +407,68 @@ pub struct IkeIdentity {
     /// The trustpoint the certificate comes from.
     pub trustpoint: String,
     pub cert: Certificate,
+    /// What IKE sends: the certificate, then the CA certificate the trustpoint authenticated
+    /// (when it is another one), so that a peer that trusts only the root can verify it.
+    pub chain: Vec<Certificate>,
     key: RsaKey,
+}
+
+/// The authorities a peer's certificate request named: IKEv1 by the DER of their names, IKEv2 by
+/// the SHA-1 of their public keys. Empty when it named none (any certificate will do).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Wanted {
+    pub names: Vec<Vec<u8>>,
+    pub hashes: Vec<[u8; 20]>,
+}
+
+/// Most authorities taken from one peer's certificate request.
+const MAX_WANTED: usize = 32;
+
+impl Wanted {
+    /// From the CERTREQ payloads of an IKEv1 message.
+    pub fn from_v1(list: &[netlabcraft_wire::ike::Payload]) -> Wanted {
+        Wanted {
+            names: netlabcraft_wire::ike::cert_request_authorities(list).into_iter().take(MAX_WANTED).map(<[u8]>::to_vec).collect(),
+            hashes: Vec::new(),
+        }
+    }
+
+    /// From the CERTREQ payloads of an IKEv2 message.
+    pub fn from_v2(list: &[netlabcraft_wire::ikev2::Payload]) -> Wanted {
+        Wanted { names: Vec::new(), hashes: netlabcraft_wire::ikev2::cert_request_hashes(list) }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.names.is_empty() && self.hashes.is_empty()
+    }
+
+    /// Whether a chain is acceptable to the peer: it asked for nothing, or some certificate of
+    /// the chain is for, or was issued by, an authority it named.
+    pub fn accepts(&self, chain: &[Certificate]) -> bool {
+        self.is_empty()
+            || chain.iter().any(|c| {
+                self.names.iter().any(|n| n.as_slice() == c.issuer_der() || n.as_slice() == c.subject_der()) || self.hashes.contains(&c.key_hash())
+            })
+    }
+}
+
+/// The authorities this router trusts, as an IKEv1 request names them: the DER of each name.
+pub fn request_names(d: &Device) -> Vec<Vec<u8>> {
+    trust_anchors(d).iter().take(MAX_WANTED).map(|c| c.subject_der().to_vec()).collect()
+}
+
+/// The same as an IKEv2 request names them: the SHA-1 of each public key.
+pub fn request_hashes(d: &Device) -> Vec<[u8; 20]> {
+    trust_anchors(d).iter().take(MAX_WANTED).map(Certificate::key_hash).collect()
+}
+
+/// The reason an identity is refused when the peer asked for other authorities than the one
+/// that issued it.
+pub fn unwanted(me: &IkeIdentity) -> String {
+    format!(
+        "the peer asked (CERTREQ) for a certificate from other authorities than {}, which issued this router's certificate",
+        me.cert.issuer.text()
+    )
 }
 
 impl IkeIdentity {
@@ -421,17 +482,34 @@ impl IkeIdentity {
 /// named trustpoint, or of the first trustpoint whose certificate and key pair are both there
 /// and match.
 pub fn ike_identity(d: &Device, trustpoint: Option<&str>) -> Option<IkeIdentity> {
+    ike_identity_for(d, trustpoint, &Wanted::default())
+}
+
+/// [`ike_identity`] for a peer that asked for certificates from some authorities: with no
+/// trustpoint named, the first usable one that has such a certificate is chosen, and the first
+/// usable one when none has (the caller then finds the answer unacceptable).
+pub fn ike_identity_for(d: &Device, trustpoint: Option<&str>, wanted: &Wanted) -> Option<IkeIdentity> {
     let usable = |t: &Trustpoint| -> Option<IkeIdentity> {
         let cert = Certificate::from_pem(&t.certificate).ok()?;
         let key = load_key(d, &t.rsakeypair)?;
         if &cert.key != key.public() {
             return None;
         }
-        Some(IkeIdentity { trustpoint: t.name.clone(), cert, key })
+        let mut chain = vec![cert.clone()];
+        if let Ok(ca) = Certificate::from_pem(&t.ca_certificate)
+            && ca.der() != cert.der()
+        {
+            chain.push(ca);
+        }
+        Some(IkeIdentity { trustpoint: t.name.clone(), cert, chain, key })
     };
     match trustpoint {
         Some(n) => d.pki.trustpoint(n).and_then(usable),
-        None => d.pki.trustpoints.iter().find_map(usable),
+        None => {
+            let all: Vec<IkeIdentity> = d.pki.trustpoints.iter().filter_map(usable).collect();
+            let at = all.iter().position(|i| wanted.accepts(&i.chain)).unwrap_or(0);
+            all.into_iter().nth(at)
+        }
     }
 }
 
@@ -475,10 +553,14 @@ pub fn trusts(d: &Device, cert: &Certificate) -> bool {
     trust_anchors(d).iter().any(|a| a.der() == cert.der() || (a.ca && cert.issuer == a.subject && cert.signed_by(&a.key)))
 }
 
-/// The certificate [`ike_identity`] would sign with, found without loading the key (for checks
-/// of the configuration made on every packet).
-pub fn ike_certificate(d: &Device) -> Option<Certificate> {
-    d.pki.trustpoints.iter().filter(|t| d.pki.key(&t.rsakeypair).is_some()).find_map(|t| Certificate::from_pem(&t.certificate).ok())
+/// The certificate [`ike_identity`] would sign with towards `peer`, found without loading the
+/// key (for checks of the configuration made on every packet): of the certificates this device
+/// holds a key pair for, one the peer trusts when there is one (the peer's request names its
+/// authorities), else the first.
+pub fn ike_certificate_for(d: &Device, peer: &Device) -> Option<Certificate> {
+    let all: Vec<Certificate> =
+        d.pki.trustpoints.iter().filter(|t| d.pki.key(&t.rsakeypair).is_some()).filter_map(|t| Certificate::from_pem(&t.certificate).ok()).collect();
+    all.iter().find(|c| trusts(peer, c)).or_else(|| all.first()).cloned()
 }
 
 /// The address an IKE identification payload body (type, protocol, port, data) names, when it is

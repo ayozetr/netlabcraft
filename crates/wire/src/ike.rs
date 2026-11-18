@@ -122,6 +122,15 @@ impl Payload {
         Payload::Other(P_CERTREQ, vec![CERT_X509_SIGNATURE])
     }
 
+    /// A CERTREQ payload naming one acceptable authority (RFC 2408 §3.10, encoding 4): the DER
+    /// of its distinguished name.
+    pub fn cert_request_for(authority_dn: &[u8]) -> Payload {
+        let mut body = Vec::with_capacity(authority_dn.len() + 1);
+        body.push(CERT_X509_SIGNATURE);
+        body.extend_from_slice(authority_dn);
+        Payload::Other(P_CERTREQ, body)
+    }
+
     /// A SIG payload (RFC 2408 §3.12): the signature of a main mode HASH_I or HASH_R.
     pub fn signature(sig: &[u8]) -> Payload {
         Payload::Other(P_SIG, sig.to_vec())
@@ -457,6 +466,17 @@ pub fn sig_of(list: &[Payload]) -> Option<&[u8]> {
     list.iter().find_map(|p| if let Payload::Other(P_SIG, b) = p { Some(b.as_slice()) } else { None })
 }
 
+/// The authorities (DER distinguished names) the CERTREQ payloads of a list name; a request
+/// that names none, or is for another encoding, adds nothing.
+pub fn cert_request_authorities(list: &[Payload]) -> Vec<&[u8]> {
+    list.iter()
+        .filter_map(|p| match p {
+            Payload::Other(P_CERTREQ, b) if b.first() == Some(&CERT_X509_SIGNATURE) => b.get(1..).filter(|dn| !dn.is_empty()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Whether a list carries a CERTREQ payload.
 pub fn asks_for_cert(list: &[Payload]) -> bool {
     list.iter().any(|p| matches!(p, Payload::Other(P_CERTREQ, _)))
@@ -562,6 +582,13 @@ mod tests {
         assert_eq!(certs_of(&opened), vec![&[0x30u8, 3, 2, 1, 1][..]]);
         assert_eq!(sig_of(&opened), Some(&[7u8; 64][..]));
         assert!(asks_for_cert(&opened) && !asks_for_cert(&list[..2]));
+        // A request that names an authority carries its DER name after the encoding byte.
+        let named = Payload::cert_request_for(&[0x30, 3, 2, 1, 1]);
+        assert_eq!(named, Payload::Other(P_CERTREQ, vec![4, 0x30, 3, 2, 1, 1]));
+        let both = [named.clone(), Payload::cert_request(), Payload::cert_request_for(&[0x30, 0]), Payload::Other(P_CERTREQ, vec![9, 1, 2])];
+        assert_eq!(cert_request_authorities(&both), vec![&[0x30u8, 3, 2, 1, 1][..], &[0x30u8, 0][..]]);
+        assert!(cert_request_authorities(&[]).is_empty() && cert_request_authorities(&both[1..2]).is_empty());
+        assert_eq!(named.name(), "CERTREQ");
         assert_eq!(list[1].name(), "CERT");
         assert_eq!(list[3].name(), "SIG");
         // A CERT payload of another encoding is not a certificate for this purpose.
