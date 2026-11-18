@@ -2402,3 +2402,30 @@ furniture	Table	桌子
 	Added {}.	已添加 {}。
 	Set as Working Closet	设为工作配线间
 	New Generic Container	新建通用容器
+	Up	正常
+	Down	断开
+	Properties…	属性…
+	Open First Device	打开第一台设备
+	Open Second Device	打开第二台设备
+	Show Info	显示信息
+	Kind	类型
+	First end	第一端
+	Second end	第二端
+	Status	状态
+	Why it is down	断开原因
+	Transceivers	收发器
+	set by hand	手动设置
+	from where the devices stand	按设备所在位置计算
+	Both ends single-mode	两端均为单模
+	Both ends multi-mode	两端均为多模
+	Delete Cable	删除线缆
+	Cable Properties	线缆属性
+	single-mode (1310 nm)	单模 (1310 nm)
+	multi-mode (850 nm)	多模 (850 nm)
+	{} is switched off or has no power	{} 已关闭或没有供电
+	{} is shut down	{} 已关闭
+	{} is err-disabled	{} 处于 err-disabled 状态
+	the two ends are fixed at different speeds	两端固定为不同的速率
+	no clock rate on the DCE end	DCE 端没有时钟速率
+	the two ends use different encapsulations	两端使用不同的封装
+	PPP authentication failed (check the usernames and passwords)	PPP 认证失败（请检查用户名和密码）

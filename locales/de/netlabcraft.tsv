@@ -2402,3 +2402,30 @@ furniture	Table	Tisch
 	Added {}.	{} hinzugefügt.
 	Set as Working Closet	Als Arbeitsschrank festlegen
 	New Generic Container	Neuer allgemeiner Container
+	Up	Aktiv
+	Down	Inaktiv
+	Properties…	Eigenschaften…
+	Open First Device	Erstes Gerät öffnen
+	Open Second Device	Zweites Gerät öffnen
+	Show Info	Info anzeigen
+	Kind	Art
+	First end	Erstes Ende
+	Second end	Zweites Ende
+	Status	Status
+	Why it is down	Grund für den Ausfall
+	Transceivers	Transceiver
+	set by hand	von Hand gesetzt
+	from where the devices stand	nach der Position der Geräte
+	Both ends single-mode	Beide Enden Singlemode
+	Both ends multi-mode	Beide Enden Multimode
+	Delete Cable	Kabel löschen
+	Cable Properties	Kabeleigenschaften
+	single-mode (1310 nm)	Singlemode (1310 nm)
+	multi-mode (850 nm)	Multimode (850 nm)
+	{} is switched off or has no power	{} ist ausgeschaltet oder ohne Strom
+	{} is shut down	{} ist abgeschaltet
+	{} is err-disabled	{} ist err-disabled
+	the two ends are fixed at different speeds	die beiden Enden sind auf unterschiedliche Geschwindigkeiten festgelegt
+	no clock rate on the DCE end	keine Taktrate am DCE-Ende
+	the two ends use different encapsulations	die beiden Enden verwenden unterschiedliche Kapselungen
+	PPP authentication failed (check the usernames and passwords)	PPP-Authentifizierung fehlgeschlagen (Benutzernamen und Kennwörter prüfen)
