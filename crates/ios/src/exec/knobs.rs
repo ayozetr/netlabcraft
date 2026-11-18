@@ -122,8 +122,11 @@ pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
         Line,
         Proto,
     }
+    // `line 1 8`: the settings belong to those asynchronous lines (`tty1` to `tty8`).
+    let async_scopes: Vec<String> = c.cli.async_lines.map(|(a, b)| (a..=b).map(|n| format!("tty{n}")).collect()).unwrap_or_default();
     let (kind, scope_names): (Kind, Vec<String>) = match &c.cli.mode {
         Mode::Config => (Kind::Global, Vec::new()),
+        Mode::Line(false) if !async_scopes.is_empty() => (Kind::Line, async_scopes.clone()),
         Mode::Line(vty) => (Kind::Line, vec![(if *vty { "vty" } else { "con" }).to_string()]),
         Mode::Rip => (Kind::Proto, vec!["rip".to_string()]),
         Mode::Eigrp => (Kind::Proto, vec!["eigrp".to_string()]),

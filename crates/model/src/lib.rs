@@ -2085,6 +2085,10 @@ pub struct Access {
     /// `ip ssh authentication-retries N`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh_retries: Option<u8>,
+    /// `transport input` of the asynchronous lines of an octal card, by line number (1 to 16):
+    /// what a reverse Telnet to port 2000 plus the line may use. A line with no entry takes none.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub async_transport: BTreeMap<u8, Vec<RemoteProto>>,
 }
 
 /// A way to check a login, in an AAA method list.
