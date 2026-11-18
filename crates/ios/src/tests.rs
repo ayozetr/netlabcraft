@@ -53,11 +53,8 @@ mod span;
 mod stp_views;
 mod sweep;
 mod swroute;
-<<<<<<< HEAD
-mod track;
-=======
 mod system_commands;
->>>>>>> origin/main
+mod track;
 mod troubleshoot;
 
 struct Lab {
