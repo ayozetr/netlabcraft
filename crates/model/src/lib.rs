@@ -840,6 +840,13 @@ pub struct Ipv6Conf {
     /// Routers: `ipv6 nd other-config-flag` (hosts take DNS and domain from DHCPv6).
     #[serde(default)]
     pub nd_other: bool,
+    /// Routers: `ipv6 nd ra suppress`: no router advertisement is sent here, solicited or not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nd_suppress: bool,
+    /// Routers: `ipv6 nd ra lifetime N`: seconds the advertisement says this router may serve as a
+    /// default router (1800 when not set; 0 says it may not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nd_ra_lifetime: Option<u16>,
     /// `ipv6 traffic-filter NAME in` / `out`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_in: Option<String>,
@@ -2031,6 +2038,13 @@ pub struct Access {
     /// `ip domain-name`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_name: Option<String>,
+    /// `ip host NAME A.B.C.D`: names this device resolves by itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<(String, Ipv4Addr)>,
+    /// `ip name-server A.B.C.D …`: the DNS servers, the first of which is asked (`Device::dns`
+    /// holds it).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub name_servers: Vec<Ipv4Addr>,
     /// The RSA key size, once `crypto key generate rsa` ran (SSH needs it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rsa_bits: Option<u16>,

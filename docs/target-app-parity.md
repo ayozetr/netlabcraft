@@ -179,7 +179,6 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 |---|---|---|
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1423 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | Cables are objects (see [ui-parity.md](ui-parity.md)): `link.info` reports a cable's ends, kind, length, state and why it is down; the Summary counts 205 `c!(` entries. |
-| 2026-11-18 | minor | Console sweep: about 130 settings the console keeps and shows without simulating them (see protocol-parity.md and gaps.md item 17). |
 | 2026-11-17 | minor | Consistency pass after the Preferences, closet, device-box and model rounds: the Summary said 202 engine commands (it is 204); every other count was measured again from the code and holds. Percentages not re-scored. |
 | 2026-11-17 | minor | Device models 134 → 146 (Smart City: pressure, wind, carbon dioxide and fire monitors, fire sprinkler, old car, beacon, RFID card and reader, trip sensor, smart LED; Industrial: signal generator). Counted from `MODELS`; percentages not re-scored. |
 | 2026-11-17 | minor | The Preferences tabs (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 12): 2 engine commands added, so 204 `c!(` entries; each of the six catalogs has 2,305 three-column lines (counted with awk, `@id` rows included). Percentages not re-scored. |
