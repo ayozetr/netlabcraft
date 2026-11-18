@@ -45,6 +45,26 @@ mod t {
     }
 
     #[test]
+    fn the_resize_dialog_resizes_a_rack_through_the_command() {
+        let mut h = closet();
+        h.run_steps(3);
+        let rack = h.state().session.topology.furniture_in(3).iter().find(|f| f.name == "Rack0").map(|f| f.id).unwrap();
+        h.state_mut().ui.physical.closet.resize = Some((rack, "16".into()));
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Resize").next().is_some());
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.topology.furniture_piece(rack).unwrap().size, 16);
+        assert!(h.state().ui.physical.closet.resize.is_none());
+        // Under the devices on it: refused, the size stays.
+        h.state_mut().ui.physical.closet.resize = Some((rack, "4".into()));
+        h.run_steps(3);
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.topology.furniture_piece(rack).unwrap().size, 16);
+    }
+
+    #[test]
     fn the_fit_keeps_the_furniture_below_the_title_band() {
         let mut h = closet();
         h.run_steps(3);
@@ -248,6 +268,38 @@ mod t {
             (l.a.device, l.a.port, l.b.device, l.b.port),
             (h.state().session.topology.devices[0].id, 0, h.state().session.topology.devices[1].id, 0)
         );
+    }
+
+    #[test]
+    fn tab_to_a_port_and_enter_cable_two_ports_from_the_keyboard() {
+        let mut h = bare();
+        h.run_steps(2);
+        let label = |h: &Harness<'static, PacketApp>, device: usize| {
+            let t = &h.state().session.topology;
+            let e = netlabcraft_model::End { device: t.devices[device].id, port: 0 };
+            format!("Port, {}", t.end_label(e))
+        };
+        let enter = |h: &mut Harness<'static, PacketApp>| {
+            h.input_mut().events.push(egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(3);
+        };
+        let (first, second) = (label(&h, 0), label(&h, 1));
+        h.get_by_label(&first).focus();
+        h.run_steps(2);
+        enter(&mut h);
+        assert!(h.state().ui.physical.closet.wire.is_some(), "Enter on the first port starts the cable");
+        assert!(h.state().session.topology.links.is_empty());
+        h.get_by_label(&second).focus();
+        h.run_steps(2);
+        enter(&mut h);
+        assert_eq!(h.state().session.topology.links.len(), 1, "Enter on the second port finishes it");
+        assert!(h.state().ui.physical.closet.wire.is_none());
     }
 
     #[test]

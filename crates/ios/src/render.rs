@@ -39,6 +39,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "logging host {a}");
     }
     crate::exec::netflow::running_config(&mut s, d);
+    crate::exec::keychain::config_lines(&mut s, d);
     let before = s.len();
     crate::exec::mgmt::running_config(&mut s, d);
     if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() || s.len() != before {
@@ -59,6 +60,13 @@ pub fn running_config(d: &Device) -> String {
     }
     if let Some(dn) = &a.domain_name {
         let _ = writeln!(s, "ip domain-name {dn}");
+    }
+    for (n, ip) in &a.hosts {
+        let _ = writeln!(s, "ip host {n} {ip}");
+    }
+    if !a.name_servers.is_empty() {
+        let list: Vec<String> = a.name_servers.iter().map(ToString::to_string).collect();
+        let _ = writeln!(s, "ip name-server {}", list.join(" "));
     }
     for u in &a.users {
         let level = if u.privilege == 1 { String::new() } else { format!(" privilege {}", u.privilege) };
@@ -151,7 +159,14 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, "ip ftp password {}", pw(p));
         }
     }
-    if a.enable_secret.is_some() || a.enable_password.is_some() || a.no_domain_lookup || a.domain_name.is_some() || !a.users.is_empty() {
+    if a.enable_secret.is_some()
+        || a.enable_password.is_some()
+        || a.no_domain_lookup
+        || a.domain_name.is_some()
+        || !a.hosts.is_empty()
+        || !a.name_servers.is_empty()
+        || !a.users.is_empty()
+    {
         let _ = writeln!(s, "!");
     }
     for (x, y) in &d.dhcp_excluded {
@@ -667,6 +682,16 @@ pub fn running_config(d: &Device) -> String {
         }
         if o.default_originate {
             let _ = writeln!(s, " default-information originate");
+        }
+        for (area, a) in &o.area_auth {
+            match a {
+                netlabcraft_model::Ospf6Auth::Null => {
+                    let _ = writeln!(s, " area {area} authentication null");
+                }
+                a => {
+                    let _ = writeln!(s, " area {area} authentication {}", ospf6_auth_words(a));
+                }
+            }
         }
         let _ = writeln!(s, "!");
     }
@@ -1494,19 +1519,47 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
     s.trim_end().to_string()
 }
 
+/// `ipsec spi 256 md5 KEY`: how the running configuration writes an OSPFv3 AH setting.
+fn ospf6_auth_words(a: &netlabcraft_model::Ospf6Auth) -> String {
+    match a {
+        netlabcraft_model::Ospf6Auth::Null => "null".to_string(),
+        netlabcraft_model::Ospf6Auth::Ipsec { spi, alg, key } => {
+            let alg = if *alg == netlabcraft_model::Ospf6AuthAlg::Md5 { "md5" } else { "sha1" };
+            format!("ipsec spi {spi} {alg} {key}")
+        }
+    }
+}
+
+/// `md5 with SPI 256`: an OSPFv3 AH setting without its key, for the views.
+fn ospf6_auth_summary(a: &netlabcraft_model::Ospf6Auth) -> String {
+    match a {
+        netlabcraft_model::Ospf6Auth::Null => "none".to_string(),
+        netlabcraft_model::Ospf6Auth::Ipsec { spi, alg, .. } => {
+            format!("{} with SPI {spi}", if *alg == netlabcraft_model::Ospf6AuthAlg::Md5 { "md5" } else { "sha1" })
+        }
+    }
+}
+
 /// `show ipv6 ospf neighbor`.
 pub fn ospf6_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf6::Ospf6State) -> String {
     if d.ospf6.is_none() {
         return "OSPFv3 is not running on this router.".into();
     }
     let list = st.neighbors.get(&d.id).cloned().unwrap_or_default();
-    if list.is_empty() {
+    let refused = st.refused.get(&d.id).cloned().unwrap_or_default();
+    if list.is_empty() && refused.is_empty() {
         return "No OSPFv3 neighbours (check `ipv6 ospf N area A` on the interfaces, `ipv6 unicast-routing`, the router ID and cables).".into();
     }
-    let mut s = format!("{:<16} {:<10} {:<26} {:<12} Device\n", "Neighbour ID", "State", "Address", "Interface");
+    let mut s = String::new();
+    if !list.is_empty() {
+        s = format!("{:<16} {:<10} {:<26} {:<12} Device\n", "Neighbour ID", "State", "Address", "Interface");
+    }
     for n in list {
         let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
         let _ = writeln!(s, "{:<16} {:<10} {:<26} {:<12} {name}", n.router_id.to_string(), "FULL", n.address.to_string(), ifname::short(&n.iface));
+    }
+    for (iface, rid, why) in refused {
+        let _ = writeln!(s, "Not a neighbour: {rid} on {}: {why}", ifname::short(&iface));
     }
     s.trim_end().to_string()
 }
@@ -1519,8 +1572,14 @@ pub fn ospf6_summary(d: &Device, st: &netlabcraft_sim::ospf6::Ospf6State) -> Str
     if !netlabcraft_sim::v6::routes6(d) {
         let _ = writeln!(s, "  Not running: IPv6 routing is off (`ipv6 unicast-routing`)");
     }
+    let up = netlabcraft_sim::v6::l3_ifaces6(d);
     for (name, area, cost, passive) in st.interfaces.get(&d.id).into_iter().flatten() {
-        let _ = writeln!(s, "  {:<22} area {area}, cost {cost}{}", name, if *passive { ", passive" } else { "" });
+        let auth = up
+            .iter()
+            .find(|i| i.name == *name)
+            .and_then(|i| netlabcraft_sim::ospf6::auth_of(d, i, *area))
+            .map_or(String::new(), |a| format!(", authentication: AH {}", ospf6_auth_summary(a)));
+        let _ = writeln!(s, "  {:<22} area {area}, cost {cost}{}{auth}", name, if *passive { ", passive" } else { "" });
     }
     let n = st.neighbors.get(&d.id).map_or(0, Vec::len);
     let _ = write!(s, "  {n} neighbour{}", if n == 1 { "" } else { "s" });
@@ -1835,6 +1894,9 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         for (id, k) in &o.md5_keys {
             let _ = writeln!(s, " ip ospf message-digest-key {id} md5 {k}");
         }
+        if let Some(chain) = &o.key_chain {
+            let _ = writeln!(s, " ip ospf authentication key-chain {chain}");
+        }
     }
 }
 
@@ -2038,11 +2100,24 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     if let Some((p, a)) = c.ospf {
         let _ = writeln!(s, " ipv6 ospf {p} area {a}");
     }
+    match &c.ospf_auth {
+        Some(netlabcraft_model::Ospf6Auth::Null) => s.push_str(" ospfv3 authentication null\n"),
+        Some(a @ netlabcraft_model::Ospf6Auth::Ipsec { .. }) => {
+            let _ = writeln!(s, " ospfv3 authentication {}", ospf6_auth_words(a));
+        }
+        None => {}
+    }
     if c.nd_managed {
         let _ = writeln!(s, " ipv6 nd managed-config-flag");
     }
     if c.nd_other {
         let _ = writeln!(s, " ipv6 nd other-config-flag");
+    }
+    if c.nd_suppress {
+        let _ = writeln!(s, " ipv6 nd ra suppress all");
+    }
+    if let Some(n) = c.nd_ra_lifetime {
+        let _ = writeln!(s, " ipv6 nd ra lifetime {n}");
     }
     if let Some(f) = &c.filter_in {
         let _ = writeln!(s, " ipv6 traffic-filter {f} in");
@@ -3022,10 +3097,19 @@ pub fn ospf_interface(d: &Device, st: &netlabcraft_sim::ospf::OspfState, typed: 
         let auth = match netlabcraft_sim::ospf::auth_kind(d, &ifc) {
             netlabcraft_model::OspfAuthKind::Null => "none".to_string(),
             netlabcraft_model::OspfAuthKind::Simple => "clear-text password".to_string(),
-            netlabcraft_model::OspfAuthKind::Md5 => match d.ospf_if.get(&name).and_then(|o| o.md5_keys.keys().next_back()) {
-                Some(k) => format!("message digest, signing with key {k}"),
-                None => "message digest, no key configured".to_string(),
-            },
+            netlabcraft_model::OspfAuthKind::Md5 => {
+                let keys = netlabcraft_sim::ospf::md5_sign_keys(d, &name, netlabcraft_sim::ospf::analysis_clock(d));
+                let chain = d.ospf_if.get(&name).and_then(|o| o.key_chain.as_deref());
+                match (keys.first(), chain) {
+                    (Some((k, _)), Some(c)) => format!("message digest, key chain {c}, signing with key {k}"),
+                    (Some((k, _)), None) if keys.len() > 1 => {
+                        format!("message digest, signing with key {k} (and {} older key{})", keys.len() - 1, if keys.len() == 2 { "" } else { "s" })
+                    }
+                    (Some((k, _)), None) => format!("message digest, signing with key {k}"),
+                    (None, Some(c)) => format!("message digest, key chain {c} has no key that signs now"),
+                    (None, None) => "message digest, no key configured".to_string(),
+                }
+            }
         };
         let _ = writeln!(s, "  Authentication: {auth}");
     }

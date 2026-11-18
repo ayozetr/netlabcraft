@@ -48,6 +48,8 @@ pub struct CanvasState {
     /// A cluster or drawing right-clicked (its menu is open).
     context_cluster: Option<u32>,
     context_note: Option<u32>,
+    /// A cable right-clicked (its menu is open), named by its first end.
+    context_cable: Option<End>,
     drag_cluster: Option<u32>,
     /// Dragging every picked device together.
     drag_group: bool,
@@ -63,6 +65,12 @@ pub struct CanvasState {
 }
 
 impl CanvasState {
+    /// The cable whose right-click menu is open (for the tests).
+    #[cfg(test)]
+    pub(crate) fn context_cable_for_tests(&self) -> Option<End> {
+        self.context_cable
+    }
+
     pub fn cancel(&mut self) {
         self.pending = None;
         self.port_menu = None;
@@ -134,6 +142,7 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Ping, Some(_)) => crate::i18n::tl("Simple PDU: now click the destination device.").into(),
         (Tool::Inspect, _) => crate::i18n::tl("Inspect: click a device to see its ARP, MAC and routing tables.").into(),
         (Tool::Delete, _) => crate::i18n::tl("Click a device or a cable to delete it.").into(),
+        (Tool::Resize, _) => crate::i18n::tl("Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.").into(),
         _ => String::new(),
     }
 }
@@ -1137,6 +1146,11 @@ fn resizable(a: &netlabcraft_model::Annotation) -> bool {
     matches!(a.shape, Shape::Rectangle | Shape::Ellipse | Shape::Line)
 }
 
+/// The topmost resizable drawing under the screen point `p` in this view.
+fn hit_resizable(app: &PacketApp, view: &View, p: Pos2) -> Option<u32> {
+    app.session.topology.annotations.iter().rev().find(|a| a.cluster == view.level && resizable(a) && shape_hit(view, a, p)).map(|a| a.id)
+}
+
 /// The selected drawing, when it is resizable and shown in this view.
 fn selected_drawing<'a>(app: &'a PacketApp, view: &View) -> Option<&'a netlabcraft_model::Annotation> {
     let n = app.ui.selected_note?;
@@ -1315,8 +1329,8 @@ fn cable_label(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) -> 
 
 /// Registers each cable shown in this view as a focusable, labelled node, like the devices: Tab
 /// moves between them, the arrow keys step to the previous or next cable and Enter, Space or a
-/// screen reader's click opens the device at the cable's first end (as clicking it would) and
-/// says the cable in the status line. The nodes come before the workspace, which takes the
+/// screen reader's click selects the cable, opens its Properties window and says the cable in
+/// the status line. The nodes come before the workspace, which takes the
 /// pointer, so the cables' bounding boxes, which overlap the devices, never steal a click.
 fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
     let level = app.session.view;
@@ -1370,24 +1384,33 @@ fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
     }
     app.ui.cable_focus = focused;
     if let Some((end, label)) = open {
-        app.ui.selected = Some(end.device);
-        console::open(app, end.device);
+        app.ui.selected = None;
+        crate::cable_window::open(app, end);
         app.ui.status = Some((label, false));
     }
 }
 
 /// A highlight along the cable that has the keyboard focus.
 fn draw_cable_focus(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
-    let Some(end) = app.ui.cable_focus else { return };
     let t = &app.session.topology;
-    if let Some(l) = t.links.iter().find(|l| l.a == end)
-        && let Some((pa, pb)) = cable_ends(t, view, l)
-    {
-        painter.line_segment([pa, pb], Stroke::new((6.0 * view.zoom).max(4.0), tk.selection.gamma_multiply(0.45)));
+    // The cable under the pointer is lit lightly, the picked one and the focused one strongly.
+    for (end, strength) in [(app.ui.hover_cable, 0.25), (app.ui.selected_cable, 0.45), (app.ui.cable_focus, 0.45)] {
+        let Some(end) = end else { continue };
+        if let Some(l) = t.links.iter().find(|l| l.a == end)
+            && let Some((pa, pb)) = cable_ends(t, view, l)
+        {
+            painter.line_segment([pa, pb], Stroke::new((6.0 * view.zoom).max(4.0), tk.selection.gamma_multiply(strength)));
+        }
     }
 }
 
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
+    // The cable under the pointer (not when a device is there), for the hover highlight.
+    app.ui.hover_cable = if matches!(app.ui.tool, Tool::Select | Tool::Delete) {
+        resp.hover_pos().filter(|p| hit_device(app, view, *p).is_none()).and_then(|p| hit_link(app, view, p))
+    } else {
+        None
+    };
     let pointer = resp.interact_pointer_pos().or_else(|| resp.hover_pos());
     // The middle and right buttons pan (a right click without movement still opens the context menu).
     let middle = ui.input(|i| i.pointer.middle_down() || i.pointer.secondary_down());
@@ -1444,7 +1467,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     }
 
     // Resize handles of the selected drawing.
-    if app.ui.tool == Tool::Select && !middle {
+    if matches!(app.ui.tool, Tool::Select | Tool::Resize) && !middle {
         // The drag starts a few pixels after the press: the handle is where the button went down.
         if resp.drag_started()
             && let Some(p) = ui.input(|i| i.pointer.press_origin()).or(pointer)
@@ -1625,7 +1648,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
 
     if resp.secondary_clicked() {
         let c = &mut app.ui.canvas;
-        (c.context, c.context_cluster, c.context_note) = (None, None, None);
+        (c.context, c.context_cluster, c.context_note, c.context_cable) = (None, None, None, None);
         if let Some(p) = pointer {
             if let Some(d) = hit_device(app, view, p) {
                 app.ui.canvas.context = Some(d);
@@ -1636,8 +1659,11 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 }
             } else if let Some(cl) = hit_cluster(app, view, p) {
                 app.ui.canvas.context_cluster = Some(cl);
-            } else {
-                app.ui.canvas.context_note = hit_note(app, view, p);
+            } else if let Some(n) = hit_note(app, view, p) {
+                app.ui.canvas.context_note = Some(n);
+            } else if let Some(end) = hit_link(app, view, p) {
+                app.ui.canvas.context_cable = Some(end);
+                crate::cable_window::select(app, end);
             }
         }
     }
@@ -1647,6 +1673,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         resp.context_menu(|ui| cluster_menu(app, ui, c));
     } else if let Some(n) = app.ui.canvas.context_note {
         resp.context_menu(|ui| note_menu(app, ui, n));
+    } else if let Some(e) = app.ui.canvas.context_cable {
+        resp.context_menu(|ui| cable_menu(app, ui, e));
     }
 
     // A tile dragged from the device box and released over the workspace.
@@ -1681,6 +1709,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         }
         Tool::Select => {
             // One click opens the device, as learners expect; dragging moves it instead.
+            app.ui.selected_cable = None;
             app.ui.picked.clear();
             app.ui.picked_clusters.clear();
             app.ui.selected = hit;
@@ -1693,9 +1722,17 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 && app.session.topology.annotations.iter().any(|a| a.id == n && a.shape != Shape::Text)
             {
                 app.ui.selected_note = Some(n);
+            } else if hit_note(app, view, p).is_none()
+                && let Some(end) = hit_link(app, view, p)
+            {
+                crate::cable_window::select(app, end);
             }
         }
         Tool::Draw(_) => {}
+        Tool::Resize => {
+            // Picks a drawing to resize (or nothing); devices are left alone.
+            app.ui.selected_note = hit_resizable(app, view, p);
+        }
         Tool::Inspect => {
             if hit.is_some() {
                 app.ui.inspect = hit;
@@ -1758,8 +1795,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             } else if let Some(n) = hit_note(app, view, p) {
                 app.run("note.remove", json!({"id": n}));
             } else if let Some(end) = hit_link(app, view, p) {
-                let port = app.session.topology.device(end.device).and_then(|d| d.ports.get(end.port)).map(|p| p.name.clone()).unwrap_or_default();
-                app.run("link.remove", json!({"device": end.device.0, "port": port}));
+                crate::cable_window::delete(app, end);
             } else if let Some(pc) = hit_console(app, view, p) {
                 app.run("link.remove", json!({"device": pc.0, "port": netlabcraft_model::cable::RS232_PORT}));
             } else if let Some(dev) = hit_octal(app, view, p) {
@@ -1769,6 +1805,18 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             }
         }
     }
+}
+
+/// A cable's right-click menu: Properties, the devices at its ends, its length and Delete.
+fn cable_menu(app: &mut PacketApp, ui: &mut Ui, end: End) {
+    let Some(title) =
+        app.session.topology.link_at(end).map(|l| format!("{} - {}", app.session.topology.end_label(l.a), app.session.topology.end_label(l.b)))
+    else {
+        ui.close();
+        return;
+    };
+    ui.label(egui::RichText::new(title).strong());
+    crate::cable_window::menu_items(app, ui, end, false);
 }
 
 /// A cluster's right-click menu.

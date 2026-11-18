@@ -1508,6 +1508,41 @@ fn an_octal_cable_joins_a_card_line_to_a_console_and_the_terminal_follows_it() {
 }
 
 #[test]
+fn link_info_reports_a_cable_its_ends_its_state_and_why_it_is_down() {
+    let mut s = Session::new();
+    for (name, model) in [("F1", "Switch-24-SFP"), ("F2", "Switch-24-SFP")] {
+        s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+    }
+    s.execute("link.add", json!({"a": "F1", "b": "F2", "cable": "single-mode"})).unwrap();
+    // Either end names the cable; a multi-mode transceiver cannot drive a single-mode cable.
+    let v = s.execute("link.info", json!({"device": "F2", "port": "g0/1"})).unwrap();
+    assert_eq!((v["a_device"].as_str(), v["b_device"].as_str()), (Some("F1"), Some("F2")));
+    assert_eq!((v["resolved"].as_str(), v["up"].as_bool()), (Some("fiber-single-mode"), Some(false)));
+    assert_eq!(v["transceivers"]["a"], "multi-mode");
+    assert!(v["why_down"].as_str().is_some_and(|w| w.contains("cannot drive")), "{v}");
+    for d in ["F1", "F2"] {
+        s.execute("port.transceiver", json!({"device": d, "port": "g0/1", "mode": "single-mode"})).unwrap();
+    }
+    let v = s.execute("link.info", json!({"device": "F1", "port": "g0/1"})).unwrap();
+    assert_eq!((v["up"].as_bool(), v["why_down"].is_null(), v["transceivers"]["b"].as_str()), (Some(true), true, Some("single-mode")));
+    // A shut down port says so.
+    let f1 = s.topology.resolve("F1").unwrap();
+    s.topology.device_mut(f1).unwrap().ports[24].shutdown = true;
+    let v = s.execute("link.info", json!({"device": "F1", "port": "g0/1"})).unwrap();
+    assert!(v["why_down"].as_str().is_some_and(|w| w.contains("is shut down")), "{v}");
+    // An uncabled port, an unknown port and a missing parameter are errors.
+    assert!(s.execute("link.info", json!({"device": "F1", "port": "g0/2"})).is_err());
+    assert!(s.execute("link.info", json!({"device": "F1", "port": "nope"})).is_err());
+    assert!(s.execute("link.info", json!({"device": "F1"})).is_err());
+    // A copper cable has no transceivers.
+    s.execute("device.add", json!({"model": "PC", "name": "P1"})).unwrap();
+    s.execute("device.add", json!({"model": "PC", "name": "P2"})).unwrap();
+    s.execute("link.add", json!({"a": "P1", "b": "P2"})).unwrap();
+    let v = s.execute("link.info", json!({"device": "P1", "port": "fa0"})).unwrap();
+    assert!(v["transceivers"].is_null(), "{v}");
+}
+
+#[test]
 fn fiber_modes_and_transceivers_work_through_commands() {
     let mut s = Session::new();
     for (name, model) in [("F1", "Switch-24-SFP"), ("F2", "Switch-24-SFP")] {

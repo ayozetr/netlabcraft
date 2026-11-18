@@ -80,6 +80,10 @@ pub struct EnvRun {
 pub struct IotState {
     /// The shared room, once the physics has started.
     pub(crate) env: Option<EnvRun>,
+    /// Who crossed which wire, who hears which beacon (see `proximity`).
+    pub(crate) prox: crate::proximity::ProximityState,
+    /// The places' own physics, once it has started (see `parts`).
+    pub(crate) places: BTreeMap<u32, crate::parts::PlaceRun>,
     servers: BTreeMap<DeviceId, Vec<IotEntry>>,
     pub(crate) things: BTreeMap<DeviceId, ThingState>,
     /// Programmable boards' runs (see the `board` module).
@@ -123,15 +127,21 @@ impl Sim {
         if !is_actuator(d) || t.is_dark(d.id) {
             return false;
         }
-        let burning = self.iot.env.as_ref().is_some_and(|r| r.climate.fire_m > 0);
+        let burning = self.iot.env.as_ref().is_some_and(|r| r.climate.fire_m > 0) || self.place_burning(t, d);
         self.iot.things.get(&d.id).is_some_and(|s| s.on) || (burning && thing(d).is_some_and(|x| x.what == "fire sprinkler"))
     }
 
     /// What the running smart devices do to the room right now.
     fn env_effects(&self, t: &Topology) -> Effects {
         let mut fx = Effects::default();
+        let mut tone = 0;
         for d in t.devices.iter().filter(|d| is_actuator(d) && self.iot_active(t, d)) {
             let what = thing(d).map(|x| x.what);
+            // A lamp lights the room by its own light: a smart LED by its brightness.
+            if matches!(what, Some("light" | "smart led" | "dimmable led" | "rgb led")) {
+                let own = if what == Some("smart led") { u32::from(d.iot.brightness.unwrap_or(100).min(100)) * 70 / 100 } else { 70 };
+                fx.lamp_percent = Some(fx.lamp_percent.map_or(own, |l| l.max(own)));
+            }
             let n = match what {
                 Some("heater") | Some("heating element") => &mut fx.heaters,
                 Some("furnace") => &mut fx.furnaces,
@@ -145,12 +155,19 @@ impl Sim {
                 Some("window") | Some("garage") => &mut fx.windows_open,
                 Some("light") | Some("smart led") | Some("dimmable led") | Some("rgb led") => &mut fx.lamps,
                 Some("bluetooth speaker") => {
-                    fx.sound_db = fx.sound_db.max(SPEAKER_DB);
+                    if SPEAKER_DB > fx.sound_db {
+                        fx.sound_db = SPEAKER_DB;
+                        tone = d.iot.frequency;
+                    }
                     continue;
                 }
                 // A player alone is quiet; paired with a speaker in range it plays loud.
                 Some("music player") => {
-                    fx.sound_db = fx.sound_db.max(if t.paired_speaker(d).is_some() { SPEAKER_DB } else { PLAYER_DB });
+                    let db = if t.paired_speaker(d).is_some() { SPEAKER_DB } else { PLAYER_DB };
+                    if db > fx.sound_db {
+                        fx.sound_db = db;
+                        tone = d.iot.frequency;
+                    }
                     continue;
                 }
                 _ => continue,
@@ -162,7 +179,8 @@ impl Sim {
             }
         }
         if fx.sound_db > 0 {
-            fx.sound_hz = TONE_HZ;
+            // The loudest sound plays the pitch it was given, or the usual tone.
+            fx.sound_hz = if tone > 0 { tone } else { TONE_HZ };
         }
         fx
     }
@@ -170,13 +188,19 @@ impl Sim {
     /// Steps the room up to the present, a second at a time, with the devices as they are.
     /// Does nothing while the physics is off.
     pub fn env_step(&mut self, t: &Topology) {
+        self.place_step(t);
+        self.prox_step(t);
         if !t.environment.enabled {
             self.iot.env = None;
             return;
         }
         let now = self.now;
-        let fx = self.env_effects(t);
+        let mut fx = self.env_effects(t);
         let run = self.iot.env.get_or_insert_with(|| EnvRun { climate: Climate::from_settings(&t.environment), last_us: now });
+        // With the places' own physics on, the wind outside also blows through an open window.
+        if t.environments.physics {
+            fx.wind_kph = u32::try_from(run.climate.wind).unwrap_or(0);
+        }
         let seconds = (now.saturating_sub(run.last_us) / 1_000_000).min(MAX_STEP_SECONDS);
         for _ in 0..seconds {
             run.climate.step_second(&t.environment, &fx);
@@ -197,6 +221,7 @@ impl Sim {
     /// Forgets the room's state: it starts again from the settings.
     pub fn env_reset(&mut self) {
         self.iot.env = None;
+        self.iot.places.clear();
     }
 
     /// Sets one quantity of the running room (starting it first), by name.
@@ -209,11 +234,27 @@ impl Sim {
     /// What a smart sensor reads: the room's quantity while the physics is on, else its own
     /// number.
     pub fn iot_reading(&self, t: &Topology, d: &Device) -> i32 {
+        let raw = self.iot_reading_raw(t, d);
+        if self.out_of_tune(d, raw) { 0 } else { raw }
+    }
+
+    /// Whether a sound detector is tuned to a pitch (`iot.frequency`, 0: any) that the sound it
+    /// hears (`hz`) is not within a tenth of: it hears nothing then.
+    fn out_of_tune(&self, d: &Device, hz: i32) -> bool {
+        if d.iot.frequency == 0 || thing(d).is_none_or(|x| x.what != "pitch") {
+            return false;
+        }
+        let tuned = i64::from(d.iot.frequency);
+        hz <= 0 || (i64::from(hz) - tuned).abs().saturating_mul(10) > tuned
+    }
+
+    fn iot_reading_raw(&self, t: &Topology, d: &Device) -> i32 {
         let Some(x) = thing(d) else { return d.iot.value };
         // Things that read who is near them answer from where things are, not from a variable.
         match x.what {
             "rfid reader" => return t.rfid_reading(d),
             "rfid card" | "beacon" => return announced_id(d),
+            "trip" if d.iot.crossing => return i32::from(self.now < self.iot.prox.trips.get(&d.id).copied().unwrap_or(0)),
             "trip" => return t.trip_reading(d),
             _ => {}
         }
@@ -240,6 +281,11 @@ impl Sim {
     /// A sensor's second reading, when it has one (a humiture sensor's humidity, a sound
     /// detector's volume, how many things hear a beacon, a signal generator's frequency).
     pub fn iot_reading2(&self, t: &Topology, d: &Device) -> Option<i32> {
+        let second = self.iot_reading2_raw(t, d);
+        if second.is_some() && self.out_of_tune(d, self.iot_reading_raw(t, d)) { Some(0) } else { second }
+    }
+
+    fn iot_reading2_raw(&self, t: &Topology, d: &Device) -> Option<i32> {
         let x = thing(d)?;
         if x.what == "humiture" {
             return Some(self.iot_second(t, d));

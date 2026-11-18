@@ -220,6 +220,11 @@
 	cable	线缆
 	Cable Length	线缆长度
 	Cable Length…	线缆长度…
+	Resize…	调整大小…
+	Resize	调整大小
+	Units ({} to {}):	机架单元（{} 至 {}）：
+	Levels ({} to {}):	层数（{} 至 {}）：
+	Enter a whole number	请输入整数
 	Cable Modem	线缆调制解调器
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	线缆调制解调器：将其同轴口 (Coaxial0) 桥接到以太网口 (Ethernet1)
 	cable too long: {} m copper, max 100 m	线缆过长：铜缆 {} 米，最长 100 米
@@ -941,7 +946,9 @@
 	Reset Activity	重置练习
 	Reset room	重置房间
 	Reset Simulation	重置模拟
-	Resize Shape (not available yet)	调整形状大小（暂不可用）
+	Resize Shape (Alt+R)	调整形状大小（Alt+R）
+	Resize Shape (Alt+R): drawings are in the logical view	调整形状大小（Alt+R）：绘图只在逻辑视图中
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	调整形状大小：单击矩形、椭圆或直线，然后拖动其控制点。按 Esc 停止。
 	Resource Records	资源记录
 	Response headers	响应头
 	RESTCONF (HTTP)	RESTCONF (HTTP)
@@ -1041,6 +1048,18 @@
 	Show All/None	全部显示/全部隐藏
 	Show as text	以文本显示
 	Show grid	显示网格
+	Grid Preferences	网格首选项
+	Grid Preferences…	网格首选项…
+	Grid Scale	网格比例
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	为物理工作区的每个层级设置网格间距（单位：米）。勾选某一层级后才会绘制它的网格。
+	Grid-X (m)	网格 X（米）
+	Grid-Y (m)	网格 Y（米）
+	Generic Container	通用容器
+	A wiring closet has no scale, so it has no grid.	配线间没有比例，因此没有网格。
+	Grid Line Color	网格线颜色
+	Select Grid Color	选择网格颜色
+	Grid color {}	网格颜色 {}
+	{}: zoom in to see the lines	{}：放大后才能看到线条
 	Device windows as separate windows	设备窗口独立显示
 	Not available in the web version	网页版不可用
 	shown when it fails	失败时显示
@@ -1780,6 +1799,7 @@ event	write request for	写请求
 	Delete Scenario	删除场景
 	Device box	设备栏
 	Draw Freehand	手绘
+	Resize Shape	调整形状大小
 	Fast Forward Time	快进时间
 	Go Back One Level	返回上一级
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	当文本框或控制台正在使用键盘时，输入字母的按键会被忽略。
@@ -2370,3 +2390,42 @@ furniture	Table	桌子
 	Backup written to {}	备份已写入 {}
 	Application size	程序字号
 	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。
+	Port, {}	端口，{}
+	Language:	语言：
+	Program ({})	程序 ({})
+	Up	正常
+	Down	断开
+	Properties…	属性…
+	Open First Device	打开第一台设备
+	Open Second Device	打开第二台设备
+	Show Info	显示信息
+	Kind	类型
+	First end	第一端
+	Second end	第二端
+	Status	状态
+	Why it is down	断开原因
+	Transceivers	收发器
+	set by hand	手动设置
+	from where the devices stand	按设备所在位置计算
+	Both ends single-mode	两端均为单模
+	Both ends multi-mode	两端均为多模
+	Delete Cable	删除线缆
+	Cable Properties	线缆属性
+	single-mode (1310 nm)	单模 (1310 nm)
+	multi-mode (850 nm)	多模 (850 nm)
+	{} is switched off or has no power	{} 已关闭或没有供电
+	{} is shut down	{} 已关闭
+	{} is err-disabled	{} 处于 err-disabled 状态
+	the two ends are fixed at different speeds	两端固定为不同的速率
+	no clock rate on the DCE end	DCE 端没有时钟速率
+	the two ends use different encapsulations	两端使用不同的封装
+	PPP authentication failed (check the usernames and passwords)	PPP 认证失败（请检查用户名和密码）
+	Each place has its own physics	每个地点有各自的物理模拟
+	Parts change the place they stand in by rates, and the place settles back when they stop	部件按速率改变所在地点的变量，停止后该地点会恢复原值
+	Pairing code:	配对码：
+	Profile:	配置文件：
+	Music (A2DP)	音乐 (A2DP)
+	Headset	耳机
+	Card id (hex):	卡片编号 (十六进制)：
+	Report crossings of the wire	报告穿越拉线的物体
+	Wire angle (degrees):	拉线角度 (度)：

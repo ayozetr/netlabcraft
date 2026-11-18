@@ -71,6 +71,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
     if let Some(r) = crate::closet::run(s, id, p) {
         return r;
     }
+    if let Some(r) = crate::pictures::run(s, id, p) {
+        return r;
+    }
     if let Some(r) = crate::settings::run(s, id, p) {
         return r;
     }
@@ -967,9 +970,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.adapter" | "device.power.source" | "phone.configure" | "cloud.map" | "device.psu" => crate::families::run(s, cmd, p),
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" | "softphone.config" | "softphone.status" | "softphone.dial" | "softphone.answer"
         | "softphone.hangup" => crate::voice::run(s, cmd, p),
-        "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
+        "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" | "iot.beacon" => crate::iot::run(s, cmd, p),
         "environment.get" | "environment.set" | "environment.clear" | "environment.keyframe.add" | "environment.keyframe.remove" | "environment.clock"
-        | "environment.export" | "environment.import" => crate::envs::run(s, cmd, p),
+        | "environment.export" | "environment.import" | "environment.physics" => crate::envs::run(s, cmd, p),
         "board.program" | "board.status" | "board.wire" => crate::board::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
         | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),
@@ -1119,6 +1122,14 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             s.changed();
             let resolved = s.topology.link_at(ea).map_or(cable, |l| s.topology.resolved_cable(l));
             Ok(json!({"a": s.topology.end_label(ea), "b": s.topology.end_label(eb), "cable": cable.id(), "resolved": resolved.id()}))
+        }
+        "link.info" => {
+            let d = device_param(s, p, "device")?;
+            let port = port_param(s, d, str_param(p, "port")?)?;
+            let end = End { device: d, port };
+            let t = &s.topology;
+            let l = t.link_at(end).ok_or_else(|| EngineError::Failed(format!("{} has no cable", t.end_label(end))))?;
+            Ok(link_info_json(t, l))
         }
         "link.list" => {
             let t = &s.topology;
@@ -1593,6 +1604,34 @@ fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             Ok(json!({"meters": len.meters, "manual": len.manual, "problem": netlabcraft_sim::cable_problem(&s.topology, end)}))
         }
     }
+}
+
+/// One cable as `link.info` reports it: its kind, both ends, length, state and why it is down.
+fn link_info_json(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) -> Value {
+    let kind = t.resolved_cable(l);
+    let len = t.cable_length(l);
+    let up = netlabcraft_sim::port_up(t, l.a) && netlabcraft_sim::port_up(t, l.b);
+    let name = |e: End| t.device(e.device).map_or(String::new(), |d| d.name.clone());
+    let port = |e: End| t.device(e.device).and_then(|d| d.ports.get(e.port)).map_or(String::new(), |p| p.name.clone());
+    let mode = |e: End| if t.single_mode_at(e) { "single-mode" } else { "multi-mode" };
+    let transceivers = if kind.is_fiber() { json!({"a": mode(l.a), "b": mode(l.b)}) } else { Value::Null };
+    json!({
+        "a": t.end_label(l.a),
+        "b": t.end_label(l.b),
+        "a_device": name(l.a),
+        "a_port": port(l.a),
+        "b_device": name(l.b),
+        "b_port": port(l.b),
+        "cable": l.cable.id(),
+        "resolved": kind.id(),
+        "kind": kind.label(),
+        "meters": len.meters,
+        "manual": len.manual,
+        "up": up,
+        "problem": netlabcraft_sim::cable_problem(t, l.a),
+        "why_down": if up { None } else { netlabcraft_sim::link_why_down(t, l) },
+        "transceivers": transceivers,
+    })
 }
 
 fn list_param<'a>(p: &'a Value, key: &str) -> Result<&'a Vec<Value>> {
