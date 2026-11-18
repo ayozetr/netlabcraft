@@ -667,6 +667,16 @@ pub fn running_config(d: &Device) -> String {
         if o.default_originate {
             let _ = writeln!(s, " default-information originate");
         }
+        for (area, a) in &o.area_auth {
+            match a {
+                netlabcraft_model::Ospf6Auth::Null => {
+                    let _ = writeln!(s, " area {area} authentication null");
+                }
+                a => {
+                    let _ = writeln!(s, " area {area} authentication {}", ospf6_auth_words(a));
+                }
+            }
+        }
         let _ = writeln!(s, "!");
     }
     for r in &d.routes {
@@ -1492,19 +1502,47 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
     s.trim_end().to_string()
 }
 
+/// `ipsec spi 256 md5 KEY`: how the running configuration writes an OSPFv3 AH setting.
+fn ospf6_auth_words(a: &netlabcraft_model::Ospf6Auth) -> String {
+    match a {
+        netlabcraft_model::Ospf6Auth::Null => "null".to_string(),
+        netlabcraft_model::Ospf6Auth::Ipsec { spi, alg, key } => {
+            let alg = if *alg == netlabcraft_model::Ospf6AuthAlg::Md5 { "md5" } else { "sha1" };
+            format!("ipsec spi {spi} {alg} {key}")
+        }
+    }
+}
+
+/// `md5 with SPI 256`: an OSPFv3 AH setting without its key, for the views.
+fn ospf6_auth_summary(a: &netlabcraft_model::Ospf6Auth) -> String {
+    match a {
+        netlabcraft_model::Ospf6Auth::Null => "none".to_string(),
+        netlabcraft_model::Ospf6Auth::Ipsec { spi, alg, .. } => {
+            format!("{} with SPI {spi}", if *alg == netlabcraft_model::Ospf6AuthAlg::Md5 { "md5" } else { "sha1" })
+        }
+    }
+}
+
 /// `show ipv6 ospf neighbor`.
 pub fn ospf6_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf6::Ospf6State) -> String {
     if d.ospf6.is_none() {
         return "OSPFv3 is not running on this router.".into();
     }
     let list = st.neighbors.get(&d.id).cloned().unwrap_or_default();
-    if list.is_empty() {
+    let refused = st.refused.get(&d.id).cloned().unwrap_or_default();
+    if list.is_empty() && refused.is_empty() {
         return "No OSPFv3 neighbours (check `ipv6 ospf N area A` on the interfaces, `ipv6 unicast-routing`, the router ID and cables).".into();
     }
-    let mut s = format!("{:<16} {:<10} {:<26} {:<12} Device\n", "Neighbour ID", "State", "Address", "Interface");
+    let mut s = String::new();
+    if !list.is_empty() {
+        s = format!("{:<16} {:<10} {:<26} {:<12} Device\n", "Neighbour ID", "State", "Address", "Interface");
+    }
     for n in list {
         let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
         let _ = writeln!(s, "{:<16} {:<10} {:<26} {:<12} {name}", n.router_id.to_string(), "FULL", n.address.to_string(), ifname::short(&n.iface));
+    }
+    for (iface, rid, why) in refused {
+        let _ = writeln!(s, "Not a neighbour: {rid} on {}: {why}", ifname::short(&iface));
     }
     s.trim_end().to_string()
 }
@@ -1517,8 +1555,14 @@ pub fn ospf6_summary(d: &Device, st: &netlabcraft_sim::ospf6::Ospf6State) -> Str
     if !netlabcraft_sim::v6::routes6(d) {
         let _ = writeln!(s, "  Not running: IPv6 routing is off (`ipv6 unicast-routing`)");
     }
+    let up = netlabcraft_sim::v6::l3_ifaces6(d);
     for (name, area, cost, passive) in st.interfaces.get(&d.id).into_iter().flatten() {
-        let _ = writeln!(s, "  {:<22} area {area}, cost {cost}{}", name, if *passive { ", passive" } else { "" });
+        let auth = up
+            .iter()
+            .find(|i| i.name == *name)
+            .and_then(|i| netlabcraft_sim::ospf6::auth_of(d, i, *area))
+            .map_or(String::new(), |a| format!(", authentication: AH {}", ospf6_auth_summary(a)));
+        let _ = writeln!(s, "  {:<22} area {area}, cost {cost}{}{auth}", name, if *passive { ", passive" } else { "" });
     }
     let n = st.neighbors.get(&d.id).map_or(0, Vec::len);
     let _ = write!(s, "  {n} neighbour{}", if n == 1 { "" } else { "s" });
@@ -2035,6 +2079,13 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     }
     if let Some((p, a)) = c.ospf {
         let _ = writeln!(s, " ipv6 ospf {p} area {a}");
+    }
+    match &c.ospf_auth {
+        Some(netlabcraft_model::Ospf6Auth::Null) => s.push_str(" ospfv3 authentication null\n"),
+        Some(a @ netlabcraft_model::Ospf6Auth::Ipsec { .. }) => {
+            let _ = writeln!(s, " ospfv3 authentication {}", ospf6_auth_words(a));
+        }
+        None => {}
     }
     if c.nd_managed {
         let _ = writeln!(s, " ipv6 nd managed-config-flag");
