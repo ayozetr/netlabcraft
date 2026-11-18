@@ -540,6 +540,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
 | `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
+| `show interfaces transceiver` | user, privileged | switch | Transceiver, loss budget and margin of each fiber port |
 | `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
 | `show logging` | user, privileged | router, switch, firewall | The logging buffer |
@@ -1082,6 +1083,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip proxy-arp` | interface, subinterface | router | Answer ARP for hosts that are reached through this router |
 | `no ip proxy-arp` | interface, subinterface | router | Answer ARP only for this interface's own address |
 | `no mdix auto` | interface | router, switch | Expect the right cable type |
+| `transceiver type {multi-mode\|single-mode}` | interface | router, switch | The transceiver in a fiber or combo port (both ends of a link need the same) |
+| `no transceiver type` | interface | router, switch | Put the multi-mode transceiver back |
 | `keepalive` | interface | router, switch | Keepalives every 10 seconds again |
 | `keepalive <1-32767>` | interface | router, switch | Seconds between keepalives (shown by `show interfaces`; the simulator sends none) |
 | `no keepalive` | interface | router, switch | No keepalives |

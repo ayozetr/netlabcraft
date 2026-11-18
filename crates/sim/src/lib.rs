@@ -234,7 +234,13 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
         _ => ("copper", netlabcraft_model::physical::COPPER_MAX_M),
     };
     let len = t.cable_length(l);
-    (len.meters > max).then(|| format!("cable too long: {} m {what}, max {max} m", len.meters))
+    if len.meters > max {
+        return Some(format!("cable too long: {} m {what}, max {max} m", len.meters));
+    }
+    // Fiber that reaches far enough can still lose too much light to its connectors and splices.
+    t.fiber_budget(l)
+        .filter(|b| b.state() == netlabcraft_model::physical::BudgetState::Over)
+        .map(|b| format!("fiber loses {:.1} dB, over the {:.1} dB the transceivers tolerate", b.loss_db, b.budget_db))
 }
 
 /// The fastest an Ethernet port goes, in Mbit/s, from its type (`None`: not Ethernet).
