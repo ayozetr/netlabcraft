@@ -17,6 +17,7 @@ pub use dialogs::{Dialog, DialogKind};
 pub(crate) mod archive;
 pub(crate) mod automation;
 pub(crate) mod bgp;
+mod bgp6;
 pub(crate) mod cef;
 pub(crate) mod cellular;
 pub(crate) mod debug;
@@ -94,6 +95,9 @@ pub enum Mode {
     Eigrp,
     /// `R1(config-router)#` under `router bgp N`.
     Bgp,
+    /// `R1(config-router-af)#` under `address-family ipv6` of `router bgp N` (it shares the BGP
+    /// command bit: the commands that differ per family read the mode).
+    BgpAf6,
     /// `R1(config-route-map)#`: the route map's name and the clause's sequence number.
     RouteMap(String, u32),
     /// `R1(config-rtr)#` under `ipv6 router eigrp N` (the EIGRP command bits, checked apart).
@@ -201,7 +205,7 @@ impl Mode {
             Mode::Rip | Mode::Rip6 => Modes::RIP,
             Mode::Ospf6 => Modes::OSPF6,
             Mode::Eigrp | Mode::Eigrp6 => Modes::EIGRP,
-            Mode::Bgp => Modes::BGP,
+            Mode::Bgp | Mode::BgpAf6 => Modes::BGP,
             Mode::RouteMap(..) => Modes::ROUTE_MAP,
             Mode::Acl6(_) => Modes::ACL6,
             Mode::Dhcp6(_) => Modes::DHCP6,
@@ -691,6 +695,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
         Mode::Ospf | Mode::Rip | Mode::Eigrp | Mode::Bgp => format!("{n}(config-router)#"),
+        Mode::BgpAf6 => format!("{n}(config-router-af)#"),
         Mode::RouteMap(..) => format!("{n}(config-route-map)#"),
         Mode::Ospf6 | Mode::Eigrp6 | Mode::Rip6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
@@ -1195,6 +1200,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Rip
                 | Mode::Eigrp
                 | Mode::Bgp
+                | Mode::BgpAf6
                 | Mode::RouteMap(..)
                 | Mode::Eigrp6
                 | Mode::Rip6
@@ -1323,6 +1329,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
+                Mode::BgpAf6 => Mode::Bgp,
                 Mode::Ikev2Peer(ref k, _) => Mode::Ikev2Keyring(k.clone()),
                 Mode::KeyChainKey(ref k, _) => Mode::KeyChain(k.clone()),
                 // A class inside a policy map goes back to the policy map.
@@ -4727,6 +4734,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::BgpNeighborActivate
         | Id::NoBgpNeighborActivate
         | Id::BgpAddressFamily
+        | Id::BgpAddressFamily6
+        | Id::ShowBgpIpv6Summary
         | Id::BgpExitAddressFamily
         | Id::BgpAddressFamilyOther => bgp::option_command(&mut c, spec, &args),
         Id::FlowExportDestination
