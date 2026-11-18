@@ -35,6 +35,7 @@ const DEFAULT_ON: &[&str] = &[
     "service pad",
     "spanning-tree etherchannel guard misconfig",
     "spanning-tree extend system-id",
+    "validate-update-source",
 ];
 
 /// What the console says after it keeps a setting.
@@ -71,13 +72,23 @@ pub(super) fn check(placeholder: &str, value: &str) -> Result<String, String> {
     Ok(one)
 }
 
+/// Whether the argument at `i` numbers a group or an autonomous system, so that two of the same
+/// setting for different numbers (`standby 1 timers …`, `standby 2 timers …`) are two settings.
+fn keyed_arg(spec: &Spec, start: usize, i: usize) -> bool {
+    let first = spec.path.get(start);
+    let group = matches!(first, Some(Tok::K("standby" | "vrrp" | "glbp"))) && i == start + 1;
+    let eigrp_as = matches!(first, Some(Tok::K("ip"))) && matches!(i.checked_sub(1).and_then(|j| spec.path.get(j)), Some(Tok::K("eigrp")));
+    group || eigrp_as
+}
+
 /// Runs `Knob` and `NoKnob`.
 pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
     let no = spec.id == Id::NoKnob;
     let mut words: Vec<String> = Vec::new();
     let mut key: Vec<String> = Vec::new();
     let mut next = args.iter();
-    for t in spec.path.iter().skip(usize::from(no)) {
+    let start = usize::from(no);
+    for (i, t) in spec.path.iter().enumerate().skip(start) {
         match t {
             Tok::K(k) => {
                 words.push((*k).to_string());
@@ -85,7 +96,7 @@ pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
             }
             Tok::Arg(p) => {
                 let v = check(p, next.next().map_or("", String::as_str))?;
-                if p.starts_with('{') {
+                if p.starts_with('{') || keyed_arg(spec, start, i) {
                     key.push(v.clone());
                 }
                 words.push(v);
@@ -104,22 +115,33 @@ pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
     let on_by_default = DEFAULT_ON.contains(&key.as_str());
     // What is kept: the line for a setting that is off by default, the `no` line for one that is on.
     let keep = if on_by_default { no.then(|| format!("no {line}")) } else { (!no).then_some(line) };
-    let scope_names: Vec<String> = match &c.cli.mode {
-        Mode::Config => Vec::new(),
-        Mode::Line(vty) => vec![(if *vty { "vty" } else { "con" }).to_string()],
-        Mode::Loopback(n) => vec![format!("Loopback{n}")],
-        Mode::Iface(_) | Mode::Svi(_) => c.mode_iface_names()?,
+    #[derive(Clone, Copy, PartialEq)]
+    enum Kind {
+        Global,
+        Iface,
+        Line,
+        Proto,
+    }
+    let (kind, scope_names): (Kind, Vec<String>) = match &c.cli.mode {
+        Mode::Config => (Kind::Global, Vec::new()),
+        Mode::Line(vty) => (Kind::Line, vec![(if *vty { "vty" } else { "con" }).to_string()]),
+        Mode::Rip => (Kind::Proto, vec!["rip".to_string()]),
+        Mode::Eigrp => (Kind::Proto, vec!["eigrp".to_string()]),
+        Mode::Loopback(n) => (Kind::Iface, vec![format!("Loopback{n}")]),
+        Mode::Iface(_) | Mode::Svi(_) => (Kind::Iface, c.mode_iface_names()?),
         _ => return Err("% That setting is not available in this mode".into()),
     };
-    let line_mode = matches!(c.cli.mode, Mode::Line(_));
-    let global = matches!(c.cli.mode, Mode::Config);
     let d = c.dm()?;
     let mut scopes: Vec<Scope> = Vec::new();
-    if global {
+    if kind == Kind::Global {
         scopes.push(Scope::Global);
     }
     for n in &scope_names {
-        scopes.push(if line_mode { Scope::Line(n) } else { Scope::Iface(n) });
+        scopes.push(match kind {
+            Kind::Line => Scope::Line(n),
+            Kind::Proto => Scope::Proto(n),
+            _ => Scope::Iface(n),
+        });
     }
     for s in scopes {
         match &keep {
@@ -144,6 +166,13 @@ pub(crate) fn global_config(s: &mut String, d: &Device) {
 /// An interface's settings, written inside its block.
 pub(crate) fn iface_lines(s: &mut String, d: &Device, name: &str) {
     for l in d.knobs.written(Scope::Iface(name)) {
+        let _ = writeln!(s, " {l}");
+    }
+}
+
+/// The settings under `router rip` or `router eigrp`, written inside the process block.
+pub(crate) fn proto_lines(s: &mut String, d: &Device, process: &str) {
+    for l in d.knobs.written(Scope::Proto(process)) {
         let _ = writeln!(s, " {l}");
     }
 }

@@ -215,6 +215,7 @@ pub fn new_label(kind: PlaceKind) -> &'static str {
         PlaceKind::City => "New City",
         PlaceKind::Building => "New Building",
         PlaceKind::Closet => "New Wiring Closet",
+        PlaceKind::Container => "New Container",
     }
 }
 
@@ -431,6 +432,7 @@ fn draw_places(app: &mut PacketApp, ctx: &egui::Context, painter: &egui::Painter
                 PlaceKind::City => icons::city(painter, r, tk.place, edge),
                 PlaceKind::Building => icons::building(painter, r, tk.place, edge),
                 PlaceKind::Closet => icons::closet(painter, r, tk.place, edge),
+                PlaceKind::Container => icons::container(painter, r, tk.place, edge),
             }
         }
         let inside = view.shown.values().filter(|n| **n == Node::Place(p.id)).count();
@@ -599,7 +601,7 @@ fn destinations(app: &PacketApp, host: bool) -> Vec<(u32, String)> {
     let t = &app.session.topology;
     t.places()
         .iter()
-        .filter(|p| p.kind == PlaceKind::Closet || (host && p.kind == PlaceKind::Building))
+        .filter(|p| p.kind.holds_things() || (host && p.kind == PlaceKind::Building))
         .map(|p| (p.id, t.place_path(Some(p.id)).iter().map(|x| tr(&x.name)).collect::<Vec<_>>().join(" › ")))
         .collect()
 }
