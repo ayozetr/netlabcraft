@@ -18,6 +18,7 @@ mod debug_framework;
 mod debug_topics;
 mod error_counters;
 mod families;
+mod ike_rsa;
 mod inspections;
 mod interface_counters;
 mod ipsec_crypto;

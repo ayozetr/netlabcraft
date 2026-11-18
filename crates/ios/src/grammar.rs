@@ -1272,6 +1272,7 @@ pub enum Id {
     Ikev2IdentityLocal,
     Ikev2AuthLocal,
     Ikev2AuthRemote,
+    Ikev2ProfilePki,
     Ikev2ProfileKeyring,
     Ikev2ProfileLifetime,
     NoIkev2ProfileLifetime,
@@ -5980,15 +5981,22 @@ pub static SPECS: &[Spec] = &[
         Ikev2AuthLocal,
         Modes::IKEV2_PROFILE,
         Modes::ROUTER,
-        [K("authentication"), K("local"), Arg("pre-share")],
+        [K("authentication"), K("local"), Arg("{pre-share|rsa-sig}")],
         "How this router proves who it is"
     ),
     spec!(
         Ikev2AuthRemote,
         Modes::IKEV2_PROFILE,
         Modes::ROUTER,
-        [K("authentication"), K("remote"), Arg("pre-share")],
+        [K("authentication"), K("remote"), Arg("{pre-share|rsa-sig}")],
         "How the peer proves who it is"
+    ),
+    spec!(
+        Ikev2ProfilePki,
+        Modes::IKEV2_PROFILE,
+        Modes::ROUTER,
+        [K("pki"), K("trustpoint"), Arg("NAME")],
+        "The trustpoint whose certificate signs this router's IKE_AUTH"
     ),
     spec!(Ikev2ProfileKeyring, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("keyring"), K("local"), Arg("NAME")], "The keyring holding the keys"),
     spec!(Ikev2ProfileLifetime, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("lifetime"), Arg("<120-86400>")], "Seconds before the IKE SA is replaced"),

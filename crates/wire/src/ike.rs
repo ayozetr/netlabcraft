@@ -34,9 +34,15 @@ pub const P_TRANSFORM: u8 = 3;
 pub const P_KE: u8 = 4;
 pub const P_ID: u8 = 5;
 pub const P_HASH: u8 = 8;
+pub const P_CERT: u8 = 6;
+pub const P_CERTREQ: u8 = 7;
+pub const P_SIG: u8 = 9;
 pub const P_NONCE: u8 = 10;
 pub const P_NOTIFY: u8 = 11;
 pub const P_DELETE: u8 = 12;
+/// Certificate encoding of a CERT payload: an X.509 certificate for signature verification
+/// (RFC 2408 §3.9).
+pub const CERT_X509_SIGNATURE: u8 = 4;
 /// Protocol identifiers in proposals.
 pub const PROTO_ISAKMP: u8 = 1;
 pub const PROTO_AH: u8 = 2;
@@ -103,6 +109,24 @@ pub enum Payload {
 }
 
 impl Payload {
+    /// A CERT payload carrying one DER certificate (encoding 4, X.509 for signatures).
+    pub fn cert(der: &[u8]) -> Payload {
+        let mut body = Vec::with_capacity(der.len() + 1);
+        body.push(CERT_X509_SIGNATURE);
+        body.extend_from_slice(der);
+        Payload::Other(P_CERT, body)
+    }
+
+    /// A CERTREQ payload asking for certificates of any authority (encoding 4, no names).
+    pub fn cert_request() -> Payload {
+        Payload::Other(P_CERTREQ, vec![CERT_X509_SIGNATURE])
+    }
+
+    /// A SIG payload (RFC 2408 §3.12): the signature of a main mode HASH_I or HASH_R.
+    pub fn signature(sig: &[u8]) -> Payload {
+        Payload::Other(P_SIG, sig.to_vec())
+    }
+
     fn kind(&self) -> u8 {
         match self {
             Payload::Sa(_) => P_SA,
@@ -124,6 +148,9 @@ impl Payload {
             Payload::Hash(_) => "HASH",
             Payload::Nonce(_) => "NONCE",
             Payload::Notify { .. } => "NOTIFY",
+            Payload::Other(P_CERT, _) => "CERT",
+            Payload::Other(P_CERTREQ, _) => "CERTREQ",
+            Payload::Other(P_SIG, _) => "SIG",
             Payload::Other(..) => "other",
         }
     }
@@ -415,6 +442,26 @@ impl Isakmp {
     }
 }
 
+/// The DER certificates of the CERT payloads of a list, in order (other encodings are skipped).
+pub fn certs_of(list: &[Payload]) -> Vec<&[u8]> {
+    list.iter()
+        .filter_map(|p| match p {
+            Payload::Other(P_CERT, b) if b.first() == Some(&CERT_X509_SIGNATURE) => b.get(1..),
+            _ => None,
+        })
+        .collect()
+}
+
+/// The signature of the first SIG payload of a list.
+pub fn sig_of(list: &[Payload]) -> Option<&[u8]> {
+    list.iter().find_map(|p| if let Payload::Other(P_SIG, b) = p { Some(b.as_slice()) } else { None })
+}
+
+/// Whether a list carries a CERTREQ payload.
+pub fn asks_for_cert(list: &[Payload]) -> bool {
+    list.iter().any(|p| matches!(p, Payload::Other(P_CERTREQ, _)))
+}
+
 /// Payloads one after another, each header naming the next.
 pub fn chain(payloads: &[Payload]) -> Vec<u8> {
     let mut v = Vec::new();
@@ -500,6 +547,31 @@ mod tests {
         bad[HEADER_LEN + 2] = 0;
         bad[HEADER_LEN + 3] = 2;
         assert!(Isakmp::decode(&bad).is_err());
+    }
+
+    #[test]
+    fn certificate_and_signature_payloads_round_trip_and_survive_truncation() {
+        let aes = Cipher::new(CipherKind::Aes, &[5; 16]).unwrap();
+        let id = Payload::Id { kind: 1, protocol: 17, port: 500, data: vec![10, 0, 0, 1] };
+        let list = [id.clone(), Payload::cert(&[0x30, 3, 2, 1, 1]), Payload::cert_request(), Payload::signature(&[7; 64])];
+        let m = Isakmp::sealed_cbc([3; 8], [4; 8], EXCH_MAIN, 0, &list, &aes, &[9; 16]);
+        let v = m.encode();
+        let back = Isakmp::decode(&v).unwrap();
+        let opened = back.open_cbc(&aes, &[9; 16]).unwrap();
+        assert_eq!(opened, list.to_vec());
+        assert_eq!(certs_of(&opened), vec![&[0x30u8, 3, 2, 1, 1][..]]);
+        assert_eq!(sig_of(&opened), Some(&[7u8; 64][..]));
+        assert!(asks_for_cert(&opened) && !asks_for_cert(&list[..2]));
+        assert_eq!(list[1].name(), "CERT");
+        assert_eq!(list[3].name(), "SIG");
+        // A CERT payload of another encoding is not a certificate for this purpose.
+        assert!(certs_of(&[Payload::Other(P_CERT, vec![1, 2, 3])]).is_empty());
+        assert!(certs_of(&[Payload::Other(P_CERT, Vec::new())]).is_empty());
+        for n in 0..v.len() {
+            if let Ok(x) = Isakmp::decode(&v[..n]) {
+                let _ = x.open_cbc(&aes, &[9; 16]);
+            }
+        }
     }
 
     #[test]
