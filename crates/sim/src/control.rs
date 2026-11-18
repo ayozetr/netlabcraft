@@ -63,6 +63,8 @@ impl Sim {
             (self.bgp_tick_us(t), 11),
             (crate::igmp::QUERY_EVERY_US, 12),
             (1_000_000, 13),
+            (crate::pim::HELLO_EVERY_US, 14),
+            (crate::pim::JOIN_EVERY_US, 15),
         ] {
             let mut at = (from / every + 1) * every;
             while at <= deadline {
@@ -78,8 +80,13 @@ impl Sim {
                     9 => self.send_eigrp6_hellos(t, at),
                     10 => self.send_vrrp(t, at),
                     11 => self.send_bgp_keepalives(t, at),
-                    12 => self.send_igmp_queries(t, at),
+                    12 => {
+                        self.send_igmp_queries(t, at);
+                        self.send_router_igmp_queries(t, at);
+                    }
                     13 => self.send_udld(t, at),
+                    14 => self.send_pim_hellos(t, at),
+                    15 => self.send_pim_joins(t, at),
                     _ => self.send_rip_updates(t, at),
                 }
                 at += every;

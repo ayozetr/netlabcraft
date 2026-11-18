@@ -1371,8 +1371,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip source-route` | config | router, switch | Turn this off (it is on by default) |
 | `ip gratuitous-arps` | config | router, switch | Answer gratuitous ARP and send it on address changes (on) |
 | `no ip gratuitous-arps` | config | router, switch | Turn this off (it is on by default) |
-| `ip multicast-routing` | config | router, switch | Route IPv4 multicast |
-| `no ip multicast-routing` | config | router, switch | Return this setting to its default |
 | `ipv6 multicast-routing` | config | router, switch | Route IPv6 multicast |
 | `no ipv6 multicast-routing` | config | router, switch | Return this setting to its default |
 | `ip tcp synwait-time <5-300>` | config | router, switch | Seconds to wait for a TCP connection to open |
@@ -2358,6 +2356,32 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show dot1x all` | user, privileged | switch | Every port 802.1X controls and who is logged in on it |
 | `show dot1x interface <interface>` | user, privileged | switch | One port's 802.1X state |
 | `dot1x re-authenticate interface <interface>` | privileged | switch | Make the host on a port log in again |
+| `ip multicast-routing` | config | router, switch | Route IPv4 multicast between the interfaces that run PIM |
+| `no ip multicast-routing` | config | router, switch | Stop routing IPv4 multicast |
+| `ip pim rp-address A.B.C.D` | config | router, switch | The rendezvous point for every group |
+| `ip pim rp-address A.B.C.D ACL` | config | router, switch | The rendezvous point for the groups a standard access list permits |
+| `no ip pim rp-address A.B.C.D` | config | router, switch | Remove a rendezvous point |
+| `no ip pim rp-address A.B.C.D ACL` | config | router, switch | Remove the rendezvous point of one access list |
+| `ip pim sparse-mode` | interface, subinterface | router, switch | Run PIM here: trees are built only where a receiver asked for them |
+| `ip pim dense-mode` | interface, subinterface | router, switch | Run PIM here: flood every group, then prune where nobody listens |
+| `ip pim sparse-dense-mode` | interface, subinterface | router, switch | Run PIM here: sparse for groups with a rendezvous point, dense for the rest |
+| `no ip pim sparse-mode` | interface, subinterface | router, switch | Stop PIM on this interface |
+| `no ip pim dense-mode` | interface, subinterface | router, switch | Stop PIM on this interface |
+| `no ip pim sparse-dense-mode` | interface, subinterface | router, switch | Stop PIM on this interface |
+| `ip pim dr-priority <0-4294967294>` | interface, subinterface | router, switch | Priority in the designated router election of the link (higher wins) |
+| `no ip pim dr-priority` | interface, subinterface | router, switch | Priority 1 again |
+| `ip igmp join-group A.B.C.D` | interface, subinterface | router, switch | Make this interface a member of a group: the router receives its packets and asks for them |
+| `no ip igmp join-group A.B.C.D` | interface, subinterface | router, switch | Leave the group |
+| `clear ip mroute *` | privileged | router, switch | Forget the sources and counters of the multicast table |
+| `show ip mroute` | user, privileged | router, switch | The multicast routing table |
+| `show ip mroute count` | user, privileged | router, switch | Packets forwarded for each source and group |
+| `show ip mroute summary` | user, privileged | router, switch | One line for each entry of the multicast table |
+| `show ip mroute A.B.C.D` | user, privileged | router, switch | The entries of one group |
+| `show ip pim neighbor` | user, privileged | router, switch | Routers heard on the interfaces that run PIM |
+| `show ip pim interface` | user, privileged | router, switch | Interfaces that run PIM, their mode and designated router |
+| `show ip pim rp mapping` | user, privileged | router, switch | Which rendezvous point serves which groups |
+| `show ip igmp groups` | user, privileged | router, switch | Groups with a member on each interface |
+| `show ip igmp interface` | user, privileged | router, switch | IGMP on each interface that runs PIM |
 
 ## Host shell (PCs and servers)
 
