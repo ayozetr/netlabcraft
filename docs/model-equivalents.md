@@ -1,6 +1,6 @@
 # Model equivalents
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (consistency pass: the Humidity Monitor is named as the model list names it) · earlier: minor (Smart City and Industrial: twelve more things; the Smart Sensor, Humidity Monitor and CO Detector are listed in Smart City too, and the Smart LED in three groups) · also merged with minor (Smart Home: eight more things, 134 models in all) · also merged with minor (26 more component models: nine actuators and seventeen sensors, 126 in all; the Buzzer shown under its reference name, Piezo Speaker) · also merged with minor (the full device box: 35 more models, 100 in all) · earlier: minor (the Telephone Cloud, the Dial-up PC and the Access Server) · also merged with minor (the sniffer and port mirroring) · earlier: minor (smart TVs, a sniffer, a smart speaker, a water level sensor and four more router models) · earlier: minor (cellular radio on Tablet and Smartphone, Cell Tower and Central Office Server) · earlier: minor (Tablet, Smartphone, ten Wi-Fi IoT things, Board SBC and Board MCU; power-supply bays) · **Target:** CCNA course labs
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the review line names only the latest change) · **Target:** CCNA course labs
 
 Course labs name specific vendor models. NetLabCraft's models are its own, named after their
 ports (`GE` Gigabit Ethernet, `FE` Fast Ethernet, `S` serial), and never carry vendor names
@@ -176,6 +176,7 @@ independent project, not affiliated with or endorsed by Cisco.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Final consistency pass: the review line names only the latest change; the revision rows are in date order, newest first. |
 | 2026-11-17 | minor | Consistency pass: the Humidity Monitor is named as `MODELS` names it; the rows were checked against the 146 models. |
 | 2026-11-17 | minor | Smart City and Industrial: Atmospheric Pressure Monitor, Beacon, Carbon Dioxide Detector, Fire Monitor, Fire Sprinkler, Old Car, RFID Card, RFID Reader, Smart LED, Trip Sensor and Wind Detector, and an Industrial Signal Generator; the equivalents of a temperature monitor, a humidity monitor and a CO detector are also listed in Smart City. |
 | 2026-11-17 | minor | Smart Home: Appliance, Bluetooth Speaker, Ceiling Fan, Furnace, Humidifier, Humiture Monitor, Portable Music Player and Sound Frequency Detector. |

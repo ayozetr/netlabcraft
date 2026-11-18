@@ -1,6 +1,6 @@
 # netlabcraft-cli
 
-> **Last reviewed:** 2026-11-13 · **Last updated:** 2026-11-13 · **Change:** minor (results replay: the JSON export and verify example (M9.6)) · earlier: minor (examples for Simulation-mode options, controller discovery, kept NETCONF sessions, boards, power supplies and the instructor commands; the lab book from the command line)
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the review line names only the latest change)
 
 The headless command line: run engine commands, type at consoles, write captures and serve MCP, with no window.
 
@@ -84,6 +84,7 @@ Every command id and its parameters: [`command-reference.md`](command-reference.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Final consistency pass: the review line names only the latest change; the revision rows are in date order, newest first. |
 | 2026-11-13 | minor | Example of a replayed results file (M9.6). |
 | 2026-10-31 | minor | Examples for Constant Delay and the capture filter, controller discovery, a kept NETCONF session, a board, power supplies and the instructor commands; the commands added since listed; the lab book from the command line. |
 | 2026-10-30 | minor | Examples and the list of new commands: PDUs and scenarios, `sim.event`, RESTCONF, NETCONF, the controller, power and clouds. |

@@ -113,7 +113,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-  output filters (1823 grammar entries in all; see
+  output filters (2147 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
@@ -125,9 +125,8 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds sixty-three hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, twenty-four for the second and thirty-two for
-the third, the last eleven of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas, route tags and BGP peer groups, BGP passwords, Dial-up) going a step past the course; one more, on wireless security, follows the first two, and two on programming boards follow the Internet of Things), plus one on mobile data. Nineteen of them are troubleshooting labs where you find and
+[`docs/labs/`](docs/labs/README.md) holds eighty-five numbered hands-on labs (numbers 1 to 87; 79 and 80 are not used) written for NetLabCraft over the
+topics of the three CCNA courses, many of them a step past the course (BGP, route filtering, redistribution, route reflectors, PPPoE, OSPF stub, NSSA and virtual-link areas, IKE with certificates, multiple spanning tree, VRF-lite, multicast routing with PIM and more), plus one on mobile data that has no number. Nineteen of them are troubleshooting labs where you find and
 fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security, site-to-site and remote-access VPNs, wireless clients, IP phones, IPv6, HSRP, DHCP snooping, ACL order), and six
 teach you to read output: the OSPF database and spanning-tree views, and what `debug` prints for ICMP, ARP, packets, RIP, EIGRP, spanning tree and NAT. Each lab lists its topology, addressing, every command to
 type and what to check. Every lab is also a test: the suite runs each one end to end as
