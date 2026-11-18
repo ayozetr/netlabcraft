@@ -649,6 +649,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug ip ssh` | privileged | router, switch | Report SSH logins to this device |
 | `debug crypto isakmp` | privileged | router, switch | Report the IKE exchanges of this device |
 | `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
+| `debug crypto pki` | privileged | router, switch | Report certificates checked, requests, grants and revocations |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
@@ -686,6 +687,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug ip ssh` | privileged | router, switch | Stop reporting SSH |
 | `no debug crypto isakmp` | privileged | router, switch | Stop reporting ISAKMP |
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
+| `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
@@ -1016,6 +1018,54 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
 | `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |
 | `show ip bgp filter-list <1-500>` | user, privileged | router, switch | The paths an AS-path list permits |
+| `bgp bestpath as-path multipath-relax` |  | router, switch | Let paths from different neighbouring ASes share the load |
+| `no bgp bestpath as-path multipath-relax` |  | router, switch | Return this setting to its default |
+| `bgp bestpath compare-routerid` |  | router, switch | Prefer the lowest router id between equal external paths |
+| `no bgp bestpath compare-routerid` |  | router, switch | Return this setting to its default |
+| `bgp bestpath med missing-as-worst` |  | router, switch | Count a path without a MED as the worst one |
+| `no bgp bestpath med missing-as-worst` |  | router, switch | Return this setting to its default |
+| `bgp bestpath med confed` |  | router, switch | Compare the MED between member ASes of a confederation |
+| `no bgp bestpath med confed` |  | router, switch | Return this setting to its default |
+| `bgp deterministic-med` |  | router, switch | Choose among the paths of one neighbouring AS first |
+| `no bgp deterministic-med` |  | router, switch | Return this setting to its default |
+| `bgp fast-external-fallover` |  | router, switch | End a direct external session when its link goes down (on) |
+| `no bgp fast-external-fallover` |  | router, switch | Turn this off (it is on by default) |
+| `bgp client-to-client reflection` |  | router, switch | Pass a route reflector client path to the other clients (on) |
+| `no bgp client-to-client reflection` |  | router, switch | Turn this off (it is on by default) |
+| `bgp default ipv4-unicast` |  | router, switch | Exchange IPv4 routes with every neighbour without activating it (on) |
+| `no bgp default ipv4-unicast` |  | router, switch | Turn this off (it is on by default) |
+| `synchronization` |  | router, switch | Wait for an IGP route before using an internal path |
+| `no synchronization` |  | router, switch | Return this setting to its default |
+| `auto-summary` |  | router, switch | Summarise networks at their classful boundary |
+| `no auto-summary` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME version <4-4>` |  | router, switch | The BGP version the session speaks |
+| `no neighbor A.B.C.D\|NAME version` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME advertisement-interval <0-600>` |  | router, switch | Seconds between the updates sent to this neighbour |
+| `no neighbor A.B.C.D\|NAME advertisement-interval` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME maximum-prefix <1-4294967295>` |  | router, switch | Most prefixes this neighbour may send |
+| `no neighbor A.B.C.D\|NAME maximum-prefix` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME maximum-prefix <1-4294967295> [threshold] [restart <minutes>] [warning-only]` |  | router, switch | Most prefixes this neighbour may send, with its options |
+| `no neighbor A.B.C.D\|NAME maximum-prefix` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME allowas-in` |  | router, switch | Accept paths that contain this AS |
+| `no neighbor A.B.C.D\|NAME allowas-in` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME allowas-in <1-10>` |  | router, switch | Accept paths that contain this AS up to this many times |
+| `no neighbor A.B.C.D\|NAME allowas-in` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME as-override` |  | router, switch | Replace the neighbour AS in the paths sent to it with this one |
+| `no neighbor A.B.C.D\|NAME as-override` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME ttl-security hops <1-254>` |  | router, switch | Accept only packets from at most this many hops away |
+| `no neighbor A.B.C.D\|NAME ttl-security hops` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME disable-connected-check` |  | router, switch | Let a loopback-to-loopback external session come up |
+| `no neighbor A.B.C.D\|NAME disable-connected-check` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Open the session or wait for the neighbour to |
+| `no neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME activate` |  | router, switch | Exchange IPv4 routes with this neighbour |
+| `no neighbor A.B.C.D\|NAME activate` |  | router, switch | Stop exchanging IPv4 routes with this neighbour |
+| `address-family ipv4` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
+| `address-family ipv4 unicast` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
+| `exit-address-family` |  | router, switch | Leave the address family |
+| `address-family <other address family>` |  | router, switch | Only IPv4 unicast is simulated |
+| `neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Filter the prefixes of this neighbour with a standard access list |
+| `no neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Stop filtering this neighbour's prefixes with the list |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
 | `no bandwidth` | interface | router, switch | Bandwidth from the port's speed again |
 | `delay <1-16777215>` | interface | router, switch | The delay EIGRP's metric adds (tens of microseconds) |

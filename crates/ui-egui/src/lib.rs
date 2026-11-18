@@ -59,6 +59,7 @@ pub mod pdf;
 pub mod pdu_dialog;
 mod phone;
 mod physical;
+mod physical_bar;
 mod physical_grid;
 pub mod png;
 pub mod prefs;
@@ -82,6 +83,7 @@ mod wlan_page;
 mod tests;
 mod tests_cables;
 mod tests_closet;
+mod tests_create;
 mod tests_environments;
 mod tests_families;
 mod tests_grid;
@@ -1481,17 +1483,14 @@ impl PacketApp {
                     self.set_physical(true);
                 }
             }
-            if physical && let Some(kind) = physical::child_kind(self) {
-                let label = physical::new_label(kind);
-                let b = ui.add(egui::Button::new(RichText::new(tl(label)).color(tk.bar_text).size(15.0)).fill(tk.pill.gamma_multiply(0.5)));
-                if b.hint(tl("Adds a place to the map shown; drag it into position")).clicked() {
-                    physical::add_place(self, None);
-                }
-            }
             let coords = self.ui.pointer.map_or(String::new(), |(x, y)| format!("x: {}, y: {}", x.round() as i64, y.round() as i64));
             ui.label(RichText::new(coords).color(tk.bar_text).size(15.0));
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
+                // Home is the last button at the right; the + menu sits just left of the clock.
+                if physical {
+                    physical_bar::home_button(self, ui);
+                }
                 let (rect, _) = ui.allocate_exact_size(vec2(104.0, 28.0), Sense::hover());
                 let p = ui.painter_at(rect);
                 p.rect_stroke(rect, 8.0, egui::Stroke::new(1.5, tk.bar_text), egui::StrokeKind::Inside);
@@ -1503,6 +1502,9 @@ impl PacketApp {
                     egui::FontId::proportional(17.0),
                     tk.pill_text,
                 );
+                if physical {
+                    physical_bar::create_button(self, ui);
+                }
                 let back =
                     if physical { "Back to the enclosing place (Intercity is the top)" } else { "Back to the parent cluster (Root is the top)" };
                 for (g, label) in [

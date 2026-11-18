@@ -7,8 +7,8 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::bgp::{
-    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_PASSWORD, MAX_PEER_GROUPS,
-    MAX_TEXT, Neighbor, PeerGroup, Source, follow,
+    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_OPTIONS, MAX_PASSWORD,
+    MAX_PEER_GROUPS, MAX_TEXT, Neighbor, PeerGroup, Source, follow,
 };
 use netlabcraft_model::policy::{self, community_text, parse_community};
 use netlabcraft_model::{Device, DeviceKind, Rip, ifname, routing};
@@ -16,7 +16,7 @@ use netlabcraft_sim::DebugKind;
 use netlabcraft_sim::bgp::{BgpView, NeighborView, Path, RouterView, SessionState};
 
 use super::{Ctx, Mode, R, line_password};
-use crate::grammar::Id;
+use crate::grammar::{Id, Spec, Tok};
 
 fn asn(text: &str) -> Result<u32, String> {
     text.trim().parse::<u32>().ok().filter(|n| *n >= 1).ok_or_else(|| "% The autonomous system number is 1-4294967295".to_string())
@@ -327,9 +327,30 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })?;
             Ok(String::new())
         }
+        Id::BgpNeighborDistribute | Id::NoBgpNeighborDistribute => {
+            let who = arg(0).trim().to_string();
+            let name = policy_name(arg(1))?;
+            let inbound = direction(arg(2))?;
+            let set = id == Id::BgpNeighborDistribute;
+            edit(process(c)?, &who, |n| {
+                let slot = if inbound { &mut n.distribute_in } else { &mut n.distribute_out };
+                if set {
+                    *slot = Some(name);
+                } else if slot.as_deref() == Some(name.as_str()) {
+                    *slot = None;
+                } else {
+                    return Err(format!("% {name} is not applied to {who} in that direction"));
+                }
+                Ok(())
+            })?;
+            Ok(String::new())
+        }
         Id::BgpNeighborSendCommunity | Id::NoBgpNeighborSendCommunity => {
+            if arg(1).eq_ignore_ascii_case("extended") {
+                return Ok(EXTENDED_NOT_SIMULATED.to_string());
+            }
             if !arg(1).is_empty() && !matches!(arg(1).to_ascii_lowercase().as_str(), "both" | "standard") {
-                return Err("% Only standard communities exist here: say both or standard".into());
+                return Err("% Say both, standard or extended".into());
             }
             let on = id == Id::BgpNeighborSendCommunity;
             edit(process(c)?, arg(0), |n| {
@@ -640,6 +661,118 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
     }
 }
 
+/// What the console says after `send-community extended`: the setting is not kept, because no path
+/// carries an extended community here.
+const EXTENDED_NOT_SIMULATED: &str =
+    "Accepted: extended communities are not simulated, so the neighbour is sent none (standard ones still need send-community).";
+/// What the console says after it keeps a setting that changes nothing in the simulation.
+const KEPT: &str = "Accepted: kept in the configuration; it does not change what the simulator does.";
+
+/// Process settings that are on until turned off: the `no` line is what gets kept.
+const PROCESS_ON: &[&str] = &["bgp fast-external-fallover", "bgp client-to-client reflection", "bgp default ipv4-unicast"];
+/// Process settings the simulation reads (`Bgp::option`); the others are only kept and shown.
+const PROCESS_ACTS: &[&str] = &[
+    "bgp bestpath as-path multipath-relax",
+    "bgp bestpath med missing-as-worst",
+    "bgp fast-external-fallover",
+    "bgp client-to-client reflection",
+    "bgp default ipv4-unicast",
+];
+
+/// The words of a spec and the key that names it: its keywords and its `{a|b}` choices, with the
+/// arguments checked (the first one, when `skip_who` is set, is the neighbour and is not read here).
+fn spec_words(spec: &Spec, args: &[String], skip: usize, skip_who: bool) -> Result<(String, String), String> {
+    let mut words: Vec<String> = Vec::new();
+    let mut key: Vec<String> = Vec::new();
+    let mut next = args.iter();
+    if skip_who {
+        next.next();
+    }
+    for t in spec.path.iter().skip(skip) {
+        match t {
+            Tok::K(k) => {
+                words.push((*k).to_string());
+                key.push((*k).to_string());
+            }
+            Tok::Arg(p) => {
+                let v = super::knobs::check(p, next.next().map_or("", String::as_str))?;
+                if p.starts_with('{') {
+                    key.push(v.clone());
+                }
+                words.push(v);
+            }
+            Tok::Rest(_) => {
+                let v = netlabcraft_model::knobs::clean_value(next.next().map_or("", String::as_str));
+                if v.is_empty() {
+                    return Err("% Incomplete command.".into());
+                }
+                words.push(v);
+            }
+        }
+    }
+    Ok((key.join(" "), words.join(" ")))
+}
+
+/// Runs the settings typed as `bgp …` words, the `neighbor … version|maximum-prefix|…` ones,
+/// `neighbor … activate` and the address-family lines.
+pub(super) fn option_command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
+    let arg = |i: usize| args.get(i).map(String::as_str).unwrap_or("");
+    match spec.id {
+        Id::BgpOption | Id::NoBgpOption => {
+            let no = spec.id == Id::NoBgpOption;
+            let (_, line) = spec_words(spec, args, usize::from(no), false)?;
+            let on_by_default = PROCESS_ON.contains(&line.as_str());
+            let b = process(c)?;
+            let kept = if on_by_default { no.then(|| format!("no {line}")) } else { (!no).then(|| line.clone()) };
+            // The other spelling of a default-on setting goes away.
+            b.options.remove(&format!("no {line}"));
+            b.options.remove(&line);
+            if let Some(k) = &kept {
+                if b.options.len() >= MAX_OPTIONS {
+                    return Err(format!("% At most {MAX_OPTIONS} settings of this kind"));
+                }
+                b.options.insert(k.clone());
+            }
+            Ok(if kept.is_some() && !PROCESS_ACTS.contains(&line.as_str()) { KEPT.to_string() } else { String::new() })
+        }
+        Id::BgpNeighborOption | Id::NoBgpNeighborOption => {
+            let no = spec.id == Id::NoBgpNeighborOption;
+            let who = arg(0).trim().to_string();
+            // The words after the neighbour: `neighbor WHO` (and `no`) are not part of the kept line.
+            let skip = usize::from(no) + 2;
+            let (key, line) = spec_words(spec, args, skip, true)?;
+            edit(process(c)?, &who, |n| {
+                if no {
+                    n.options.remove(&key);
+                } else {
+                    if !n.options.contains_key(&key) && n.options.len() >= MAX_OPTIONS {
+                        return Err(format!("% At most {MAX_OPTIONS} settings of this kind"));
+                    }
+                    n.options.insert(key.clone(), line.clone());
+                }
+                Ok(())
+            })?;
+            Ok(if no { String::new() } else { KEPT.to_string() })
+        }
+        Id::BgpNeighborActivate | Id::NoBgpNeighborActivate => {
+            let on = spec.id == Id::BgpNeighborActivate;
+            edit(process(c)?, arg(0), |n| {
+                n.activated = on;
+                Ok(())
+            })?;
+            Ok(String::new())
+        }
+        Id::BgpAddressFamily | Id::BgpExitAddressFamily => {
+            process(c)?;
+            Ok(String::new())
+        }
+        _ => {
+            Err("% Only the IPv4 unicast address family is simulated: BGP here carries IPv4 routes (no MP-BGP, no IPv6 or VPN address families)"
+                .into())
+        }
+    }
+}
+
 /// The `neighbor WHO remote-as N` line, when the settings have one that `base` does not.
 fn remote_as_line(who: &str, n: &Neighbor, base: &Neighbor) -> Option<String> {
     n.remote_as.filter(|r| base.remote_as != Some(*r)).map(|r| format!("neighbor {who} remote-as {r}"))
@@ -685,6 +818,8 @@ fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor, pw: &dyn Fn(&str) ->
         v.push(format!("neighbor {who} soft-reconfiguration inbound"));
     }
     for (word, dir, mine, theirs) in [
+        ("distribute-list", "in", &n.distribute_in, &base.distribute_in),
+        ("distribute-list", "out", &n.distribute_out, &base.distribute_out),
         ("prefix-list", "in", &n.prefix_list_in, &base.prefix_list_in),
         ("prefix-list", "out", &n.prefix_list_out, &base.prefix_list_out),
         ("filter-list", "in", &n.filter_list_in, &base.filter_list_in),
@@ -694,6 +829,11 @@ fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor, pw: &dyn Fn(&str) ->
     ] {
         if let Some(name) = mine.as_ref().filter(|m| theirs.as_ref() != Some(*m)) {
             v.push(format!("neighbor {who} {word} {name} {dir}"));
+        }
+    }
+    for (key, line) in &n.options {
+        if base.options.get(key) != Some(line) {
+            v.push(format!("neighbor {who} {line}"));
         }
     }
     v
@@ -728,6 +868,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
     if b.as_path_ignore {
         let _ = writeln!(s, " bgp bestpath as-path ignore");
+    }
+    for o in &b.options {
+        let _ = writeln!(s, " {o}");
     }
     for g in &b.peer_groups {
         let base = Neighbor::new(Ipv4Addr::UNSPECIFIED);
@@ -777,6 +920,23 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
     if let Some(m) = b.maximum_paths_ibgp {
         let _ = writeln!(s, " maximum-paths ibgp {m}");
+    }
+    // With `no bgp default ipv4-unicast` the neighbours that exchange IPv4 routes are listed apart.
+    if b.option("no bgp default ipv4-unicast") {
+        let named: Vec<String> = b.peer_groups.iter().filter(|g| g.conf.activated).map(|g| g.name.clone()).collect();
+        let lone: Vec<String> = b
+            .neighbors
+            .iter()
+            .filter(|n| n.activated && !n.peer_group.as_deref().and_then(|g| b.group(g)).is_some_and(|g| g.conf.activated))
+            .map(|n| n.addr.to_string())
+            .collect();
+        if !named.is_empty() || !lone.is_empty() {
+            let _ = writeln!(s, " address-family ipv4");
+            for who in named.iter().chain(lone.iter()) {
+                let _ = writeln!(s, "  neighbor {who} activate");
+            }
+            let _ = writeln!(s, " exit-address-family");
+        }
     }
     for r in &b.redistribute {
         let map = b.redistribute_maps.get(r.word()).map_or(String::new(), |m| format!(" route-map {m}"));
@@ -1251,6 +1411,8 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
         }
         if let Some(c) = conf {
             for (what, dir, name) in [
+                ("access list", "inbound", &c.distribute_in),
+                ("access list", "outbound", &c.distribute_out),
                 ("prefix list", "inbound", &c.prefix_list_in),
                 ("prefix list", "outbound", &c.prefix_list_out),
                 ("AS-path list", "inbound", &c.filter_list_in),
@@ -1262,6 +1424,7 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
                     let known = match what {
                         "prefix list" => d.prefix_list(name).is_some(),
                         "AS-path list" => d.as_path_list(name).is_some(),
+                        "access list" => d.acls.iter().any(|a| a.name == *name),
                         _ => d.route_map(name).is_some(),
                     };
                     let _ = writeln!(s, "  Policy: {dir} {what} {name}{}", if known { "" } else { " (not defined: lets everything through)" });
