@@ -70,7 +70,7 @@ fn place_json(s: &Session, place: u32) -> Value {
 
 /// The environment of a place as the window shows it, at the clock's time now.
 fn view(s: &mut Session, place: u32) -> Value {
-    if s.topology.environment.enabled {
+    if s.topology.environment.enabled || s.topology.environments.physics {
         s.sim.env_step(&s.topology);
     }
     let t = &s.topology;
@@ -93,6 +93,12 @@ fn view(s: &mut Session, place: u32) -> Value {
             value = v.from_reading(r);
             source_name = "room";
             from = None;
+        }
+        // The places' own physics: what the place holds now where its parts are moving it.
+        if let Some(live) = s.sim.place_live(t, place, v.id) {
+            value = live;
+            source_name = "live";
+            from = Some(place);
         }
         let keys: Vec<Value> = own
             .and_then(|e| e.setting(v.id))
@@ -134,6 +140,7 @@ fn view(s: &mut Session, place: u32) -> Value {
         "interpolation": own.map_or("linear", |e| e.interpolation.id()),
         "hidden": hidden.as_ref().map(|h| h.1.clone()).unwrap_or_default(),
         "hidden_from": hidden.map(|h| h.0),
+        "physics": t.environments.physics,
         "variables": vars,
     })
 }
@@ -313,6 +320,19 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 done(s, t);
             }
             Ok(view(s, place))
+        }
+        "environment.physics" => {
+            match p.get("enabled") {
+                None => {}
+                Some(Value::Bool(b)) => {
+                    let mut t = s.topology.clone();
+                    t.environments.physics = *b;
+                    done(s, t);
+                    s.sim.env_reset();
+                }
+                Some(_) => return Err(bad("`enabled` is true or false")),
+            }
+            Ok(json!({"physics": s.topology.environments.physics}))
         }
         "environment.export" => {
             let text = s.topology.env_export(place)?;

@@ -544,6 +544,14 @@ fn graph(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
 }
 
 fn advanced_tab(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
+    let mut physics = app.session.topology.environments.physics;
+    if ui
+        .checkbox(&mut physics, tl("Each place has its own physics"))
+        .hint(tl("Parts change the place they stand in by rates, and the place settles back when they stop"))
+        .changed()
+    {
+        app.run("environment.physics", json!({"enabled": physics}));
+    }
     let step = INCREMENTS.get(app.ui.env_ui.increment).map_or(60, |x| x.1);
     ui.horizontal(|ui| {
         ui.label(tl("Time Line:"));

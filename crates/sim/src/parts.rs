@@ -9,10 +9,24 @@
 //! own heaters, coolers and sprinklers answer for the quantities it holds (the physics counts the
 //! new parts too); a part changes a variable the place itself leaves unset only while the physics
 //! is off, so the two never add up.
+//!
+//! **Places with their own physics** (`Environments::physics`, `environment.physics`): the
+//! amounts above are the values a place *settles* at, not what it jumps to. Each place that holds
+//! smart things keeps the value of every variable a running part moves, and each simulated second
+//! the value covers a share of the way to its target: after `t` seconds the gap has shrunk by
+//! `exp(-t / tau)`, with `tau` in minutes per variable ([`settle_minutes`]). So a heating element
+//! that settles a closet 10 degrees above what it sets warms it by about 6 degrees in the first
+//! `tau` (10 minutes), and when it is switched off the closet cools back the same way. The place's
+//! own values are the target, flames add smoke, carbon monoxide and heat, an open window pulls the
+//! variables toward the place above it (faster with wind), and a sound heard fades with distance.
+//! Whatever no part moves is left to the older rules.
 
-use netlabcraft_model::environments::{Source, Var, generic_whole, sensor_var, sensor_whole, var_by_id};
+use std::collections::{BTreeMap, BTreeSet};
+
+use netlabcraft_model::environment::MAX_STEP_SECONDS;
+use netlabcraft_model::environments::{Source, VARS, Var, generic_whole, sensor_var, sensor_whole, var_by_id};
 use netlabcraft_model::iot::{is_actuator, thing};
-use netlabcraft_model::{Device, Topology};
+use netlabcraft_model::{Device, DeviceKind, Topology};
 
 use crate::Sim;
 
@@ -53,6 +67,54 @@ fn changes(what: &str) -> &'static [(&'static str, Change)] {
     }
 }
 
+/// What a part does to its place's variables only when the places have their own physics: the
+/// smart-home things that used to change the smart room alone, and the ones the new rules add.
+fn extra_changes(what: &str) -> &'static [(&'static str, Change)] {
+    match what {
+        "heater" => &[("ambient_temperature", Change::Add(10.0)), ("humidity", Change::Add(-5.0))],
+        "ac" => &[("ambient_temperature", Change::Add(-5.0)), ("humidity", Change::Add(-10.0))],
+        "sprinkler" => &[("humidity", Change::Add(20.0)), ("soil_moisture", Change::Add(30.0)), ("fire", Change::Set(0.0))],
+        "fan" => &[
+            ("humidity", Change::Add(-6.0)),
+            ("smoke", Change::Add(-30.0)),
+            ("carbon_monoxide", Change::Add(-200.0)),
+            ("carbon_dioxide", Change::Add(-0.02)),
+        ],
+        "light" | "smart led" | "dimmable led" | "rgb led" => &[("luminosity", Change::Floor(70.0))],
+        _ => &[],
+    }
+}
+
+/// How many minutes a variable takes to cover 63 % of the way to its target (`None`: it does not
+/// move gradually: sound is there or not).
+pub fn settle_minutes(id: &str) -> Option<f64> {
+    Some(match id {
+        "ambient_temperature" => 10.0,
+        "humidity" => 5.0,
+        "soil_moisture" => 20.0,
+        "smoke" | "carbon_monoxide" | "carbon_dioxide" => 3.0,
+        "fire" | "water_level" | "rain" => 1.0,
+        "luminosity" => 0.5,
+        _ => return None,
+    })
+}
+
+/// The variables an open window couples to the place above.
+fn through_windows(id: &str) -> bool {
+    matches!(id, "ambient_temperature" | "humidity" | "smoke" | "carbon_monoxide" | "carbon_dioxide")
+}
+
+/// The most places that keep their own physics at once.
+pub const MAX_PLACE_RUNS: usize = 64;
+
+/// A place's values that are on their way to a target, and when they were last moved.
+#[derive(Debug, Clone, Default)]
+pub struct PlaceRun {
+    pub last_us: u64,
+    /// The value of each variable that a running part is moving or has just stopped moving.
+    pub values: BTreeMap<&'static str, f64>,
+}
+
 /// A variable at a place, as the running parts leave it.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PlaceValue {
@@ -65,7 +127,7 @@ pub(crate) struct PlaceValue {
 
 impl Sim {
     /// The place a device stands in.
-    fn part_place(t: &Topology, d: &Device) -> u32 {
+    pub(crate) fn part_place(t: &Topology, d: &Device) -> u32 {
         t.home_of(d.id).map_or_else(|| t.default_place(), |h| h.place)
     }
 
@@ -74,19 +136,55 @@ impl Sim {
         is_actuator(d) && !t.is_dark(d.id) && self.iot.things.get(&d.id).is_some_and(|s| s.on)
     }
 
+    /// How many running windows (or garage doors) stand in a place.
+    fn open_windows(&self, t: &Topology, place: u32) -> usize {
+        t.devices
+            .iter()
+            .filter(|d| self.part_on(t, d) && Self::part_place(t, d) == place && thing(d).is_some_and(|x| matches!(x.what, "window" | "garage")))
+            .count()
+    }
+
+    /// Whether a fire sprinkler sees flames in its place (the places' own physics): it then
+    /// sprays whether or not the server asked.
+    pub(crate) fn place_burning(&self, t: &Topology, d: &Device) -> bool {
+        if !t.environments.physics || thing(d).is_none_or(|x| x.what != "fire sprinkler") {
+            return false;
+        }
+        let place = Self::part_place(t, d);
+        let base = t.env_value(place, "fire", self.env_time(t)).map_or(0.0, |x| x.0);
+        let moving = self.iot.places.get(&place).and_then(|r| r.values.get("fire")).copied().unwrap_or(0.0);
+        base.max(moving) > 0.5
+    }
+
     /// A variable at a place and the environment clock's time now, with what the running parts
-    /// of that place do to it.
-    pub(crate) fn place_var(&self, t: &Topology, place: u32, id: &str) -> Option<PlaceValue> {
+    /// of that place do to it: where it settles. With the places' own physics on, what a place
+    /// holds at this moment is [`Sim::place_var`].
+    pub(crate) fn place_target(&self, t: &Topology, place: u32, id: &str) -> Option<PlaceValue> {
         let var = var_by_id(id)?;
         let (base, source) = t.env_value(place, id, self.env_time(t))?;
+        let physics = t.environments.physics;
         let mut value = base;
         let mut changed = false;
-        for d in t.devices.iter().filter(|d| self.part_on(t, d)) {
+        if physics && matches!(id, "smoke" | "carbon_monoxide" | "ambient_temperature") {
+            // Flames make smoke and carbon monoxide and warm the place.
+            let flames = self.place_target(t, place, "fire").map_or(0.0, |p| p.value);
+            if flames > 0.0 {
+                value += flames
+                    * match id {
+                        "smoke" => 0.5,
+                        "carbon_monoxide" => 5.0,
+                        _ => 0.2,
+                    };
+                changed = true;
+            }
+        }
+        for d in t.devices.iter().filter(|d| self.part_on(t, d) || self.place_burning(t, d)) {
             let Some(x) = thing(d) else { continue };
             if Self::part_place(t, d) != place {
                 continue;
             }
-            for (name, change) in changes(x.what) {
+            let more: &'static [(&'static str, Change)] = if physics { extra_changes(x.what) } else { &[] };
+            for (name, change) in changes(x.what).iter().chain(more) {
                 if *name != id {
                     continue;
                 }
@@ -98,7 +196,113 @@ impl Sim {
                 changed = true;
             }
         }
+        if physics && through_windows(id) && self.open_windows(t, place) > 0 {
+            // An open window pulls the place toward the one above it.
+            let outside = t.env_chain(place).get(1).and_then(|up| t.env_value(*up, id, self.env_time(t))).map_or(var.default, |x| x.0);
+            value = value * 0.2 + outside * 0.8;
+            changed = true;
+        }
         Some(PlaceValue { value: value.clamp(var.min, var.max), set: source != Source::Default, changed })
+    }
+
+    /// A variable at a place now: where its parts settle it (the older rule), or, with the places'
+    /// own physics on, how far along it has got.
+    pub(crate) fn place_var(&self, t: &Topology, place: u32, id: &str) -> Option<PlaceValue> {
+        let mut pv = self.place_target(t, place, id)?;
+        if t.environments.physics && settle_minutes(id).is_some() {
+            let stored = self.iot.places.get(&place).and_then(|r| r.values.get(id)).copied();
+            if pv.changed || stored.is_some() {
+                let var = var_by_id(id)?;
+                let base = t.env_value(place, id, self.env_time(t)).map_or(var.default, |x| x.0).clamp(var.min, var.max);
+                pv.value = stored.unwrap_or(base);
+                pv.changed = true;
+                pv.set = true;
+            }
+        }
+        Some(pv)
+    }
+
+    /// What a place holds now of a variable its parts move, with the places' own physics on.
+    pub fn place_live(&self, t: &Topology, place: u32, id: &str) -> Option<f64> {
+        if !t.environments.physics {
+            return None;
+        }
+        self.place_var(t, place, id).filter(|p| p.changed).map(|p| p.value)
+    }
+
+    /// Moves every place that holds smart things toward where its running parts settle it, for
+    /// the simulated time since the last step. Does nothing (and forgets) while the places have no
+    /// physics of their own.
+    pub(crate) fn place_step(&mut self, t: &Topology) {
+        if !t.environments.physics {
+            self.iot.places.clear();
+            return;
+        }
+        let now = self.now;
+        let here: BTreeSet<u32> =
+            t.devices.iter().filter(|d| d.kind == DeviceKind::Iot).map(|d| Self::part_place(t, d)).take(MAX_PLACE_RUNS).collect();
+        self.iot.places.retain(|p, _| here.contains(p));
+        let time = self.env_time(t);
+        for place in here {
+            let last = self.iot.places.get(&place).map_or(now, |r| r.last_us);
+            let dt = now.saturating_sub(last).min(MAX_STEP_SECONDS.saturating_mul(1_000_000)) as f64 / 1_000_000.0;
+            let windows = self.open_windows(t, place) > 0;
+            let wind = self.place_target(t, place, "wind_speed").map_or(0.0, |p| p.value.clamp(0.0, 500.0));
+            let mut next: Vec<(&'static str, Option<f64>)> = Vec::new();
+            for v in VARS.iter().filter(|v| settle_minutes(v.id).is_some()) {
+                let Some(target) = self.place_target(t, place, v.id) else { continue };
+                let had = self.iot.places.get(&place).and_then(|r| r.values.get(v.id)).copied();
+                if !target.changed && had.is_none() {
+                    continue;
+                }
+                let base = t.env_value(place, v.id, time).map_or(v.default, |x| x.0).clamp(v.min, v.max);
+                let mut tau = settle_minutes(v.id).unwrap_or(5.0) * 60.0;
+                if windows && through_windows(v.id) {
+                    tau /= 1.0 + wind / 20.0;
+                }
+                let value = target.value + (had.unwrap_or(base) - target.value) * (-dt / tau).exp();
+                let settled = !target.changed && (value - target.value).abs() < 0.02;
+                next.push((v.id, if settled { None } else { Some(value.clamp(v.min, v.max)) }));
+            }
+            let run = self.iot.places.entry(place).or_insert_with(|| PlaceRun { last_us: now, values: BTreeMap::new() });
+            for (id, v) in next {
+                match v {
+                    Some(x) => {
+                        run.values.insert(id, x);
+                    }
+                    None => {
+                        run.values.remove(id);
+                    }
+                }
+            }
+            run.last_us = now;
+        }
+    }
+
+    /// What a sensor hears: the loudest running sound of its place, fading 6 dB for every doubling
+    /// of the distance from one metre (a thing that is not on the map is heard at full volume).
+    /// `None`: nothing in the place is making sound.
+    fn sound_at(&self, t: &Topology, listener: &Device, word: &str) -> Option<i32> {
+        let place = Self::part_place(t, listener);
+        let mut best: Option<(f64, f64)> = None;
+        for src in t.devices.iter().filter(|s| s.id != listener.id && self.part_on(t, s) && Self::part_place(t, s) == place) {
+            let Some(x) = thing(src) else { continue };
+            let (mut volume, mut pitch) = (None, 0.0);
+            for (name, change) in changes(x.what) {
+                match (*name, change) {
+                    ("sound_volume", Change::Floor(f)) => volume = Some(*f),
+                    ("sound_pitch", Change::Set(p)) => pitch = *p,
+                    _ => {}
+                }
+            }
+            let Some(db) = volume else { continue };
+            let metres = t.distance_m(src, listener).map_or(1.0, f64::from).max(1.0);
+            let heard = db - 20.0 * metres.log10();
+            if heard > 0.0 && best.is_none_or(|b| heard > b.0) {
+                best = Some((heard, pitch));
+            }
+        }
+        best.map(|(db, hz)| if word == "volume" { db.round() as i32 } else { hz.round() as i32 })
     }
 
     /// What the place of a sensor says it reads for a kind of reading (`temperature`,
@@ -106,6 +310,12 @@ impl Sim {
     /// or, where the place sets nothing, a variable a running part changed while the room's
     /// physics is off. `None`: the room or the sensor's own number answers.
     pub(crate) fn mapped_reading(&self, t: &Topology, d: &Device, word: &str) -> Option<i32> {
+        if t.environments.physics
+            && matches!(word, "volume" | "pitch")
+            && let Some(v) = self.sound_at(t, d, word)
+        {
+            return Some(v);
+        }
         let var = sensor_var(word)?;
         let pv = self.place_var(t, Self::part_place(t, d), var.id)?;
         (pv.set || (pv.changed && !t.environment.enabled)).then(|| sensor_whole(var, pv.value))
@@ -219,5 +429,15 @@ mod tests {
             }
         }
         assert!(changes("fan").is_empty());
+        for what in ["heater", "ac", "sprinkler", "fan", "light", "smart led", "dimmable led", "rgb led"] {
+            assert!(!extra_changes(what).is_empty(), "{what}");
+            for (id, _) in extra_changes(what) {
+                assert!(var_by_id(id).is_some(), "{what}: {id}");
+            }
+        }
+        assert!(extra_changes("buzzer").is_empty());
+        for v in VARS.iter().filter(|v| settle_minutes(v.id).is_some()) {
+            assert!(settle_minutes(v.id).is_some_and(|m| m > 0.0), "{}", v.id);
+        }
     }
 }

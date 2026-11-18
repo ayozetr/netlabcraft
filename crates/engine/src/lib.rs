@@ -76,6 +76,8 @@ mod tests_parts;
 #[cfg(test)]
 mod tests_pictures;
 #[cfg(test)]
+mod tests_placephysics;
+#[cfg(test)]
 mod tests_pppoe;
 #[cfg(test)]
 mod tests_pppoe_router;
