@@ -220,6 +220,11 @@
 	cable	cabo
 	Cable Length	Comprimento do cabo
 	Cable Length…	Comprimento do cabo…
+	Resize…	Redimensionar…
+	Resize	Redimensionar
+	Units ({} to {}):	Unidades ({} a {}):
+	Levels ({} to {}):	Níveis ({} a {}):
+	Enter a whole number	Digite um número inteiro
 	Cable Modem	Modem a cabo
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Modem a cabo: faz bridge da porta coaxial (Coaxial0) para a porta Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	cabo longo demais: {} m de cobre, máximo de 100 m

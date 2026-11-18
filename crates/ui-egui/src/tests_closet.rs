@@ -45,6 +45,26 @@ mod t {
     }
 
     #[test]
+    fn the_resize_dialog_resizes_a_rack_through_the_command() {
+        let mut h = closet();
+        h.run_steps(3);
+        let rack = h.state().session.topology.furniture_in(3).iter().find(|f| f.name == "Rack0").map(|f| f.id).unwrap();
+        h.state_mut().ui.physical.closet.resize = Some((rack, "16".into()));
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Resize").next().is_some());
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.topology.furniture_piece(rack).unwrap().size, 16);
+        assert!(h.state().ui.physical.closet.resize.is_none());
+        // Under the devices on it: refused, the size stays.
+        h.state_mut().ui.physical.closet.resize = Some((rack, "4".into()));
+        h.run_steps(3);
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.topology.furniture_piece(rack).unwrap().size, 16);
+    }
+
+    #[test]
     fn the_fit_keeps_the_furniture_below_the_title_band() {
         let mut h = closet();
         h.run_steps(3);

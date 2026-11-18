@@ -461,6 +461,33 @@ impl Topology {
         Ok(())
     }
 
+    /// Gives a rack more or fewer units, or a shelf more or fewer levels. Refused when what
+    /// stands on it would no longer fit (take it off, or move it up, first). A table has one size.
+    pub fn resize_furniture(&mut self, id: u32, size: u32) -> Result<()> {
+        let f = self.furniture_piece(id).cloned().ok_or_else(|| ModelError::Invalid(format!("no furniture {id}")))?;
+        let (lo, hi) = f.kind.size_range();
+        if lo == hi {
+            return Err(ModelError::Invalid(format!("a {} has one size", f.kind.label().to_lowercase())));
+        }
+        if !(lo..=hi).contains(&size) {
+            return Err(ModelError::Invalid(format!(
+                "a {} has {lo} to {hi} {}",
+                f.kind.label().to_lowercase(),
+                if f.kind == FurnitureKind::Rack { "units" } else { "levels" }
+            )));
+        }
+        if let Some(m) = self.mounts_on(id).iter().find(|m| m.slot.saturating_add(m.units.max(1)) > size) {
+            let at = if f.kind == FurnitureKind::Rack {
+                format!("unit {} ({} units)", m.slot.saturating_add(1), m.units)
+            } else {
+                format!("level {}", m.slot.saturating_add(1))
+            };
+            return Err(ModelError::Invalid(format!("{} stands at {at}: take it off or move it up first", self.item_name(m.item))));
+        }
+        self.furniture_mut(id)?.size = size;
+        Ok(())
+    }
+
     pub fn move_furniture(&mut self, id: u32, x: f32, y: f32) -> Result<()> {
         let f = self.furniture_mut(id)?;
         f.x = finite(x);
@@ -1150,6 +1177,28 @@ mod tests {
         t.move_furniture(r, 5.0, 6.0).unwrap();
         assert_eq!((t.furniture_piece(r).unwrap().x, t.furniture_piece(r).unwrap().y), (5.0, 6.0));
         assert!(t.move_furniture(99, 0.0, 0.0).is_err());
+    }
+
+    #[test]
+    fn furniture_is_resized_within_its_range_and_never_under_what_stands_on_it() {
+        let (mut t, a, b, _) = lab();
+        let r = t.add_furniture(FurnitureKind::Rack, None, DEFAULT_CLOSET, 0.0, 0.0, Some(6)).unwrap();
+        t.mount_item(Item::Device(a), r, Some(0), None).unwrap();
+        t.mount_item(Item::Device(b), r, Some(4), Some(2)).unwrap();
+        t.resize_furniture(r, 12).unwrap();
+        assert_eq!(t.furniture_piece(r).unwrap().size, 12);
+        // A rack cannot drop below the unit its last device ends on, or outside 4 to 48.
+        assert!(t.resize_furniture(r, 5).is_err());
+        t.resize_furniture(r, 6).unwrap();
+        assert!(t.resize_furniture(r, 3).is_err() && t.resize_furniture(r, 49).is_err() && t.resize_furniture(r, 0).is_err());
+        assert_eq!(t.furniture_piece(r).unwrap().size, 6, "a refused resize changes nothing");
+        // A shelf has 1 to 8 levels; a table has one size; an unknown piece is an error.
+        let s = t.add_furniture(FurnitureKind::Shelf, None, DEFAULT_CLOSET, 0.0, 0.0, Some(2)).unwrap();
+        t.resize_furniture(s, 8).unwrap();
+        assert!(t.resize_furniture(s, 9).is_err());
+        let tb = t.add_furniture(FurnitureKind::Table, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        assert!(t.resize_furniture(tb, 2).is_err());
+        assert!(t.resize_furniture(99, 4).is_err());
     }
 
     #[test]

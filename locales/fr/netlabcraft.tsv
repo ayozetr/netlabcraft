@@ -220,6 +220,11 @@
 	cable	câble
 	Cable Length	Longueur du câble
 	Cable Length…	Longueur du câble…
+	Resize…	Redimensionner…
+	Resize	Redimensionner
+	Units ({} to {}):	Unités ({} à {}) :
+	Levels ({} to {}):	Niveaux ({} à {}) :
+	Enter a whole number	Saisissez un nombre entier
 	Cable Modem	Modem câble
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Modem câble : relie son port coaxial (Coaxial0) à son port Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	câble trop long : {} m de cuivre, 100 m maximum

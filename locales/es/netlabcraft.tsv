@@ -670,6 +670,11 @@
 	Open Device	Abrir dispositivo
 	Move to	Mover a
 	Cable Length…	Longitud del cable…
+	Resize…	Cambiar tamaño…
+	Resize	Cambiar tamaño
+	Units ({} to {}):	Unidades ({} a {}):
+	Levels ({} to {}):	Niveles ({} a {}):
+	Enter a whole number	Escribe un número entero
 	Right-click a device to move it to another place.	Haz clic derecho en un dispositivo para moverlo a otro lugar.
 	Rename Place	Renombrar lugar
 	Place name:	Nombre del lugar:
