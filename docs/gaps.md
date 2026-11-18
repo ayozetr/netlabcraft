@@ -36,11 +36,8 @@ Hours are Opus 5.5 agent wall-clock estimates.
 |---|---|---|
 | 2026-11-18 | minor | OSPF authentication leftovers closed in part (item 1): several message-digest keys on an interface sign one copy of each packet per key and any held key is accepted (a rollover keeps the adjacency), `key chain` with `key`, `key-string`, `accept-lifetime` and `send-lifetime` read against the device's clock, `ip ospf authentication key-chain NAME`, `show key chain`, and a message-digest packet whose sequence number is below the last one heard is dropped and counted. |
 | 2026-11-18 | minor | OSPFv3 authentication (item 1): `ospfv3 authentication ipsec spi N md5\|sha1 KEY` on an interface and `area N authentication ipsec spi …` in the process put a real AH header (RFC 4302, over IPv6) on every hello and the adjacency needs the same SPI, algorithm and key at both ends; `null` opts an interface out; `show ipv6 ospf neighbor` lists the routers refused and why, `show ipv6 ospf` the protection of each interface. |
-<<<<<<< HEAD
 | 2026-11-18 | minor | Item 13 narrowed: a generic container (in a city or a building) holds devices and furniture like a closet, and three new kinds of furniture exist (inventory shelf, cable pegboard, industrial control panel). |
-=======
 | 2026-11-18 | minor | Item 4 narrowed: boards run Python (SBC) and JavaScript (MCU) subsets as well as BoardScript ([board-languages.md](board-languages.md)); what is left of item 4 is the physics of the actuators. |
->>>>>>> origin/main
 | 2026-11-17 | minor | Smart City and Industrial things and the device-box groups mechanism: item 15 says which models are listed in more than one group; item 16 lists the shallow parts of the proximity rules (beacon, RFID, trip sensor, old car) and the room-wide gases. |
 | 2026-11-17 | minor | Item 12 narrowed: Administrative, Show/Hide, Font, Miscellaneous, Answer Tree, Custom Interfaces, Publishers and Image Cleanup are built or say honestly why they have nothing to set; Algorithm Settings and what stays out on purpose are listed. |
 | 2026-11-17 | minor | Smart Home things (appliance, Bluetooth speaker, ceiling fan, furnace, humidifier, humiture monitor, music player, sound detector): item 14 now lists carbon dioxide, flames, pressure, wind and sound among what sensors read; item 16 lists what is shallow. |
