@@ -12,7 +12,9 @@ use std::collections::BTreeMap;
 use egui::{Align2, Color32, FontId, Painter, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::cable::{Cable, Medium};
-use netlabcraft_model::furniture::{Cell, ClosetLayout, FRAME_FOOT, FRAME_HEAD, FittingKind, FurnitureKind, Item, Placed, Pole, RACK_UNIT_H};
+use netlabcraft_model::furniture::{
+    Cell, ClosetLayout, FRAME_FOOT, FRAME_HEAD, FittingKind, FurnitureKind, Item, Placed, Pole, RACK_UNIT_H, TABLE_DEPTH_RANGE, TABLE_WIDTH_RANGE,
+};
 use netlabcraft_model::{Device, DeviceKind, End, Topology};
 use serde_json::{Value, json};
 
@@ -65,6 +67,8 @@ pub struct State {
     pub rename: Option<(Thing, String)>,
     /// The Resize dialog: the rack or shelf and the size being typed.
     pub resize: Option<(u32, String)>,
+    /// A table's depth being typed in the Resize dialog (the first text is its width).
+    pub resize_depth: String,
 }
 
 /// A kind of furniture by name (`Table` has its own row: the word also names a data table).
@@ -481,7 +485,7 @@ fn front_detail(p: &Painter, d: &Device, r: Rect, zoom: f32, right: f32, tk: &To
 /// A device's front panel: its body, a power light, an antenna for a radio, one connector drawn as
 /// its real jack for every port that takes a cable (as many as the model has) and a power inlet.
 /// Returns the sockets by port.
-fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &Tokens) -> Vec<(usize, Rect)> {
+fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &Tokens, rear: bool) -> Vec<(usize, Rect)> {
     let body = body_color(d);
     let edge = theme::shade(body, 0.55);
     let rounding = 3.0 * zoom;
@@ -510,9 +514,13 @@ fn device_panel(p: &Painter, t: &Topology, d: &Device, r: Rect, zoom: f32, tk: &
     let inlet = icons_ports::has_inlet(d.kind);
     let right = if inlet { 27.0 * zoom } else { 7.0 * zoom };
     let extra = front_detail(p, d, r, zoom, right, tk);
-    let ports: Vec<(usize, Connector)> = (0..d.ports.len())
+    let mut ports: Vec<(usize, Connector)> = (0..d.ports.len())
         .filter_map(|i| d.ports.get(i).and_then(|pt| icons_ports::connector_for(&pt.name, d.port_medium(i))).map(|c| (i, c)))
         .collect();
+    // Seen from behind the jacks are in mirrored order.
+    if rear {
+        ports.reverse();
+    }
     let area = Rect::from_min_max(r.min + vec2(15.0 * zoom, 7.0 * zoom), r.max - vec2(right + extra, 3.0 * zoom));
     if inlet {
         icons_ports::draw(p, Connector::Inlet, icons_ports::inlet_rect(r, zoom), false, tk);
@@ -867,12 +875,19 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
     let mut sc = Scene { origin, zoom, frames: Vec::new(), items: Vec::new(), ports: Vec::new(), outlets: Vec::new(), cables: Vec::new() };
     let picked = |f: u32| app.ui.physical.closet.rename.as_ref().is_some_and(|(th, _)| *th == Thing::Furniture(f));
     let mut kinds: BTreeMap<u32, FurnitureKind> = BTreeMap::new();
+    let mut backs: std::collections::BTreeSet<u32> = std::collections::BTreeSet::new();
     for (id, cell) in &layout.frames {
         let Some(f) = t.furniture_piece(*id) else { continue };
         kinds.insert(*id, f.kind);
         let whole = sc.rect(cell);
         let head = Rect::from_min_size(whole.min, vec2(whole.width(), FRAME_HEAD * zoom));
-        draw_furniture(p, f.kind, f.size, &f.name, whole, head, zoom, &tk, picked(*id));
+        let shown = if f.back {
+            backs.insert(*id);
+            trf("{} (rear)", &[&f.name])
+        } else {
+            f.name.clone()
+        };
+        draw_furniture(p, f.kind, f.size, &shown, whole, head, zoom, &tk, picked(*id));
         if f.kind == FurnitureKind::CablePegboard {
             draw_hangs(p, t, *id, whole, head, zoom);
         }
@@ -899,14 +914,15 @@ fn build(app: &PacketApp, p: &Painter, origin: Vec2, place: u32) -> Scene {
                 p.circle_filled(pos2(x + 2.5 * zoom, panel.center().y), (1.2 * zoom).max(0.8), Color32::from_gray(0x40));
             }
         }
-        let name = t.item_name(item);
+        let rear = furniture.is_some_and(|f| backs.contains(&f));
+        let name = if rear { trf("{} (rear)", &[&t.item_name(item)]) } else { t.item_name(item) };
         match item {
             Item::Device(d) => {
                 let Some(dev) = t.device(d) else { continue };
                 if app.ui.selected == Some(d) {
                     p.rect_stroke(panel.expand(4.0), 4.0, Stroke::new(2.0, tk.selection), StrokeKind::Outside);
                 }
-                for (port, sr) in device_panel(p, t, dev, panel, zoom, &tk) {
+                for (port, sr) in device_panel(p, t, dev, panel, zoom, &tk, rear) {
                     sc.ports.push((Pole::Device(End { device: d, port }), sr));
                 }
                 // Stored on an inventory shelf: dimmed.
@@ -1211,8 +1227,9 @@ fn accessible_nodes(app: &mut PacketApp, ui: &mut Ui, sc: &Scene, canvas: Rect) 
             FurnitureKind::Shelf | FurnitureKind::InventoryShelf => trf("{}, {} levels", &[&f.name, &f.size]),
             FurnitureKind::ControlPanel => trf("{}, {} DIN slots", &[&f.name, &f.size]),
             FurnitureKind::CablePegboard => trf("{}, {} rows of hooks", &[&f.name, &f.size]),
-            FurnitureKind::Table => f.name.clone(),
+            FurnitureKind::Table => trf("{}, {} by {} cells", &[&f.name, &f.table_cols(), &f.table_rows()]),
         };
+        let label = if f.back { trf("{}, rear view", &[&label]) } else { label };
         nodes.push((egui::Id::unique(("closet-furniture", *id)), *head, label, false, None));
     }
     for (item, cell) in &sc.items {
@@ -1475,8 +1492,14 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
                 app.ui.physical.closet.rename = Some((Thing::Furniture(id), f.name.clone()));
                 ui.close();
             }
-            if f.kind != FurnitureKind::Table && ui.button(tl("Resize…")).clicked() {
-                app.ui.physical.closet.resize = Some((id, f.size.to_string()));
+            if ui.button(tl("Resize…")).clicked() {
+                let table = f.kind == FurnitureKind::Table;
+                app.ui.physical.closet.resize = Some((id, if table { f.table_cols() } else { f.size }.to_string()));
+                app.ui.physical.closet.resize_depth = f.table_rows().to_string();
+                ui.close();
+            }
+            if f.kind == FurnitureKind::Rack && ui.button(if f.back { tl("Turn to the Front") } else { tl("Turn to the Back") }).clicked() {
+                app.run("furniture.turn", json!({"furniture": id}));
                 ui.close();
             }
             if ui.button(tl("Remove")).clicked() {
@@ -1603,6 +1626,15 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             }
         }
         Target::Empty(x, y) => {
+            ui.menu_button(tl("Loose Devices"), |ui| {
+                let list = app.session.topology.floor_is_list(place);
+                for (label, layout, on) in [(tl("As a Grid"), "grid", !list), (tl("As a List"), "list", list)] {
+                    if ui.selectable_label(on, label).clicked() {
+                        app.run("closet.floor", json!({"place": place, "layout": layout}));
+                        ui.close();
+                    }
+                }
+            });
             ui.menu_button(tl("Add to this closet"), |ui| {
                 for kind in FurnitureKind::ALL {
                     if ui.button(furniture_label(kind)).clicked() {
@@ -1622,33 +1654,49 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
     }
 }
 
-/// The Resize dialog of a rack (units) or a shelf (levels).
+/// The Resize dialog of a rack (units), a shelf (levels) or a table (width and depth, in cells).
 fn resize_window(app: &mut PacketApp, ctx: &egui::Context) {
     let Some((id, mut text)) = app.ui.physical.closet.resize.clone() else { return };
+    let mut depth = app.ui.physical.closet.resize_depth.clone();
     let Some(f) = app.session.topology.furniture_piece(id) else {
         app.ui.physical.closet.resize = None;
         return;
     };
-    let (rack, name) = (f.kind == FurnitureKind::Rack, f.name.clone());
-    let (lo, hi) = f.kind.size_range();
+    let (kind, name) = (f.kind, f.name.clone());
+    let (lo, hi) = kind.size_range();
     let (mut open, mut ok) = (true, false);
     egui::Window::new(tl("Resize")).id(egui::Id::unique("closet_resize")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
         ui.label(egui::RichText::new(&name).strong());
-        let l = ui.label(if rack { trf("Units ({} to {}):", &[&lo, &hi]) } else { trf("Levels ({} to {}):", &[&lo, &hi]) });
+        let l = ui.label(match kind {
+            FurnitureKind::Table => trf("Width in cells ({} to {}):", &[&TABLE_WIDTH_RANGE.0, &TABLE_WIDTH_RANGE.1]),
+            FurnitureKind::Rack => trf("Units ({} to {}):", &[&lo, &hi]),
+            _ => trf("Levels ({} to {}):", &[&lo, &hi]),
+        });
         let r = ui.add(egui::TextEdit::singleline(&mut text)).labelled_by(l.id);
         if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             ok = true;
+        }
+        if kind == FurnitureKind::Table {
+            let l = ui.label(trf("Depth in cells ({} to {}):", &[&TABLE_DEPTH_RANGE.0, &TABLE_DEPTH_RANGE.1]));
+            let r = ui.add(egui::TextEdit::singleline(&mut depth)).labelled_by(l.id);
+            if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                ok = true;
+            }
         }
         if ui.button(tl("OK")).clicked() {
             ok = true;
         }
     });
+    app.ui.physical.closet.resize_depth = depth.clone();
     app.ui.physical.closet.resize = if ok {
-        match text.trim().parse::<u32>() {
-            Ok(size) => {
+        match (text.trim().parse::<u32>(), depth.trim().parse::<u32>()) {
+            (Ok(width), Ok(depth)) if kind == FurnitureKind::Table => {
+                app.run("furniture.resize", json!({"furniture": id, "width": width, "depth": depth}));
+            }
+            (Ok(size), _) if kind != FurnitureKind::Table => {
                 app.run("furniture.resize", json!({"furniture": id, "size": size}));
             }
-            Err(_) => app.ui.status = Some((tl("Enter a whole number").to_string(), true)),
+            _ => app.ui.status = Some((tl("Enter a whole number").to_string(), true)),
         }
         None
     } else if open {
@@ -1768,7 +1816,8 @@ mod label_tests {
             let mut sockets = Vec::new();
             let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
                 let p = ui.ctx().layer_painter(LayerId::background());
-                sockets = device_panel(&p, &s.topology, dev, Rect::from_min_size(pos2(10.0, 10.0), vec2(300.0 * zoom, 30.0 * zoom)), zoom, &tk);
+                sockets =
+                    device_panel(&p, &s.topology, dev, Rect::from_min_size(pos2(10.0, 10.0), vec2(300.0 * zoom, 30.0 * zoom)), zoom, &tk, false);
             });
             out.textures_delta.clear();
             assert!(sockets.len() >= 48, "zoom {zoom}: {} sockets", sockets.len());

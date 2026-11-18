@@ -1896,6 +1896,16 @@ event	write request for	richiesta di scrittura di
 	Rename	Rinomina
 	Name:	Nome:
 	{}, {} units	{}, {} unità
+	Turn to the Front	Ruota verso il fronte
+	Turn to the Back	Ruota verso il retro
+	Loose Devices	Dispositivi sparsi
+	As a Grid	A griglia
+	As a List	In elenco
+	Width in cells ({} to {}):	Larghezza in celle ({} a {}):
+	Depth in cells ({} to {}):	Profondità in celle ({} a {}):
+	{}, {} by {} cells	{}, {} per {} celle
+	{}, rear view	{}, vista posteriore
+	{} (rear)	{} (retro)
 	{}, {} levels	{}, {} livelli
 	{}, on {}	{}, su {}
 	Rack	Rack

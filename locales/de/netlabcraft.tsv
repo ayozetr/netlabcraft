@@ -1896,6 +1896,16 @@ event	write request for	Schreibanfrage für
 	Rename	Umbenennen
 	Name:	Name:
 	{}, {} units	{}, {} Einheiten
+	Turn to the Front	Zur Vorderseite drehen
+	Turn to the Back	Zur Rückseite drehen
+	Loose Devices	Lose Geräte
+	As a Grid	Als Raster
+	As a List	Als Liste
+	Width in cells ({} to {}):	Breite in Zellen ({} bis {}):
+	Depth in cells ({} to {}):	Tiefe in Zellen ({} bis {}):
+	{}, {} by {} cells	{}, {} mal {} Zellen
+	{}, rear view	{}, Rückansicht
+	{} (rear)	{} (hinten)
 	{}, {} levels	{}, {} Ebenen
 	{}, on {}	{}, auf {}
 	Rack	Rack

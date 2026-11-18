@@ -1003,7 +1003,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "List a wiring closet",
         "",
         None,
-        r#"{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" | "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}"#,
+        r#"{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "width", "depth" (tables, in cells), "side" (racks: front or back), "items": [{"device" | "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "floor": "grid" | "list", "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}"#,
         false
     ),
     c!(
@@ -1011,7 +1011,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Add furniture",
         "",
         None,
-        r#"{"kind": "rack" | "shelf" | "table" | "inventory-shelf" | "pegboard" | "icp", "name"?, "place"?: wiring closet or container number, "size"?: rack units 4-48 (default 12), shelf or inventory shelf levels 1-8 (default 4), pegboard rows of hooks 1-8 (default 4) or control panel DIN slots 6-24 (default 12), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets and containers; a device put on an inventory shelf is switched off; a control panel takes industrial devices only; a pegboard takes cables, not devices"#,
+        r#"{"kind": "rack" | "shelf" | "table" | "inventory-shelf" | "pegboard" | "icp", "name"?, "place"?: wiring closet or container number, "size"?: rack units 4-48 (default 12), shelf or inventory shelf levels 1-8 (default 4), pegboard rows of hooks 1-8 (default 4) or control panel DIN slots 6-24 (default 12), "width"?, "depth"?: a table's cells to a row 2-8 (default 4) and rows 1-6 (default 2), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets and containers; a device put on an inventory shelf is switched off; a control panel takes industrial devices only; a pegboard takes cables, not devices"#,
         true
     ),
     c!("furniture.rename", "Rename furniture", "", None, r#"{"furniture": name or number, "name"}"#, true),
@@ -1020,7 +1020,23 @@ pub static CATALOG: &[CommandInfo] = &[
         "Resize furniture",
         "",
         None,
-        r#"{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size"#,
+        r#"{"furniture", "size": rack units 4-48 or shelf levels 1-8, "width"?, "depth"?: a table's cells to a row 2-8 and rows 1-6 (one or both)} → null: refused when something stands past the new size, or more items stand on a table than it would hold"#,
+        true
+    ),
+    c!(
+        "furniture.turn",
+        "Turn a rack around",
+        "",
+        None,
+        r#"{"furniture": rack name or number, "side"?: "front" | "back" (default: the other side)} → {"side"}: the closet draws a rack's back as the rear panels of what stands in it, ports in mirrored order; one undo step"#,
+        true
+    ),
+    c!(
+        "closet.floor",
+        "Lay out loose devices",
+        "",
+        None,
+        r#"{"place"?: closet number (default: the closet being viewed), "layout": "grid" | "list"} → {"place", "layout"}: how the devices and passive devices that stand on no furniture are drawn on the closet floor; kept with the lab"#,
         true
     ),
     c!("furniture.move", "Move furniture", "", None, r#"{"furniture", "x", "y", "transient"?: false}: where it stands in the closet"#, true),
