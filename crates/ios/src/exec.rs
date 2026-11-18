@@ -3730,8 +3730,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     _ => return Err("% ssh -l <user> <address>".into()),
                 }
             };
+            let (addr, said) = c.name_to_address(&addr)?;
             let dst = parse_ip(&addr).map_err(|e| format!("% {e}"))?;
-            Ok(connect(c.t, c.sim, c.dev, c.cli, proto, dst, user))
+            Ok(format!("{said}{}", connect(c.t, c.sim, c.dev, c.cli, proto, dst, user)))
         }
         Id::TelnetPort => {
             let dst = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
