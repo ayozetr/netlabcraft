@@ -1014,6 +1014,8 @@ pub struct DevState {
     pub dhcp6_leases: BTreeMap<std::net::Ipv6Addr, (MacAddr, String)>,
     /// Routers: IPsec security associations, by peer address.
     pub ipsec: BTreeMap<Ipv4Addr, vpn::IpsecSa>,
+    /// A router that runs a certificate authority: the requests it has received.
+    pub pki_book: pki::CaBook,
     /// A PC's remote-access VPN session with its concentrator.
     pub(crate) ra_client: Option<ravpn::RaSa>,
     /// A router's remote-access VPN clients, by the client's outer address.

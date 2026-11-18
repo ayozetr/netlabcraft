@@ -572,7 +572,7 @@ fn check_auth(
             return Err("the peer authenticated with a shared key where this profile wants an RSA signature".into());
         }
         let octets = ikev2::signed_octets(prf, message, own_nonce, sk_p, id_body);
-        return crate::pki::verify_peer(d, now, &ikev2::certs_of(list), &octets, auth).map(|c| c.subject.text());
+        return crate::pki::verify_peer(d, now, &ikev2::certs_of(list), &octets, auth, crate::pki::ip_of_id_body(id_body)).map(|c| c.subject.text());
     }
     if method != ikev2::AUTH_SHARED_KEY {
         return Err("the peer signed with a certificate where this profile wants a shared key".into());

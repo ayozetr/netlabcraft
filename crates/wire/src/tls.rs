@@ -26,7 +26,7 @@ use crate::modp;
 use crate::rsa::{RsaKey, SigHash};
 use crate::sha1::hmac_sha1;
 use crate::sha256::{hmac_sha256, sha256};
-use crate::x509::{self, Certificate, ChainError};
+use crate::x509::{self, Certificate, ChainError, Crl};
 use crate::{Result, WireError};
 
 pub const CHANGE_CIPHER_SPEC: u8 = 20;
@@ -63,6 +63,7 @@ pub const HANDSHAKE_FAILURE: u8 = 40;
 pub const ILLEGAL_PARAMETER: u8 = 47;
 pub const DECODE_ERROR: u8 = 50;
 pub const BAD_CERTIFICATE: u8 = 42;
+pub const CERTIFICATE_REVOKED: u8 = 44;
 pub const CERTIFICATE_EXPIRED: u8 = 45;
 pub const CERTIFICATE_UNKNOWN: u8 = 46;
 pub const DECRYPT_ERROR: u8 = 51;
@@ -104,6 +105,7 @@ pub fn alert_name(a: u8) -> &'static str {
         ILLEGAL_PARAMETER => "illegal_parameter",
         DECODE_ERROR => "decode_error",
         BAD_CERTIFICATE => "bad_certificate",
+        CERTIFICATE_REVOKED => "certificate_revoked",
         CERTIFICATE_EXPIRED => "certificate_expired",
         CERTIFICATE_UNKNOWN => "certificate_unknown",
         UNKNOWN_CA => "unknown_ca",
@@ -382,6 +384,11 @@ pub struct Trust {
     pub now: u64,
     /// Refuse a server that shows no certificate (the anonymous suite).
     pub required: bool,
+    /// The host the client reached the server by (an address or a name): when set, a certificate
+    /// that is not for it is refused.
+    pub host: Option<String>,
+    /// Revocation lists the client holds: a certificate on the list of its signer is refused.
+    pub crls: Vec<Crl>,
 }
 
 /// Either end of a TLS session.
@@ -729,7 +736,17 @@ impl Tls {
                 }
                 if let Some(t) = &self.trust {
                     match x509::verify_chain(&chain, &t.anchors, t.now) {
-                        Ok(()) => self.verified = true,
+                        Ok(()) => {
+                            if let Some(i) = x509::revoked_index(&chain, &t.anchors, &t.crls) {
+                                return Err(fail(CERTIFICATE_REVOKED, format!("the server's certificate {i} is on its authority's revocation list")));
+                            }
+                            if let Some(h) = &t.host
+                                && !chain.first().is_some_and(|leaf| leaf.matches_host(h))
+                            {
+                                return Err(fail(BAD_CERTIFICATE, format!("the server's certificate is not for {h}")));
+                            }
+                            self.verified = true;
+                        }
                         Err(e) => {
                             let alert = match e {
                                 ChainError::Expired(_) | ChainError::NotYetValid(_) => CERTIFICATE_EXPIRED,
@@ -1005,7 +1022,7 @@ mod tests {
     #[test]
     fn a_certificate_handshake_verifies_the_chain_and_the_signature() {
         let p = pki(500_000);
-        let trust = Trust { anchors: vec![p.root.clone()], now: 2_000, required: true };
+        let trust = Trust { anchors: vec![p.root.clone()], now: 2_000, required: true, host: None, crls: Vec::new() };
         let (mut c, mut s) = run(Some(identity(&p)), Some(trust)).unwrap();
         assert_eq!((c.suite_name(), s.suite_name()), (SUITE_RSA_NAME, SUITE_RSA_NAME));
         assert!(c.verified() && c.peer_chain().len() == 1);
@@ -1049,24 +1066,27 @@ mod tests {
             .unwrap()
         };
         let _ = stranger;
-        let e = run(Some(identity(&p)), Some(Trust { anchors: vec![other_root], now: 2_000, required: true })).unwrap_err();
+        let e =
+            run(Some(identity(&p)), Some(Trust { anchors: vec![other_root], now: 2_000, required: true, host: None, crls: Vec::new() })).unwrap_err();
         assert_eq!(e.alert, UNKNOWN_CA, "{}", e.why);
         // Expired and not yet valid.
-        let e = run(Some(identity(&p)), Some(Trust { anchors: vec![p.root.clone()], now: 600_000, required: true })).unwrap_err();
+        let e = run(Some(identity(&p)), Some(Trust { anchors: vec![p.root.clone()], now: 600_000, required: true, host: None, crls: Vec::new() }))
+            .unwrap_err();
         assert_eq!(e.alert, CERTIFICATE_EXPIRED);
-        let e = run(Some(identity(&p)), Some(Trust { anchors: vec![p.root.clone()], now: 10, required: true })).unwrap_err();
+        let e = run(Some(identity(&p)), Some(Trust { anchors: vec![p.root.clone()], now: 10, required: true, host: None, crls: Vec::new() }))
+            .unwrap_err();
         assert_eq!(e.alert, CERTIFICATE_EXPIRED);
         // A server that holds the certificate but not its key cannot sign: the signature fails.
         let wrong = RsaKey::generate(1024, &mut Drbg::new(b"not the key")).unwrap();
         let e = run(Some(Identity { chain: vec![p.leaf_der.clone()], key: wrong }), None).unwrap_err();
         assert_eq!(e.alert, DECRYPT_ERROR, "{}", e.why);
         // A server with no certificate: refused by a client that demands one, fine otherwise.
-        let trust = Trust { anchors: vec![p.root.clone()], now: 2_000, required: true };
+        let trust = Trust { anchors: vec![p.root.clone()], now: 2_000, required: true, host: None, crls: Vec::new() };
         assert!(run(None, Some(trust)).is_err());
         let (c, s) = run(None, None).unwrap();
         assert_eq!((c.suite_name(), s.suite_name(), c.verified()), (SUITE_NAME, SUITE_NAME, false));
         // A client that does not require one still talks to an anonymous server, unverified.
-        let (c, _) = run(None, Some(Trust { anchors: vec![p.root.clone()], now: 2_000, required: false })).unwrap();
+        let (c, _) = run(None, Some(Trust { anchors: vec![p.root.clone()], now: 2_000, required: false, host: None, crls: Vec::new() })).unwrap();
         assert!(!c.verified() && c.suite_name() == SUITE_NAME);
     }
 
@@ -1099,7 +1119,7 @@ mod tests {
         let (_, hello) = Tls::client(b"c");
         let flight = server.feed(&mut hello.clone()).unwrap().send;
         assert!(describe(&flight).contains("Certificate"), "{}", describe(&flight));
-        let trust = || Some(Trust { anchors: vec![p.root.clone()], now: 2_000, required: true });
+        let trust = || Some(Trust { anchors: vec![p.root.clone()], now: 2_000, required: true, host: None, crls: Vec::new() });
         for cut in 0..flight.len() {
             let (mut c, _) = Tls::client_with(b"c", trust());
             assert!(c.feed(&mut flight[..cut].to_vec()).is_ok_and(|o| o.send.is_empty()), "cut {cut}");
