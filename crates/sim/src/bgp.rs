@@ -924,6 +924,8 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
         confed_path,
         confed_set: Vec::new(),
         ext_communities,
+        mp_reach6: None,
+        mp_unreach6: Vec::new(),
     })
 }
 
@@ -1477,7 +1479,7 @@ impl Sim {
         }
         let Some(d) = t.device(key.0) else { return };
         let hold_secs = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).map_or(conf::HOLD_SECS, |n| timers_at(t, key, n).1);
-        let open = msg::Message::Open(msg::Open { asn: self.bgp_open_as(key, d), hold_secs, bgp_id: router_id(d) });
+        let open = msg::Message::Open(msg::Open { asn: self.bgp_open_as(key, d), hold_secs, bgp_id: router_id(d), ipv6_unicast: false });
         let now = self.now;
         self.bgp_send(t, key, &open, now.saturating_add(1_000_000));
         self.bgp_send(t, key, &msg::Message::Keepalive, now.saturating_add(2_000_000));
