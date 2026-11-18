@@ -3428,8 +3428,9 @@ pub fn crypto_isakmp_sa(sim: &Sim, d: &Device) -> String {
     }
     for sa in &sas {
         let state = match (&sa.failed, sa.phase) {
-            (_, netlabcraft_sim::vpn::IkePhase::Established) => match sa.v1.as_deref().and_then(|v| v.suite) {
-                Some(suite) => format!("established (pre-shared key; {})", suite.describe()),
+            (_, netlabcraft_sim::vpn::IkePhase::Established) => match sa.v1.as_deref().and_then(|v| v.suite.map(|s| (s, &v.peer_cert))) {
+                Some((suite, cert)) if suite.rsa => format!("established (RSA signature, peer certificate {cert}; {})", suite.describe()),
+                Some((suite, _)) => format!("established (pre-shared key; {})", suite.describe()),
                 None => "established (pre-shared key)".to_string(),
             },
             (Some(why), _) => format!("failed: {why}"),

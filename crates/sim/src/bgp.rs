@@ -519,10 +519,18 @@ struct Rank {
     always_med: bool,
     /// `bgp bestpath as-path ignore`.
     ignore_len: bool,
+    /// `bgp bestpath as-path multipath-relax`: paths from different neighbouring ASes may share the load.
+    relax: bool,
 }
 
 fn rank_of(ab: &conf::Bgp) -> Rank {
-    Rank { multi: ab.multipath(), multi_ibgp: ab.multipath_ibgp(), always_med: ab.always_compare_med, ignore_len: ab.as_path_ignore }
+    Rank {
+        multi: ab.multipath(),
+        multi_ibgp: ab.multipath_ibgp(),
+        always_med: ab.always_compare_med,
+        ignore_len: ab.as_path_ignore,
+        relax: ab.option("bgp bestpath as-path multipath-relax"),
+    }
 }
 
 /// `a` is a better path than `b` to the same prefix.
@@ -581,7 +589,7 @@ fn equal_cost(a: &Path, b: &Path, o: &Rank) -> bool {
         && a.ebgp == b.ebgp
         && a.weight == b.weight
         && a.local_pref == b.local_pref
-        && a.as_path.first() == b.as_path.first()
+        && (o.relax || a.as_path.first() == b.as_path.first())
         && (o.ignore_len || a.path_len() == b.path_len())
         && a.origin == b.origin
         && a.med == b.med
@@ -792,6 +800,9 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
     {
         return None;
     }
+    if !distribute_permits(a, n.distribute_out.as_deref(), path.net, path.med) {
+        return None;
+    }
     // Between internal neighbours a path learned from an internal neighbour is not passed on, unless
     // this router is a route reflector: a path from a client goes to every internal neighbour, one
     // from a non-client to the clients only (RFC 4456).
@@ -799,6 +810,10 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
     if reflect {
         let from_client = path.from.and_then(|f| ab.neighbor(f)).is_some_and(|s| s.route_reflector_client);
         if !from_client && !n.route_reflector_client {
+            return None;
+        }
+        // `no bgp client-to-client reflection`: a client's path is not passed to other clients.
+        if from_client && n.route_reflector_client && ab.option("no bgp client-to-client reflection") {
             return None;
         }
     }
@@ -922,6 +937,10 @@ fn default_route(
 /// Everything a router tells one neighbour: its best paths that [`export`] lets through, and the
 /// default route when the neighbour has `default-originate` (unless a path for 0.0.0.0/0 is sent anyway).
 fn export_all(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, table: &[RouteEntry], best: &[&Path]) -> Vec<(Ipv4Net, msg::PathAttrs)> {
+    // Without `neighbor … activate` (under `no bgp default ipv4-unicast`) no IPv4 route is sent.
+    if !ab.exchanges(n) {
+        return Vec::new();
+    }
     let mut out: Vec<(Ipv4Net, msg::PathAttrs)> = best.iter().filter_map(|x| export(a, ab, n, p, x).map(|at| (x.net, at))).collect();
     if n.default_originate && !out.iter().any(|(net, _)| net.prefix == 0) {
         out.extend(default_route(a, ab, n, p, table, best));
@@ -947,11 +966,19 @@ fn loop_free(b: &Device, bb: &conf::Bgp, p: &Peering, attrs: &msg::PathAttrs, ow
     true
 }
 
+/// Whether the standard access list named by a neighbour's `distribute-list` lets the prefix
+/// through (no list: everything; a list that is not defined yet: everything, as for the IGPs).
+fn distribute_permits(d: &Device, list: Option<&str>, net: Ipv4Net, metric: u32) -> bool {
+    let Some(name) = list else { return true };
+    netlabcraft_model::redist::DistList { kind: netlabcraft_model::redist::DistKind::Acl, name: name.to_string(), inbound: true, iface: None }
+        .permits(d, net, metric)
+}
+
 /// What a router makes of what a neighbour told it: `None` when it drops it, by the loop checks
 /// or by the neighbour's inbound prefix list and route map.
 fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, from_id: Ipv4Addr, net: Ipv4Net, own: &[L3If]) -> Option<Path> {
     let bb = b.bgp.as_ref()?;
-    if !loop_free(b, bb, p, attrs, own) {
+    if !bb.exchanges(m) || !loop_free(b, bb, p, attrs, own) {
         return None;
     }
     if let Some(l) = m.filter_list_in.as_deref().and_then(|x| b.as_path_list(x))
@@ -960,7 +987,12 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
         return None;
     }
     let external = p.ebgp && !p.confed;
-    let med = attrs.med.unwrap_or(0);
+    // A path without a MED counts as 0, or as the worst one with `bgp bestpath med missing-as-worst`.
+    let missing = if bb.option("bgp bestpath med missing-as-worst") { u32::MAX } else { 0 };
+    let med = attrs.med.unwrap_or(missing);
+    if !distribute_permits(b, m.distribute_in.as_deref(), net, med) {
+        return None;
+    }
     let seen = policy::Attrs { communities: &attrs.communities, as_path: &attrs.as_path, as_set: &attrs.as_set, tag: 0 };
     let sets = policy::apply_with(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med }, &seen)?;
     // An external neighbour's local preference is ignored; internal and confederation neighbours carry it.
@@ -1285,7 +1317,9 @@ impl Sim {
             let hold = conf::negotiate(conf::timers_of(&n), conf::timers_of(&m)).1;
             let fast = |side: &conf::Neighbor, key: SessKey, p: &Peering| {
                 let down = t.device(key.0).is_none_or(|d| !up_ifaces(t, d).iter().any(|i| i.name == p.out_iface));
-                p.ebgp && multihop(side) == 1 && down
+                // `no bgp fast-external-fallover` leaves the session to the hold timer.
+                let kept = t.device(key.0).and_then(|d| d.bgp.as_ref()).is_some_and(|b| b.option("no bgp fast-external-fallover"));
+                p.ebgp && multihop(side) == 1 && down && !kept
             };
             if hold == 0 || fast(&n, k, &old) || fast(&m, peer_key, &old_peer) {
                 continue;

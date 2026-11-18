@@ -93,6 +93,8 @@ pub struct V2State {
     /// The AH child SA of a bundle this router asked for (a new one, or the renewal of the
     /// old): its nonce, its new inbound SPI, the request's message ID and whether it renews.
     ah_pending: Option<(Vec<u8>, u32, u32, bool)>,
+    /// With RSA signatures: the subject of the certificate the peer proved itself with.
+    pub peer_cert: String,
 }
 
 /// An IKE SA rekey request in flight: the new SPI, nonce and Diffie-Hellman value this router
@@ -424,11 +426,77 @@ pub(crate) fn v2_local_check(d: &Device, e: &CryptoMapEntry, local: Ipv4Addr) ->
     if !prof.matches(peer) {
         return Err(format!("IKEv2 profile {name} does not match identity {peer} (`match identity remote address`)"));
     }
-    d.crypto.ikev2.keys_for(prof, peer).ok_or_else(|| format!("IKEv2 profile {name}: no keyring key for {peer}"))?;
+    if prof.rsa_local() {
+        crate::pki::ike_identity(d, prof.trustpoint.as_deref())
+            .ok_or_else(|| format!("IKEv2 profile {name}: no certificate with its key pair to sign with (`pki trustpoint`, `crypto pki enroll`)"))?;
+    }
+    if !prof.rsa_local() || !prof.rsa_remote() {
+        d.crypto.ikev2.keys_for(prof, peer).ok_or_else(|| format!("IKEv2 profile {name}: no keyring key for {peer}"))?;
+    }
     if d.crypto.ikev2.offered(local).is_empty() {
         return Err("no IKEv2 policy offers a complete proposal (encryption, integrity and group)".into());
     }
     Ok(())
+}
+
+/// This router's authentication payloads for a profile: its CERT and an RSA AUTH when the
+/// profile says `authentication local rsa-sig`, else the AUTH of the pre-shared key.
+#[allow(clippy::too_many_arguments)]
+fn auth_payloads(
+    d: &Device,
+    prof: &netlabcraft_model::vpn::Ikev2Profile,
+    peer: Ipv4Addr,
+    prf: netlabcraft_wire::suite::Prf,
+    message: &[u8],
+    peer_nonce: &[u8],
+    sk_p: &[u8],
+    id_body: &[u8],
+) -> Result<Vec<Payload>, String> {
+    if prof.rsa_local() {
+        let me = crate::pki::ike_identity(d, prof.trustpoint.as_deref()).ok_or("this router has no certificate with its key pair to sign with")?;
+        let sig = me.sign(&ikev2::signed_octets(prf, message, peer_nonce, sk_p, id_body)).ok_or("the key pair is too small to sign with")?;
+        return Ok(vec![Payload::cert(me.cert.der()), Payload::Auth { method: ikev2::AUTH_RSA_SIG, data: sig }]);
+    }
+    let (my_key, _) = d.crypto.ikev2.keys_for(prof, peer).ok_or("the IKEv2 profile has no key for the peer")?;
+    Ok(vec![Payload::Auth { method: ikev2::AUTH_SHARED_KEY, data: ikev2::psk_auth_with(prf, my_key.as_bytes(), message, peer_nonce, sk_p, id_body) }])
+}
+
+/// Checks the AUTH payload of a list under a profile: the pre-shared key's MAC, or with
+/// `authentication remote rsa-sig` the certificate chain and the signature. The subject of the
+/// peer's certificate (empty with a key).
+#[allow(clippy::too_many_arguments)]
+fn check_auth(
+    d: &Device,
+    now: i64,
+    prof: &netlabcraft_model::vpn::Ikev2Profile,
+    peer: Ipv4Addr,
+    prf: netlabcraft_wire::suite::Prf,
+    list: &[Payload],
+    message: &[u8],
+    own_nonce: &[u8],
+    sk_p: &[u8],
+    id_body: &[u8],
+) -> Result<String, String> {
+    let (method, auth) = list
+        .iter()
+        .find_map(|p| if let Payload::Auth { method, data } = p { Some((*method, data.as_slice())) } else { None })
+        .ok_or("the message carries no AUTH payload")?;
+    if prof.rsa_remote() {
+        if method != ikev2::AUTH_RSA_SIG {
+            return Err("the peer authenticated with a shared key where this profile wants an RSA signature".into());
+        }
+        let octets = ikev2::signed_octets(prf, message, own_nonce, sk_p, id_body);
+        return crate::pki::verify_peer(d, now, &ikev2::certs_of(list), &octets, auth).map(|c| c.subject.text());
+    }
+    if method != ikev2::AUTH_SHARED_KEY {
+        return Err("the peer signed with a certificate where this profile wants a shared key".into());
+    }
+    let their = d.crypto.ikev2.keys_for(prof, peer).map(|k| k.1).ok_or("the IKEv2 profile has no key for the peer")?;
+    if ikev2::psk_auth_with(prf, their.as_bytes(), message, own_nonce, sk_p, id_body) == auth {
+        Ok(String::new())
+    } else {
+        Err("the peer's AUTH value does not match this router's pre-shared key (the keys differ)".into())
+    }
 }
 
 impl Sim {
@@ -764,7 +832,11 @@ impl Sim {
             self.ike2_fail(d, peer, format!("no crypto map entry for {peer} any more"));
             return Ok(());
         };
-        let Some((my_key, _)) = entry.ikev2_profile.as_deref().and_then(|n| d.crypto.ikev2.profile(n)).and_then(|p| d.crypto.ikev2.keys_for(p, peer))
+        let Some(prof) = entry
+            .ikev2_profile
+            .as_deref()
+            .and_then(|n| d.crypto.ikev2.profile(n))
+            .filter(|p| p.rsa_local() || d.crypto.ikev2.keys_for(p, peer).is_some())
         else {
             self.ike2_fail(d, peer, "the IKEv2 profile has no key for the peer any more".into());
             return Ok(());
@@ -781,7 +853,14 @@ impl Sim {
         let keys = Keys::derive_with(ike_suite(&chosen), &shared, &v2.ni, &nr, &v2.spi_i, &m.spi_r);
         let my_id = entry.ikev2_profile.as_deref().and_then(|n| d.crypto.ikev2.profile(n)).and_then(|p| p.local_id).unwrap_or(local);
         let idi = id_body(my_id);
-        let auth = ikev2::psk_auth_with(keys.suite.prf, my_key.as_bytes(), &v2.msg1, &nr, &keys.sk_pi, &idi);
+        let mut payloads = vec![Payload::IdI { kind: ikev2::ID_IPV4_ADDR, data: my_id.octets().to_vec() }];
+        match auth_payloads(d, prof, peer, keys.suite.prf, &v2.msg1, &nr, &keys.sk_pi, &idi) {
+            Ok(p) => payloads.extend(p),
+            Err(why) => {
+                self.ike2_fail(d, peer, why);
+                return Ok(());
+            }
+        }
         let spi_in = spi_of(&v2.ni, local, peer);
         let (tsi, tsr) = selectors(d, &entry).unwrap_or((
             TrafficSelector { protocol: 0, start_port: 0, end_port: 65_535, start: Ipv4Addr::UNSPECIFIED, end: Ipv4Addr::BROADCAST },
@@ -793,13 +872,10 @@ impl Sim {
             exchange: ikev2::IKE_AUTH,
             flags: ikev2::FLAG_INITIATOR,
             message_id: 1,
-            payloads: vec![
-                Payload::IdI { kind: ikev2::ID_IPV4_ADDR, data: my_id.octets().to_vec() },
-                Payload::Auth { method: ikev2::AUTH_SHARED_KEY, data: auth },
-                Payload::Sa(vec![esp_proposal(d, &entry, spi_in)]),
-                Payload::TsI(vec![tsi]),
-                Payload::TsR(vec![tsr]),
-            ],
+            payloads: {
+                payloads.extend([Payload::Sa(vec![esp_proposal(d, &entry, spi_in)]), Payload::TsI(vec![tsi]), Payload::TsR(vec![tsr])]);
+                payloads
+            },
         };
         let sealed = req.encode_sealed(keys.suite, &keys.sk_ei, &keys.sk_ai, iv_for(&[&v2.ni[..], b"auth-i"].concat()));
         v2.spi_r = m.spi_r;
@@ -845,14 +921,14 @@ impl Sim {
         };
         let iv = iv_for(&[&v2.nr[..], b"auth-r"].concat());
         let idi = inner.iter().find_map(|p| if let Payload::IdI { kind, data } = p { Some((*kind, data.clone())) } else { None });
-        let auth = inner.iter().find_map(|p| if let Payload::Auth { data, .. } = p { Some(data.clone()) } else { None });
-        let (Some((id_kind, id_data)), Some(auth)) = (idi, auth) else {
+        let has_auth = inner.iter().any(|p| matches!(p, Payload::Auth { .. }));
+        let (Some((id_kind, id_data)), true) = (idi, has_auth) else {
             self.ike2_fail(d, peer, "IKE_AUTH without identity or AUTH".into());
             self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
             return Ok(());
         };
         let their_id = <[u8; 4]>::try_from(id_data.as_slice()).map(Ipv4Addr::from).unwrap_or(Ipv4Addr::UNSPECIFIED);
-        let profile = d.crypto.ikev2.profiles.iter().find(|p| p.matches(their_id) && d.crypto.ikev2.keys_for(p, peer).is_some());
+        let profile = d.crypto.ikev2.profiles.iter().find(|p| p.matches(their_id) && (p.rsa_remote() || d.crypto.ikev2.keys_for(p, peer).is_some()));
         let Some(profile) = profile else {
             self.ike2_fail(
                 d,
@@ -862,17 +938,16 @@ impl Sim {
             self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
             return Ok(());
         };
-        let (my_key, their_key) = d.crypto.ikev2.keys_for(profile, peer).unwrap_or_default();
         let mut idi_body = vec![id_kind, 0, 0, 0];
         idi_body.extend_from_slice(&id_data);
-        if ikev2::psk_auth_with(keys.suite.prf, their_key.as_bytes(), &v2.msg1, &v2.nr, &keys.sk_pi, &idi_body) != auth {
-            self.ike2_fail(
-                d,
-                peer,
-                "the peer's AUTH value does not match this router's pre-shared key (the keys differ); answered AUTHENTICATION_FAILED".into(),
-            );
-            self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
-            return Ok(());
+        let clock = self.clock(d.id).0;
+        match check_auth(d, clock, profile, peer, keys.suite.prf, &inner, &v2.msg1, &v2.nr, &keys.sk_pi, &idi_body) {
+            Ok(subject) => v2.peer_cert = subject,
+            Err(why) => {
+                self.ike2_fail(d, peer, format!("{why}; answered AUTHENTICATION_FAILED"));
+                self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
+                return Ok(());
+            }
         }
         // The child SA: a crypto map entry back to the peer with the same ESP transforms, and
         // selectors its access list (mirrored) permits.
@@ -911,7 +986,15 @@ impl Sim {
         }
         let my_id = profile.local_id.unwrap_or(local);
         let idr = id_body(my_id);
-        let my_auth = ikev2::psk_auth_with(keys.suite.prf, my_key.as_bytes(), &v2.msg2, &v2.ni, &keys.sk_pr, &idr);
+        let mut payloads = vec![Payload::IdR { kind: ikev2::ID_IPV4_ADDR, data: my_id.octets().to_vec() }];
+        match auth_payloads(d, profile, peer, keys.suite.prf, &v2.msg2, &v2.ni, &keys.sk_pr, &idr) {
+            Ok(p) => payloads.extend(p),
+            Err(why) => {
+                self.ike2_fail(d, peer, format!("{why}; answered AUTHENTICATION_FAILED"));
+                self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
+                return Ok(());
+            }
+        }
         let tsi = inner.iter().find_map(|p| if let Payload::TsI(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
         let tsr = inner.iter().find_map(|p| if let Payload::TsR(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
         let mut esp = entry.as_ref().map(|e| esp_proposal(d, e, spi_in)).unwrap_or(Proposal {
@@ -927,13 +1010,10 @@ impl Sim {
             exchange: ikev2::IKE_AUTH,
             flags: ikev2::FLAG_RESPONSE,
             message_id: m.message_id,
-            payloads: vec![
-                Payload::IdR { kind: ikev2::ID_IPV4_ADDR, data: my_id.octets().to_vec() },
-                Payload::Auth { method: ikev2::AUTH_SHARED_KEY, data: my_auth },
-                Payload::Sa(vec![esp]),
-                Payload::TsI(tsi),
-                Payload::TsR(tsr),
-            ],
+            payloads: {
+                payloads.extend([Payload::Sa(vec![esp]), Payload::TsI(tsi), Payload::TsR(tsr)]);
+                payloads
+            },
         };
         let suite = entry.as_ref().and_then(|e| esp_suite_for(d, e));
         let (k_ir, k_ri) = esp_keys(&keys, suite, &v2.ni, &v2.nr);
@@ -979,20 +1059,23 @@ impl Sim {
             return Ok(());
         }
         let idr = inner.iter().find_map(|p| if let Payload::IdR { kind, data } = p { Some((*kind, data.clone())) } else { None });
-        let auth = inner.iter().find_map(|p| if let Payload::Auth { data, .. } = p { Some(data.clone()) } else { None });
         let esp = inner.iter().find_map(|p| if let Payload::Sa(v) = p { v.first().cloned() } else { None });
-        let their_key = v2.profile.as_deref().and_then(|n| d.crypto.ikev2.profile(n)).and_then(|p| d.crypto.ikev2.keys_for(p, peer)).map(|k| k.1);
-        let ok = match (idr, auth, their_key) {
-            (Some((k, data)), Some(auth), Some(key)) => {
+        let prof = v2.profile.as_deref().and_then(|n| d.crypto.ikev2.profile(n));
+        let clock = self.clock(d.id).0;
+        let verdict = match (idr, prof) {
+            (Some((k, data)), Some(prof)) => {
                 let mut body = vec![k, 0, 0, 0];
                 body.extend_from_slice(&data);
-                ikev2::psk_auth_with(keys.suite.prf, key.as_bytes(), &v2.msg2, &v2.ni, &keys.sk_pr, &body) == auth
+                check_auth(d, clock, prof, peer, keys.suite.prf, &inner, &v2.msg2, &v2.ni, &keys.sk_pr, &body)
             }
-            _ => false,
+            _ => Err("the peer's AUTH value does not match this router's pre-shared key (the keys differ)".to_string()),
         };
-        if !ok {
-            self.ike2_fail(d, peer, "the peer's AUTH value does not match this router's pre-shared key (the keys differ)".into());
-            return Ok(());
+        match verdict {
+            Ok(subject) => v2.peer_cert = subject,
+            Err(why) => {
+                self.ike2_fail(d, peer, why);
+                return Ok(());
+            }
         }
         let entry = entry_for(d, local, peer);
         let suite = entry.as_ref().and_then(|e| esp_suite_for(d, e));

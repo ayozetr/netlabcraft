@@ -55,6 +55,9 @@ pub struct P1Suite {
     pub group: u16,
     /// Seconds (attribute 12).
     pub lifetime: u32,
+    /// Authentication with RSA signatures and certificates (attribute 3 = 3) instead of a
+    /// pre-shared key.
+    pub rsa: bool,
 }
 
 fn attr(t: &Transform, ty: u16) -> Option<u16> {
@@ -79,7 +82,7 @@ impl P1Suite {
             Some(2) | None => Prf::HmacSha1,
             _ => Prf::HmacSha256,
         };
-        P1Suite { cipher, prf, group: attr(t, 4).unwrap_or(1), lifetime: attr(t, 12).map_or(86_400, u32::from) }
+        P1Suite { cipher, prf, group: attr(t, 4).unwrap_or(1), lifetime: attr(t, 12).map_or(86_400, u32::from), rsa: attr(t, 3) == Some(3) }
     }
 
     pub fn describe(&self) -> String {
@@ -111,6 +114,11 @@ pub fn same_policy(a: &Transform, b: &Transform) -> bool {
 /// Whether a transform authenticates with pre-shared keys (attribute 3 = 1).
 pub fn pre_shared(t: &Transform) -> bool {
     attr(t, 3) == Some(1)
+}
+
+/// Whether a transform authenticates with RSA signatures (attribute 3 = 3).
+pub fn rsa_sig(t: &Transform) -> bool {
+    attr(t, 3) == Some(3)
 }
 
 /// Everything one IKEv1 exchange keeps.
@@ -149,6 +157,8 @@ pub struct V1State {
     pub ah_integ: Option<Integ>,
     pub ah_spi_mine: u32,
     pub ah_spi_peer: u32,
+    /// With RSA signatures: the subject of the certificate the peer proved itself with.
+    pub peer_cert: String,
 }
 
 /// Why opening a message failed.
@@ -188,13 +198,20 @@ impl V1State {
         self.suite.map_or(Prf::HmacSha1, |s| s.prf)
     }
 
-    /// SKEYID = prf(pre-shared key, Ni_b | Nr_b), then SKEYID_d, _a and _e (§5), the cipher key
+    /// Whether this exchange authenticates with RSA signatures.
+    pub fn rsa(&self) -> bool {
+        self.suite.is_some_and(|s| s.rsa)
+    }
+
+    /// SKEYID = prf(pre-shared key, Ni_b | Nr_b), or for signatures prf(Ni_b | Nr_b, g^xy) (§5,
+    /// §5.1), then SKEYID_d, _a and _e (§5), the cipher key
     /// from SKEYID_e (appendix B) and the first IV, hash(g^xi | g^xr). `false` when the peer's
     /// Diffie-Hellman value isn't valid.
     pub fn derive(&mut self, psk: &[u8], icookie: &[u8; 8], rcookie: &[u8; 8], initiator: bool) -> bool {
         let Some(gxy) = self.shared(initiator) else { return false };
         let prf = self.prf();
-        self.skeyid = prf.prf(psk, &[&self.ni[..], &self.nr[..]].concat());
+        self.skeyid =
+            if self.rsa() { prf.prf(&[&self.ni[..], &self.nr[..]].concat(), &gxy) } else { prf.prf(psk, &[&self.ni[..], &self.nr[..]].concat()) };
         let tail = |n: u8| [&gxy[..], &icookie[..], &rcookie[..], &[n][..]].concat();
         self.skeyid_d = prf.prf(&self.skeyid, &tail(0));
         self.skeyid_a = prf.prf(&self.skeyid, &[&self.skeyid_d[..], &tail(1)].concat());
@@ -404,6 +421,37 @@ mod tests {
             bad.ke_r = vec![1; bad.ke_i.len()];
             assert!(!bad.derive(b"psk", &[1; 8], &[2; 8], true));
         }
+    }
+
+    #[test]
+    fn signature_authentication_derives_its_keys_from_the_nonces_alone() {
+        let t = tr(vec![(1, 7), (14, 128), (2, 2), (3, 3), (4, 14), (11, 1), (12, 3600)]);
+        assert!(rsa_sig(&t) && !pre_shared(&t));
+        let s = P1Suite::from_transform(&t);
+        assert!(s.rsa);
+        let make = |psk_suite: P1Suite| {
+            let mut i = V1State { suite: Some(psk_suite), ni: vec![1; 16], sa_b: vec![9; 40], ..V1State::default() };
+            let mut r = V1State { suite: Some(psk_suite), nr: vec![2; 16], sa_b: vec![9; 40], ..V1State::default() };
+            i.ke_i = i.make_ke(b"i");
+            r.ke_r = r.make_ke(b"r");
+            r.ke_i = i.ke_i.clone();
+            i.ke_r = r.ke_r.clone();
+            r.ni = i.ni.clone();
+            i.nr = r.nr.clone();
+            (i, r)
+        };
+        let (mut i, mut r) = make(s);
+        let (ci, cr) = ([1; 8], [2; 8]);
+        // The pre-shared key plays no part: two ends given different ones still agree.
+        assert!(i.derive(b"", &ci, &cr, true) && r.derive(b"anything", &ci, &cr, false));
+        assert_eq!(i.enc_key, r.enc_key);
+        assert_eq!(i.hash_p1(true, &ci, &cr, b"id"), r.hash_p1(true, &ci, &cr, b"id"));
+        assert!(i.rsa());
+        // The same exchange authenticated with a key gets other keys.
+        let (mut ip, mut rp) = make(P1Suite { rsa: false, ..s });
+        assert!(ip.derive(b"psk", &ci, &cr, true) && rp.derive(b"psk", &ci, &cr, false));
+        assert_ne!(i.enc_key, ip.enc_key);
+        assert!(!ip.rsa());
     }
 
     #[test]

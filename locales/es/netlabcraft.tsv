@@ -646,10 +646,32 @@
 	Two lightweight access points join the controller WLC1, which offers Staff (WPA2-Enterprise, logins checked by a RADIUS server) and Guest (WPA2-PSK).	Dos puntos de acceso ligeros se unen al controlador WLC1, que ofrece Staff (WPA2-Enterprise, con los inicios de sesión comprobados por un servidor RADIUS) y Guest (WPA2-PSK).
 	WLC1 holds two WLANs (`show wlan`, `show capwap`): Staff checks logins with RADIUS1 (users ana/ana12345 and luis/luis1234) and lands in VLAN 10 (192.168.10.0/24); Guest uses the passphrase invitado123 and lands in VLAN 30 (192.168.30.0/24). The access points tag each WLAN on their trunk to S1, and R1 routes and hands out addresses per VLAN. In Simulation mode, reset and ping from Laptop1 to watch the 802.11 association, the EAP login, the RADIUS exchange, the 4-way handshake and then CCMP-protected data; move Laptop1 next to LAP2 and watch it reassociate, keeping its address.	WLC1 tiene dos WLAN (`show wlan`, `show capwap`): Staff comprueba los inicios de sesión con RADIUS1 (usuarios ana/ana12345 y luis/luis1234) y entra en la VLAN 10 (192.168.10.0/24); Guest usa la frase de paso invitado123 y entra en la VLAN 30 (192.168.30.0/24). Los puntos de acceso etiquetan cada WLAN en su troncal hacia S1, y R1 enruta y reparte direcciones en cada VLAN. En modo Simulación, reinicia y haz ping desde Laptop1 para ver la asociación 802.11, el inicio de sesión EAP, el intercambio RADIUS, el saludo de 4 vías y después los datos protegidos con CCMP; acerca Laptop1 a LAP2 y verás cómo se reasocia sin perder su dirección.
 	Physical workspace	Espacio de trabajo físico
-	Adds a place to the map shown; drag it into position	Añade un lugar al mapa que se muestra; arrástralo a su sitio
 	New City	Nueva ciudad
 	New Building	Nuevo edificio
 	New Wiring Closet	Nuevo armario de cableado
+	Create New…	Crear nuevo…
+	Create New City	Crear ciudad nueva
+	Create New Building	Crear edificio nuevo
+	Create New Closet	Crear armario nuevo
+	Create New Generic Container	Crear contenedor genérico nuevo
+	Create New Rack	Crear rack nuevo
+	Create New Table	Crear mesa nueva
+	Create New Shelf	Crear estante nuevo
+	Create New Inventory Shelf	Crear estantería de inventario nueva
+	Create New Cable Pegboard	Crear panel de ganchos para cables nuevo
+	Create New Industrial Control Panel (ICP)	Crear panel de control industrial (ICP) nuevo
+	Switch to the Physical view first.	Cambia primero a la vista física.
+	Go to the Intercity map to create a city.	Ve al mapa Intercity para crear una ciudad.
+	Open a city first.	Abre primero una ciudad.
+	Open a building first.	Abre primero un edificio.
+	Open a city or a building first.	Abre primero una ciudad o un edificio.
+	Open a wiring closet or a container first.	Abre primero un armario de cableado o un contenedor.
+	No wiring closet yet: create one with +	Aún no hay armario de cableado: crea uno con +
+	Go to Working Closet	Ir al armario de trabajo
+	Go to Working Closet ({})	Ir al armario de trabajo ({})
+	Added {}.	Se ha añadido {}.
+	Set as Working Closet	Definir como armario de trabajo
+	New Generic Container	Nuevo contenedor genérico
 	Container	Contenedor
 	New Container	Nuevo contenedor
 	Inventory Shelf	Estantería de inventario
@@ -1844,7 +1866,6 @@ event	no APN	sin APN
 	Selection	Selección
 	Show Event List	Mostrar lista de eventos
 	Simulation Back	Retroceder en la simulación
-	{} is not available at this level of the Physical view.	{} no está disponible en este nivel de la vista física.
 	Automatically Choose Connection Type	Elegir automáticamente el tipo de conexión
 	Single Mode Fiber	Fibra monomodo
 	Multi Mode Fiber	Fibra multimodo
