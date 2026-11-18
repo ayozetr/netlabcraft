@@ -220,6 +220,11 @@
 	cable	Kabel
 	Cable Length	Kabellänge
 	Cable Length…	Kabellänge…
+	Resize…	Größe ändern…
+	Resize	Größe ändern
+	Units ({} to {}):	Einheiten ({} bis {}):
+	Levels ({} to {}):	Ebenen ({} bis {}):
+	Enter a whole number	Gib eine ganze Zahl ein
 	Cable Modem	Kabelmodem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Kabelmodem: verbindet seinen Koaxial-Port (Coaxial0) mit seinem Ethernet-Port (Ethernet1)
 	cable too long: {} m copper, max 100 m	Kabel zu lang: {} m Kupfer, max. 100 m
@@ -2374,6 +2379,41 @@ furniture	Table	Tisch
 	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	Nicht verfügbar: NetLabCraft hat keine skriptbasierten Geräteseiten, ein Gerät kann also keine eigene Seite erhalten.
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Nicht zutreffend: Es gibt keine Skriptmodule zu signieren. Aktivitätsergebnisse tragen eine eigene Signatur, die Ergebnisse prüfen des Ausbilders kontrolliert.
 	Images held by the lab	Im Labor enthaltene Bilder
+	Set Background Image	Hintergrundbild festlegen
+	Set Background Image…	Hintergrundbild festlegen…
+	Background Image	Hintergrundbild
+	Place Icon	Ortssymbol
+	Remove Picture	Bild entfernen
+	Browse… picks a PNG or JPEG picture.	Durchsuchen… wählt ein PNG- oder JPEG-Bild.
+	Sizes	Größen
+	Picture:	Bild:
+	Map area:	Kartenbereich:
+	Recommended picture:	Empfohlenes Bild:
+	{} × {} px	{} × {} px
+	No picture	Kein Bild
+	Preview of the background	Vorschau des Hintergrunds
+	Layout	Anordnung
+	Original size	Originalgröße
+	Tiled	Gekachelt
+	Stretch to the map area	An den Kartenbereich anpassen
+	Custom width	Eigene Breite
+	Custom height	Eigene Höhe
+	Size of the place	Größe des Ortes
+	Width (m):	Breite (m):
+	Height (m):	Höhe (m):
+	Volume:	Volumen:
+	Scale:	Maßstab:
+	{} m³	{} m³
+	{} m per pixel	{} m pro Pixel
+	The picture this place wears on the map above it, instead of its drawn icon.	Das Bild, das dieser Ort auf der übergeordneten Karte trägt, statt seines gezeichneten Symbols.
+	Preview of the icon	Vorschau des Symbols
+	Workspace background	Hintergrund des Arbeitsbereichs
+	Background of {}	Hintergrund von {}
+	Icon of {}	Symbol von {}
+	The lab holds no images yet: set one with the Set Background Image button.	Das Labor enthält noch keine Bilder: Legen Sie eines mit der Schaltfläche Hintergrundbild festlegen fest.
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Von {} × {} auf {} × {} verkleinert, um die Grenzen eines Labors einzuhalten
+	Pictures are stored inside the lab, so there is nothing to reload.	Bilder werden im Labor gespeichert, es gibt also nichts neu zu laden.
+	{} × {} px, {}	{} × {} px, {}
 	Image	Bild
 	MAC address: {}	MAC-Adresse: {}
 	IP address: {}	IP-Adresse: {}
@@ -2414,38 +2454,10 @@ furniture	Table	Tisch
 	PPP authentication failed (check the usernames and passwords)	PPP-Authentifizierung fehlgeschlagen (Benutzernamen und Kennwörter prüfen)
 	Each place has its own physics	Jeder Ort hat seine eigene Physik
 	Parts change the place they stand in by rates, and the place settles back when they stop	Geräte verändern ihren Ort mit einer Rate, und der Ort kehrt zurück, wenn sie anhalten
-	Set Background Image	Hintergrundbild festlegen
-	Set Background Image…	Hintergrundbild festlegen…
-	Background Image	Hintergrundbild
-	Place Icon	Ortssymbol
-	Remove Picture	Bild entfernen
-	Browse… picks a PNG or JPEG picture.	Durchsuchen… wählt ein PNG- oder JPEG-Bild.
-	Sizes	Größen
-	Picture:	Bild:
-	Map area:	Kartenbereich:
-	Recommended picture:	Empfohlenes Bild:
-	{} × {} px	{} × {} px
-	No picture	Kein Bild
-	Preview of the background	Vorschau des Hintergrunds
-	Layout	Anordnung
-	Original size	Originalgröße
-	Tiled	Gekachelt
-	Stretch to the map area	An den Kartenbereich anpassen
-	Custom width	Eigene Breite
-	Custom height	Eigene Höhe
-	Size of the place	Größe des Ortes
-	Width (m):	Breite (m):
-	Height (m):	Höhe (m):
-	Volume:	Volumen:
-	Scale:	Maßstab:
-	{} m³	{} m³
-	{} m per pixel	{} m pro Pixel
-	The picture this place wears on the map above it, instead of its drawn icon.	Das Bild, das dieser Ort auf der übergeordneten Karte trägt, statt seines gezeichneten Symbols.
-	Preview of the icon	Vorschau des Symbols
-	Workspace background	Hintergrund des Arbeitsbereichs
-	Background of {}	Hintergrund von {}
-	Icon of {}	Symbol von {}
-	The lab holds no images yet: set one with the Set Background Image button.	Das Labor enthält noch keine Bilder: Legen Sie eines mit der Schaltfläche Hintergrundbild festlegen fest.
-	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Von {} × {} auf {} × {} verkleinert, um die Grenzen eines Labors einzuhalten
-	Pictures are stored inside the lab, so there is nothing to reload.	Bilder werden im Labor gespeichert, es gibt also nichts neu zu laden.
-	{} × {} px, {}	{} × {} px, {}
+	Pairing code:	Kopplungscode:
+	Profile:	Profil:
+	Music (A2DP)	Musik (A2DP)
+	Headset	Headset
+	Card id (hex):	Karten-ID (hex):
+	Report crossings of the wire	Überquerungen des Drahts melden
+	Wire angle (degrees):	Winkel des Drahts (Grad):

@@ -220,6 +220,11 @@
 	cable	câble
 	Cable Length	Longueur du câble
 	Cable Length…	Longueur du câble…
+	Resize…	Redimensionner…
+	Resize	Redimensionner
+	Units ({} to {}):	Unités ({} à {}) :
+	Levels ({} to {}):	Niveaux ({} à {}) :
+	Enter a whole number	Saisissez un nombre entier
 	Cable Modem	Modem câble
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Modem câble : relie son port coaxial (Coaxial0) à son port Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	câble trop long : {} m de cuivre, 100 m maximum
@@ -2374,6 +2379,41 @@ furniture	Table	Table
 	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	Indisponible : NetLabCraft n'a pas de pages d'appareil scriptées, on ne peut donc pas donner de page personnalisée à un appareil.
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Sans objet : il n'y a pas de modules scriptés à signer. Les résultats d'activité portent leur propre signature, vérifiée par Vérifier les résultats de l'instructeur.
 	Images held by the lab	Images contenues dans le labo
+	Set Background Image	Définir l'image d'arrière-plan
+	Set Background Image…	Définir l'image d'arrière-plan…
+	Background Image	Image d'arrière-plan
+	Place Icon	Icône du lieu
+	Remove Picture	Retirer l'image
+	Browse… picks a PNG or JPEG picture.	Parcourir… choisit une image PNG ou JPEG.
+	Sizes	Tailles
+	Picture:	Image :
+	Map area:	Zone de la carte :
+	Recommended picture:	Image recommandée :
+	{} × {} px	{} × {} px
+	No picture	Aucune image
+	Preview of the background	Aperçu de l'arrière-plan
+	Layout	Disposition
+	Original size	Taille d'origine
+	Tiled	En mosaïque
+	Stretch to the map area	Étirer à la zone de la carte
+	Custom width	Largeur personnalisée
+	Custom height	Hauteur personnalisée
+	Size of the place	Taille du lieu
+	Width (m):	Largeur (m) :
+	Height (m):	Hauteur (m) :
+	Volume:	Volume :
+	Scale:	Échelle :
+	{} m³	{} m³
+	{} m per pixel	{} m par pixel
+	The picture this place wears on the map above it, instead of its drawn icon.	L'image que ce lieu porte sur la carte au-dessus, à la place de son icône dessinée.
+	Preview of the icon	Aperçu de l'icône
+	Workspace background	Arrière-plan de l'espace de travail
+	Background of {}	Arrière-plan de {}
+	Icon of {}	Icône de {}
+	The lab holds no images yet: set one with the Set Background Image button.	Le labo ne contient pas encore d'images : ajoutez-en une avec le bouton Définir l'image d'arrière-plan.
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Réduite de {} × {} à {} × {} pour respecter les limites d'un labo
+	Pictures are stored inside the lab, so there is nothing to reload.	Les images sont enregistrées dans le labo, il n'y a donc rien à recharger.
+	{} × {} px, {}	{} × {} px, {}
 	Image	Image
 	MAC address: {}	Adresse MAC : {}
 	IP address: {}	Adresse IP : {}
@@ -2414,38 +2454,10 @@ furniture	Table	Table
 	PPP authentication failed (check the usernames and passwords)	échec de l'authentification PPP (vérifiez les noms d'utilisateur et les mots de passe)
 	Each place has its own physics	Chaque lieu a sa propre physique
 	Parts change the place they stand in by rates, and the place settles back when they stop	Les appareils modifient leur lieu selon un débit, et le lieu revient à sa valeur quand ils s'arrêtent
-	Set Background Image	Définir l'image d'arrière-plan
-	Set Background Image…	Définir l'image d'arrière-plan…
-	Background Image	Image d'arrière-plan
-	Place Icon	Icône du lieu
-	Remove Picture	Retirer l'image
-	Browse… picks a PNG or JPEG picture.	Parcourir… choisit une image PNG ou JPEG.
-	Sizes	Tailles
-	Picture:	Image :
-	Map area:	Zone de la carte :
-	Recommended picture:	Image recommandée :
-	{} × {} px	{} × {} px
-	No picture	Aucune image
-	Preview of the background	Aperçu de l'arrière-plan
-	Layout	Disposition
-	Original size	Taille d'origine
-	Tiled	En mosaïque
-	Stretch to the map area	Étirer à la zone de la carte
-	Custom width	Largeur personnalisée
-	Custom height	Hauteur personnalisée
-	Size of the place	Taille du lieu
-	Width (m):	Largeur (m) :
-	Height (m):	Hauteur (m) :
-	Volume:	Volume :
-	Scale:	Échelle :
-	{} m³	{} m³
-	{} m per pixel	{} m par pixel
-	The picture this place wears on the map above it, instead of its drawn icon.	L'image que ce lieu porte sur la carte au-dessus, à la place de son icône dessinée.
-	Preview of the icon	Aperçu de l'icône
-	Workspace background	Arrière-plan de l'espace de travail
-	Background of {}	Arrière-plan de {}
-	Icon of {}	Icône de {}
-	The lab holds no images yet: set one with the Set Background Image button.	Le labo ne contient pas encore d'images : ajoutez-en une avec le bouton Définir l'image d'arrière-plan.
-	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Réduite de {} × {} à {} × {} pour respecter les limites d'un labo
-	Pictures are stored inside the lab, so there is nothing to reload.	Les images sont enregistrées dans le labo, il n'y a donc rien à recharger.
-	{} × {} px, {}	{} × {} px, {}
+	Pairing code:	Code d'appairage :
+	Profile:	Profil :
+	Music (A2DP)	Musique (A2DP)
+	Headset	Casque
+	Card id (hex):	Id de la carte (hex) :
+	Report crossings of the wire	Signaler les franchissements du fil
+	Wire angle (degrees):	Angle du fil (degrés) :

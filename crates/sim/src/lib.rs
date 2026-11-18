@@ -64,6 +64,7 @@ pub mod pdu;
 pub mod peap;
 pub mod pki;
 pub mod pppoe;
+pub mod proximity;
 pub mod qos;
 pub mod ravpn;
 
@@ -3571,6 +3572,9 @@ impl Sim {
             let (pool, allowed) = Sim::fw_dhcp_pool(d, ifc)?;
             (pool, Some(allowed))
         } else {
+            if d.knobs.is_off("service dhcp") {
+                return Err("the DHCP service is turned off (no service dhcp)".to_string());
+            }
             let p = d
                 .dhcp_pools
                 .iter()

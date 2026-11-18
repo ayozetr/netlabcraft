@@ -220,6 +220,11 @@
 	cable	cavo
 	Cable Length	Lunghezza cavo
 	Cable Length…	Lunghezza cavo…
+	Resize…	Ridimensiona…
+	Resize	Ridimensiona
+	Units ({} to {}):	Unità ({} a {}):
+	Levels ({} to {}):	Livelli ({} a {}):
+	Enter a whole number	Inserisci un numero intero
 	Cable Modem	Cable Modem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Cable modem: collega in bridge la porta coassiale (Coaxial0) alla porta Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	cavo troppo lungo: {} m in rame, max 100 m
@@ -2374,6 +2379,41 @@ furniture	Table	Tavolo
 	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	Non disponibile: NetLabCraft non ha pagine dispositivo con script, quindi non si può dare una pagina personalizzata a un dispositivo.
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Non applicabile: non ci sono moduli con script da firmare. I risultati delle attività hanno una propria firma, controllata da Verifica risultati dell'istruttore.
 	Images held by the lab	Immagini contenute nel laboratorio
+	Set Background Image	Imposta immagine di sfondo
+	Set Background Image…	Imposta immagine di sfondo…
+	Background Image	Immagine di sfondo
+	Place Icon	Icona del luogo
+	Remove Picture	Rimuovi immagine
+	Browse… picks a PNG or JPEG picture.	Sfoglia… sceglie un'immagine PNG o JPEG.
+	Sizes	Dimensioni
+	Picture:	Immagine:
+	Map area:	Area della mappa:
+	Recommended picture:	Immagine consigliata:
+	{} × {} px	{} × {} px
+	No picture	Nessuna immagine
+	Preview of the background	Anteprima dello sfondo
+	Layout	Disposizione
+	Original size	Dimensione originale
+	Tiled	A mosaico
+	Stretch to the map area	Adatta all'area della mappa
+	Custom width	Larghezza personalizzata
+	Custom height	Altezza personalizzata
+	Size of the place	Dimensioni del luogo
+	Width (m):	Larghezza (m):
+	Height (m):	Altezza (m):
+	Volume:	Volume:
+	Scale:	Scala:
+	{} m³	{} m³
+	{} m per pixel	{} m per pixel
+	The picture this place wears on the map above it, instead of its drawn icon.	L'immagine che questo luogo mostra sulla mappa superiore, al posto dell'icona disegnata.
+	Preview of the icon	Anteprima dell'icona
+	Workspace background	Sfondo dell'area di lavoro
+	Background of {}	Sfondo di {}
+	Icon of {}	Icona di {}
+	The lab holds no images yet: set one with the Set Background Image button.	Il laboratorio non contiene ancora immagini: impostane una con il pulsante Imposta immagine di sfondo.
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Ridotta da {} × {} a {} × {} per rispettare i limiti di un laboratorio
+	Pictures are stored inside the lab, so there is nothing to reload.	Le immagini sono salvate nel laboratorio, quindi non c'è nulla da ricaricare.
+	{} × {} px, {}	{} × {} px, {}
 	Image	Immagine
 	MAC address: {}	Indirizzo MAC: {}
 	IP address: {}	Indirizzo IP: {}
@@ -2414,38 +2454,10 @@ furniture	Table	Tavolo
 	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
 	Each place has its own physics	Ogni luogo ha la sua fisica
 	Parts change the place they stand in by rates, and the place settles back when they stop	Le parti cambiano il luogo con una velocità e il luogo torna al valore quando si fermano
-	Set Background Image	Imposta immagine di sfondo
-	Set Background Image…	Imposta immagine di sfondo…
-	Background Image	Immagine di sfondo
-	Place Icon	Icona del luogo
-	Remove Picture	Rimuovi immagine
-	Browse… picks a PNG or JPEG picture.	Sfoglia… sceglie un'immagine PNG o JPEG.
-	Sizes	Dimensioni
-	Picture:	Immagine:
-	Map area:	Area della mappa:
-	Recommended picture:	Immagine consigliata:
-	{} × {} px	{} × {} px
-	No picture	Nessuna immagine
-	Preview of the background	Anteprima dello sfondo
-	Layout	Disposizione
-	Original size	Dimensione originale
-	Tiled	A mosaico
-	Stretch to the map area	Adatta all'area della mappa
-	Custom width	Larghezza personalizzata
-	Custom height	Altezza personalizzata
-	Size of the place	Dimensioni del luogo
-	Width (m):	Larghezza (m):
-	Height (m):	Altezza (m):
-	Volume:	Volume:
-	Scale:	Scala:
-	{} m³	{} m³
-	{} m per pixel	{} m per pixel
-	The picture this place wears on the map above it, instead of its drawn icon.	L'immagine che questo luogo mostra sulla mappa superiore, al posto dell'icona disegnata.
-	Preview of the icon	Anteprima dell'icona
-	Workspace background	Sfondo dell'area di lavoro
-	Background of {}	Sfondo di {}
-	Icon of {}	Icona di {}
-	The lab holds no images yet: set one with the Set Background Image button.	Il laboratorio non contiene ancora immagini: impostane una con il pulsante Imposta immagine di sfondo.
-	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Ridotta da {} × {} a {} × {} per rispettare i limiti di un laboratorio
-	Pictures are stored inside the lab, so there is nothing to reload.	Le immagini sono salvate nel laboratorio, quindi non c'è nulla da ricaricare.
-	{} × {} px, {}	{} × {} px, {}
+	Pairing code:	Codice di abbinamento:
+	Profile:	Profilo:
+	Music (A2DP)	Musica (A2DP)
+	Headset	Cuffia
+	Card id (hex):	Id della scheda (hex):
+	Report crossings of the wire	Segnala gli attraversamenti del filo
+	Wire angle (degrees):	Angolo del filo (gradi):

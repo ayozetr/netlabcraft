@@ -669,6 +669,11 @@
 	Open Device	Abrir dispositivo
 	Move to	Mover a
 	Cable Length…	Longitud del cable…
+	Resize…	Cambiar tamaño…
+	Resize	Cambiar tamaño
+	Units ({} to {}):	Unidades ({} a {}):
+	Levels ({} to {}):	Niveles ({} a {}):
+	Enter a whole number	Escribe un número entero
 	Right-click a device to move it to another place.	Haz clic derecho en un dispositivo para moverlo a otro lugar.
 	Rename Place	Renombrar lugar
 	Place name:	Nombre del lugar:
@@ -2377,6 +2382,41 @@ furniture	Table	Mesa
 	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	No disponible: NetLabCraft no tiene páginas de dispositivo con scripts, así que no se puede dar una página propia a un dispositivo.
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	No aplicable: no hay módulos con scripts que firmar. Los resultados de una actividad llevan su propia firma, que comprueba Verificar resultados del instructor.
 	Images held by the lab	Imágenes del laboratorio
+	Set Background Image	Establecer imagen de fondo
+	Set Background Image…	Establecer imagen de fondo…
+	Background Image	Imagen de fondo
+	Place Icon	Icono del lugar
+	Remove Picture	Quitar imagen
+	Browse… picks a PNG or JPEG picture.	Examinar… elige una imagen PNG o JPEG.
+	Sizes	Tamaños
+	Picture:	Imagen:
+	Map area:	Área del mapa:
+	Recommended picture:	Imagen recomendada:
+	{} × {} px	{} × {} px
+	No picture	Sin imagen
+	Preview of the background	Vista previa del fondo
+	Layout	Disposición
+	Original size	Tamaño original
+	Tiled	En mosaico
+	Stretch to the map area	Ajustar al área del mapa
+	Custom width	Ancho personalizado
+	Custom height	Alto personalizado
+	Size of the place	Tamaño del lugar
+	Width (m):	Ancho (m):
+	Height (m):	Alto (m):
+	Volume:	Volumen:
+	Scale:	Escala:
+	{} m³	{} m³
+	{} m per pixel	{} m por píxel
+	The picture this place wears on the map above it, instead of its drawn icon.	La imagen que este lugar muestra en el mapa superior, en lugar de su icono dibujado.
+	Preview of the icon	Vista previa del icono
+	Workspace background	Fondo del área de trabajo
+	Background of {}	Fondo de {}
+	Icon of {}	Icono de {}
+	The lab holds no images yet: set one with the Set Background Image button.	El laboratorio aún no contiene imágenes: añade una con el botón Establecer imagen de fondo.
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Reducida de {} × {} a {} × {} para ajustarse a los límites de un laboratorio
+	Pictures are stored inside the lab, so there is nothing to reload.	Las imágenes se guardan dentro del laboratorio, así que no hay nada que recargar.
+	{} × {} px, {}	{} × {} px, {}
 	Image	Imagen
 	MAC address: {}	Dirección MAC: {}
 	IP address: {}	Dirección IP: {}
@@ -2417,38 +2457,10 @@ furniture	Table	Mesa
 	PPP authentication failed (check the usernames and passwords)	falló la autenticación PPP (revisa los usuarios y las contraseñas)
 	Each place has its own physics	Cada lugar tiene su propia física
 	Parts change the place they stand in by rates, and the place settles back when they stop	Los dispositivos cambian su lugar con una tasa, y el lugar vuelve a su valor cuando se detienen
-	Set Background Image	Establecer imagen de fondo
-	Set Background Image…	Establecer imagen de fondo…
-	Background Image	Imagen de fondo
-	Place Icon	Icono del lugar
-	Remove Picture	Quitar imagen
-	Browse… picks a PNG or JPEG picture.	Examinar… elige una imagen PNG o JPEG.
-	Sizes	Tamaños
-	Picture:	Imagen:
-	Map area:	Área del mapa:
-	Recommended picture:	Imagen recomendada:
-	{} × {} px	{} × {} px
-	No picture	Sin imagen
-	Preview of the background	Vista previa del fondo
-	Layout	Disposición
-	Original size	Tamaño original
-	Tiled	En mosaico
-	Stretch to the map area	Ajustar al área del mapa
-	Custom width	Ancho personalizado
-	Custom height	Alto personalizado
-	Size of the place	Tamaño del lugar
-	Width (m):	Ancho (m):
-	Height (m):	Alto (m):
-	Volume:	Volumen:
-	Scale:	Escala:
-	{} m³	{} m³
-	{} m per pixel	{} m por píxel
-	The picture this place wears on the map above it, instead of its drawn icon.	La imagen que este lugar muestra en el mapa superior, en lugar de su icono dibujado.
-	Preview of the icon	Vista previa del icono
-	Workspace background	Fondo del área de trabajo
-	Background of {}	Fondo de {}
-	Icon of {}	Icono de {}
-	The lab holds no images yet: set one with the Set Background Image button.	El laboratorio aún no contiene imágenes: añade una con el botón Establecer imagen de fondo.
-	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Reducida de {} × {} a {} × {} para ajustarse a los límites de un laboratorio
-	Pictures are stored inside the lab, so there is nothing to reload.	Las imágenes se guardan dentro del laboratorio, así que no hay nada que recargar.
-	{} × {} px, {}	{} × {} px, {}
+	Pairing code:	Código de emparejamiento:
+	Profile:	Perfil:
+	Music (A2DP)	Música (A2DP)
+	Headset	Auriculares
+	Card id (hex):	Id de la tarjeta (hex):
+	Report crossings of the wire	Indicar los cruces del cable
+	Wire angle (degrees):	Ángulo del cable (grados):

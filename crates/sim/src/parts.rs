@@ -190,7 +190,13 @@ impl Sim {
                 }
                 value = match change {
                     Change::Add(a) => value + a,
+                    // A speaker, player, buzzer or alarm plays the pitch it was given.
+                    Change::Set(_) if id == "sound_pitch" && d.iot.frequency > 0 => f64::from(d.iot.frequency),
                     Change::Set(v) => *v,
+                    // A smart LED gives light by its brightness.
+                    Change::Floor(f) if id == "luminosity" && x.what == "smart led" => {
+                        value.max(f * f64::from(d.iot.brightness.unwrap_or(100).min(100)) / 100.0)
+                    }
                     Change::Floor(f) => value.max(*f),
                 };
                 changed = true;
@@ -291,7 +297,7 @@ impl Sim {
             for (name, change) in changes(x.what) {
                 match (*name, change) {
                     ("sound_volume", Change::Floor(f)) => volume = Some(*f),
-                    ("sound_pitch", Change::Set(p)) => pitch = *p,
+                    ("sound_pitch", Change::Set(p)) => pitch = if src.iot.frequency > 0 { f64::from(src.iot.frequency) } else { *p },
                     _ => {}
                 }
             }
