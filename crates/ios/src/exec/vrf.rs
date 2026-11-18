@@ -474,7 +474,7 @@ fn interfaces(d: &Device) -> String {
     let mut any = false;
     for i in netlabcraft_sim::l3_ifaces_all(d).into_iter().filter(|i| i.vrf.is_some()) {
         any = true;
-        let _ = writeln!(s, "{:<22} {:<18} {:<18} {}", ifname::short(&i.name), i.net.addr, i.vrf.as_deref().unwrap_or(""), "configured");
+        let _ = writeln!(s, "{:<22} {:<18} {:<18} configured", ifname::short(&i.name), i.net.addr, i.vrf.as_deref().unwrap_or(""));
     }
     if !any {
         return "No interface is in a VRF with an address.".into();
