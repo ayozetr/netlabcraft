@@ -5546,6 +5546,8 @@ pub static SPECS: &[Spec] = &[
         Modes::SWITCH,
         [K("clear"), K("ip"), K("igmp"), K("snooping")],
         "Forget the groups and router ports learned"
+    ),
+    spec!(
         IpSgOn,
         Modes::IF,
         Modes::SWITCH,
