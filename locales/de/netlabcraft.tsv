@@ -1817,7 +1817,7 @@ event	write request for	Schreibanfrage für
 	Nothing on the workspace yet.	Im Arbeitsbereich ist noch nichts.
 	Click or drag to move the view of the workspace	Klicken oder ziehen, um die Ansicht des Arbeitsbereichs zu verschieben
 	Workspace List	Arbeitsbereichsliste
-	Click a device to select it; double-click to open it.	Ein Gerät anklicken, um es auszuwählen; Doppelklick öffnet es.
+	Click a row to select it; double-click to open it.	Zeile anklicken, um sie auszuwählen; Doppelklick öffnet sie.
 	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. Wähle ein Gerät im unteren Kasten und klicke in den Arbeitsbereich, um es zu platzieren.
 	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. Wähle ein Kabel im selben Kasten, klicke auf ein Gerät, dann auf ein anderes, und wähle die Ports.
 	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. Klicke auf ein Gerät, um sein Fenster zu öffnen: Router und Switches haben eine CLI, Computer einen Desktop.
@@ -1829,7 +1829,7 @@ event	write request for	Schreibanfrage für
 	Each lab lists the devices to place, the commands to type and what you should see.	Jede Übung nennt die Geräte, die zu platzieren sind, die Befehle, die einzugeben sind, und was zu sehen sein soll.
 	Every device on the workspace is announced by a screen reader with its name and model.	Ein Screenreader nennt jedes Gerät im Arbeitsbereich mit Name und Modell.
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab und die Pfeiltasten wechseln zwischen Geräten und Kabeln; Eingabe oder Leertaste öffnet das fokussierte.
-	The Workspace List in the View menu names every device in a table you can move through.	Die Arbeitsbereichsliste im Menü Ansicht nennt jedes Gerät in einer Tabelle, in der man sich bewegen kann.
+	The Workspace List in the View menu names every place, piece of furniture and device in a tree you can move through.	Die Arbeitsbereichsliste im Menü Ansicht nennt jeden Ort, jedes Möbelstück und jedes Gerät in einer Baumansicht, in der man sich bewegen kann.
 	Everything the menus do can also be typed, from the command line or by an agent.	Alles, was die Menüs tun, lässt sich auch eintippen, über die Befehlszeile oder durch einen Agenten.
 	Auto Capture / Play	Automatische Aufzeichnung / Wiedergabe
 	Bottom Toolbar	Untere Symbolleiste
@@ -1906,6 +1906,7 @@ event	write request for	Schreibanfrage für
 	{} (rear)	{} (hinten)
 	{}, {} levels	{}, {} Ebenen
 	{}, on {}	{}, auf {}
+	Other devices	Weitere Geräte
 	Rack	Rack
 	Shelf	Regal
 furniture	Table	Tisch

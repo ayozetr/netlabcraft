@@ -11,17 +11,17 @@ fn a_global_setting_is_kept_replaced_shown_and_removed() {
     let mut lab = Lab::new();
     let r = lab.add(DeviceKind::Router);
     lab.run(r, "en\nconf t");
-    let said = lab.run(r, "service sequence-numbers");
+    let said = lab.run(r, "service tcp-keepalives-in");
     assert!(said.contains("Accepted"), "a setting that changes nothing says so: {said}");
     lab.run(r, "ip tcp synwait-time 40\nip tcp synwait-time 50\ncdp timer 20\nlldp reinit 3");
     lab.run(r, "end");
     let run = lab.run(r, "show running-config");
-    assert!(run.contains("service sequence-numbers\n"), "{run}");
+    assert!(run.contains("service tcp-keepalives-in\n"), "{run}");
     assert!(run.contains("ip tcp synwait-time 50\n") && !run.contains("synwait-time 40"), "the value is replaced: {run}");
     assert!(run.contains("cdp timer 20\n") && run.contains("lldp reinit 3\n"), "{run}");
-    lab.run(r, "conf t\nno service sequence-numbers\nno ip tcp synwait-time\nend");
+    lab.run(r, "conf t\nno service tcp-keepalives-in\nno ip tcp synwait-time\nend");
     let run = lab.run(r, "show running-config");
-    assert!(!run.contains("sequence-numbers") && !run.contains("synwait-time"), "{run}");
+    assert!(!run.contains("tcp-keepalives-in") && !run.contains("synwait-time"), "{run}");
 }
 
 #[test]

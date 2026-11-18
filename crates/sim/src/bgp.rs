@@ -173,6 +173,8 @@ pub struct Path {
     pub resolved: Option<(String, Ipv4Addr)>,
     /// The communities the path carries.
     pub communities: Vec<u32>,
+    /// The extended communities the path carries (RFC 4360, eight octets each in one number).
+    pub ext_communities: Vec<u64>,
     /// The AS set of an aggregate made with `as-set`.
     pub as_set: Vec<u32>,
     /// The metric of the route that resolves the next hop (0 for a connected one).
@@ -542,6 +544,8 @@ struct Rank {
     ignore_len: bool,
     /// `bgp bestpath as-path multipath-relax`: paths from different neighbouring ASes may share the load.
     relax: bool,
+    /// `bgp deterministic-med`: the best path of each neighbouring AS is chosen first.
+    deterministic: bool,
 }
 
 fn rank_of(ab: &conf::Bgp) -> Rank {
@@ -551,6 +555,7 @@ fn rank_of(ab: &conf::Bgp) -> Rank {
         always_med: ab.always_compare_med,
         ignore_len: ab.as_path_ignore,
         relax: ab.option("bgp bestpath as-path multipath-relax"),
+        deterministic: ab.option("bgp deterministic-med"),
     }
 }
 
@@ -617,6 +622,42 @@ fn equal_cost(a: &Path, b: &Path, o: &Rank) -> bool {
         && a.igp == b.igp
 }
 
+/// The index in `idx` of the path that beats every other one named there, comparing them one after
+/// another in that order.
+fn fold_best(g: &[Path], idx: &[usize], o: &Rank) -> Option<usize> {
+    idx.iter().copied().fold(None, |best, i| match (best, g.get(i)) {
+        (Some(b), Some(c)) if g.get(b).is_some_and(|x| !better(c, x, o)) => Some(b),
+        (best, None) => best,
+        (_, Some(_)) => Some(i),
+    })
+}
+
+/// The best path of one prefix. The MED only compares paths that come from the same neighbouring AS,
+/// so the paths compared one after another (the order the table holds them) can give a different
+/// winner for a different order. With `bgp deterministic-med` the best path of each neighbouring AS is
+/// chosen first and only those are compared with each other, so the order does not matter.
+fn best_of(g: &[Path], o: &Rank) -> usize {
+    let all: Vec<usize> = (0..g.len()).collect();
+    if !o.deterministic {
+        return fold_best(g, &all, o).unwrap_or(0);
+    }
+    let first_as = |i: usize| g.get(i).and_then(|p| p.as_path.first().copied());
+    let mut neighbours: Vec<Option<u32>> = Vec::new();
+    for i in 0..g.len() {
+        if !neighbours.contains(&first_as(i)) {
+            neighbours.push(first_as(i));
+        }
+    }
+    let winners: Vec<usize> = neighbours
+        .iter()
+        .filter_map(|k| {
+            let of_this_as: Vec<usize> = all.iter().copied().filter(|i| first_as(*i) == *k).collect();
+            fold_best(g, &of_this_as, o)
+        })
+        .collect();
+    fold_best(g, &winners, o).unwrap_or(0)
+}
+
 /// Groups paths by prefix, marks the best of each (when its next hop resolves) and puts it first;
 /// up to `multi - 1` more external paths (`multi_ibgp - 1` internal ones, when the best is internal)
 /// as good as the best, through a different first hop, are marked to share the load.
@@ -627,10 +668,7 @@ fn rank(cands: Vec<Path>, o: &Rank) -> Vec<Path> {
     }
     let mut out = Vec::new();
     for mut g in groups.into_values() {
-        let best = g.iter().enumerate().fold(0usize, |b, (i, c)| match g.get(b) {
-            Some(x) if !better(c, x, o) => b,
-            _ => i,
-        });
+        let best = best_of(&g, o);
         if best < g.len() {
             g.swap(0, best);
         }
@@ -702,6 +740,7 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
             best: false,
             resolved: None,
             communities: policy::merge_communities(&sets, &[]),
+            ext_communities: policy::merge_ext_communities(&sets, &[]),
             as_set: Vec::new(),
             igp: 0,
             multi: false,
@@ -748,6 +787,7 @@ fn aggregate_paths(ab: &conf::Bgp, paths: &[Path]) -> Vec<Path> {
             best: false,
             resolved: None,
             communities: Vec::new(),
+            ext_communities: Vec::new(),
             as_set: set,
             igp: 0,
             multi: false,
@@ -848,10 +888,22 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
             return None;
         }
     }
-    let seen = policy::Attrs { communities: &path.communities, as_path: &path.as_path, as_set: &path.as_set, tag: 0 };
+    let seen = policy::Attrs {
+        communities: &path.communities,
+        as_path: &path.as_path,
+        as_set: &path.as_set,
+        tag: 0,
+        ext_communities: &path.ext_communities,
+    };
     let sets = policy::apply_with(a, n.prefix_list_out.as_deref(), n.route_map_out.as_deref(), &Subject { net: path.net, metric: path.med }, &seen)?;
     // Communities travel only to a neighbour with `send-community`.
     let communities = if n.send_community { policy::merge_communities(&sets, &path.communities) } else { Vec::new() };
+    // Extended communities travel only to a neighbour with `send-community extended`, and the
+    // non-transitive ones (RFC 4360) never leave the AS.
+    let mut ext_communities = if n.send_extended { policy::merge_ext_communities(&sets, &path.ext_communities) } else { Vec::new() };
+    if external {
+        ext_communities.retain(|c| msg::ext_transitive(*c));
+    }
     let mut tail = sets.prepend.clone();
     tail.extend(path.as_path.iter().copied());
     let origin = sets.origin.unwrap_or(path.origin);
@@ -870,6 +922,7 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
             local_pref: None,
             as_set: path.as_set.clone(),
             communities,
+            ext_communities,
             ..msg::PathAttrs::default()
         });
     }
@@ -906,6 +959,7 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
         cluster_list,
         confed_path,
         confed_set: Vec::new(),
+        ext_communities,
     })
 }
 
@@ -960,6 +1014,12 @@ fn default_route(
         }
         if n.send_community {
             at.communities = policy::merge_communities(&sets, &[]);
+        }
+        if n.send_extended {
+            at.ext_communities = policy::merge_ext_communities(&sets, &[]);
+            if external {
+                at.ext_communities.retain(|c| msg::ext_transitive(*c));
+            }
         }
     }
     Some((net, at))
@@ -1024,7 +1084,13 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
     if !distribute_permits(b, m.distribute_in.as_deref(), net, med) {
         return None;
     }
-    let seen = policy::Attrs { communities: &attrs.communities, as_path: &attrs.as_path, as_set: &attrs.as_set, tag: 0 };
+    let seen = policy::Attrs {
+        communities: &attrs.communities,
+        as_path: &attrs.as_path,
+        as_set: &attrs.as_set,
+        tag: 0,
+        ext_communities: &attrs.ext_communities,
+    };
     let sets = policy::apply_with(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med }, &seen)?;
     // An external neighbour's local preference is ignored; internal and confederation neighbours carry it.
     let local_pref = sets.local_pref.unwrap_or_else(|| if external { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
@@ -1049,6 +1115,7 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
         best: false,
         resolved: None,
         communities: policy::merge_communities(&sets, &attrs.communities),
+        ext_communities: policy::merge_ext_communities(&sets, &attrs.ext_communities),
         as_set: attrs.as_set.clone(),
         igp: 0,
         multi: false,
@@ -1702,6 +1769,7 @@ mod tests {
             best: false,
             resolved: Some(("g0/0".into(), Ipv4Addr::new(10, 0, 0, 2))),
             communities: Vec::new(),
+            ext_communities: Vec::new(),
             as_set: Vec::new(),
             igp: 0,
             multi: false,
@@ -1742,6 +1810,24 @@ mod tests {
         // A path whose next hop does not resolve loses to anything that does.
         let dead = Path { valid: false, weight: 99, ..base.clone() };
         assert!(better_std(&base, &dead));
+    }
+
+    #[test]
+    fn deterministic_med_chooses_within_each_neighbouring_as_first() {
+        // The MED is compared only inside one neighbouring AS, so one after another the paths can lose to
+        // a path that a path of the same AS beats: X beats Z (50 against 100), Y beats X (nearer), Z beats Y.
+        let base = path("10.9.0.0/16", &[100]);
+        let x = Path { med: 50, igp: 30, from: Some(Ipv4Addr::new(10, 0, 0, 1)), ..base.clone() };
+        let y = Path { as_path: vec![200], med: 0, igp: 20, from: Some(Ipv4Addr::new(10, 0, 0, 2)), ..base.clone() };
+        let z = Path { med: 100, igp: 10, from: Some(Ipv4Addr::new(10, 0, 0, 3)), ..base };
+        let winner = |o: &Rank, order: Vec<Path>| rank(order, o).iter().find(|p| p.best).map(|p| (p.as_path.clone(), p.med));
+        let plain = Rank::default();
+        let det = Rank { deterministic: true, ..Rank::default() };
+        assert_eq!(winner(&plain, vec![x.clone(), y.clone(), z.clone()]), Some((vec![100], 100)), "compared in order, Z wins");
+        assert_eq!(winner(&det, vec![x.clone(), y.clone(), z.clone()]), Some((vec![200], 0)), "X beats Z, then Y beats X");
+        // The order the paths are held in no longer matters.
+        assert_eq!(winner(&det, vec![z.clone(), y.clone(), x.clone()]), Some((vec![200], 0)));
+        assert_eq!(winner(&det, vec![y, z, x]), Some((vec![200], 0)));
     }
 
     #[test]
@@ -1970,6 +2056,41 @@ mod tests {
         let no_adv = Path { communities: vec![policy::NO_ADVERTISE], ..tagged };
         assert!(export(&a, &ab, &n_int, &int, &no_adv).is_none());
         assert!(export(&a, &ab, &n, &p, &no_adv).is_none());
+    }
+
+    #[test]
+    fn extended_communities_need_send_community_extended_and_the_non_transitive_ones_stay_in_the_as() {
+        let a = speaker(65_001);
+        let ab = conf::Bgp::new(65_001);
+        let n = conf::Neighbor { remote_as: Some(65_002), send_extended: true, ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 2)) };
+        let p = Peering {
+            peer: DeviceId(2),
+            peer_addr: n.addr,
+            local: Ipv4Addr::new(10, 0, 0, 1),
+            out_iface: "g0/0".into(),
+            next_hop: n.addr,
+            ebgp: true,
+            confed: false,
+            ttl: 1,
+            local_as: None,
+        };
+        let rt = msg::ext_as2(msg::ExtKind::RouteTarget, 65_001, 100);
+        let transient = 0x4002_0000_0000_0001u64;
+        let tagged = Path { ext_communities: vec![rt, transient], from: Some(Ipv4Addr::new(10, 0, 9, 9)), ..path("10.9.0.0/16", &[65_005]) };
+        let sent = export(&a, &ab, &n, &p, &tagged).unwrap();
+        assert_eq!(sent.ext_communities, vec![rt], "a non-transitive community does not leave the AS");
+        let off = conf::Neighbor { send_extended: false, ..n.clone() };
+        assert!(export(&a, &ab, &off, &p, &tagged).unwrap().ext_communities.is_empty());
+        let n_int = conf::Neighbor { remote_as: Some(65_001), send_extended: true, ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 5, 2)) };
+        let int = Peering { ebgp: false, ttl: 255, ..p.clone() };
+        assert_eq!(export(&a, &ab, &n_int, &int, &tagged).unwrap().ext_communities, vec![rt, transient]);
+        // Through the wire and into the receiver's table.
+        let update = msg::Message::Update(msg::Update { withdrawn: Vec::new(), attrs: Some(sent), nlri: vec![tagged.net] });
+        let Ok(msg::Message::Update(back)) = msg::Message::decode(&update.encode()) else { panic!("did not decode") };
+        let b = speaker(65_002);
+        let m = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 1));
+        let got = import(&b, &m, &p, &back.attrs.unwrap(), Ipv4Addr::new(1, 1, 1, 1), tagged.net, &[]).unwrap();
+        assert_eq!(got.ext_communities, vec![rt]);
     }
 
     #[test]

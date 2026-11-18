@@ -1817,7 +1817,7 @@ event	write request for	写请求
 	Nothing on the workspace yet.	工作区中还没有任何内容。
 	Click or drag to move the view of the workspace	单击或拖动以移动工作区的视图
 	Workspace List	工作区列表
-	Click a device to select it; double-click to open it.	单击设备可选中它；双击可打开它。
+	Click a row to select it; double-click to open it.	单击某一行可选中它；双击可打开它。
 	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. 在底部的设备框中选一个设备，然后单击工作区来放置它。
 	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. 在同一个框中选一根线缆，先单击一个设备，再单击另一个，然后选择端口。
 	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. 单击设备可打开它的窗口：路由器和交换机有命令行，计算机有桌面。
@@ -1829,7 +1829,7 @@ event	write request for	写请求
 	Each lab lists the devices to place, the commands to type and what you should see.	每个实验都列出要放置的设备、要输入的命令和应当看到的结果。
 	Every device on the workspace is announced by a screen reader with its name and model.	屏幕阅读器会读出工作区中每个设备的名称和型号。
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab 键和方向键在设备和线缆之间移动；回车或空格键打开获得焦点的那个。
-	The Workspace List in the View menu names every device in a table you can move through.	查看菜单中的工作区列表用一张可以浏览的表格列出每个设备。
+	The Workspace List in the View menu names every place, piece of furniture and device in a tree you can move through.	查看菜单中的工作区列表用一棵可以浏览的树列出每个地点、家具和设备。
 	Everything the menus do can also be typed, from the command line or by an agent.	菜单能做的一切也都可以输入，通过命令行或由代理完成。
 	Auto Capture / Play	自动捕获 / 播放
 	Bottom Toolbar	底部工具栏
@@ -1906,6 +1906,7 @@ event	write request for	写请求
 	{} (rear)	{}（背面）
 	{}, {} levels	{}，{} 层
 	{}, on {}	{}，位于 {}
+	Other devices	其他设备
 	Rack	机架
 	Shelf	层架
 furniture	Table	桌子

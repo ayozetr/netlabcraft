@@ -14,7 +14,7 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **232** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **2004** across 50 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **2013** across 50 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **63** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 24 CCNA 2, 32 CCNA 3 with the BGP, redistribution, PPPoE, OSPF-area, VPN and debug labs, one wireless-security follow-up and two board-programming labs; labs 21 to 29, 34, 35, 61 to 64 and 68 to 71 are troubleshooting labs, 30, 31, 65 to 67 and 72 labs on reading output), all run by `crates/engine/tests/lab_book.rs`, 19 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
@@ -177,7 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-18 | minor | Object tracking, IP SLA, policy-based routing, `show ip cef` and `ip default-network` (see [protocol-parity.md](protocol-parity.md)); the console counts are measured again: 2004 grammar entries across 50 modes. |
+| 2026-11-18 | minor | Object tracking, IP SLA, policy-based routing, `show ip cef` and `ip default-network` (see [protocol-parity.md](protocol-parity.md)); the console counts are measured again: 2013 grammar entries across 50 modes. |
 | 2026-11-18 | minor | Console sweep: the commands the public courses teach were checked against the grammar; 155 settings are kept and shown, routers and switches resolve host names, router advertisements can be suppressed, BGP gains distribute lists, bestpath settings and activation (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) items 9 and 17). The grammar has 1823 entries (measured:  rows). |
 | 2026-11-18 | minor | IKE `authentication rsa-sig` is real (IKEv1 main mode and IKEv2 IKE_AUTH sign and verify with trustpoint certificates); the console grammar gains `pki trustpoint` in the IKEv2 profile. |
 | 2026-11-18 | minor | The PKI flows of gaps item 3 are done (terminal enrollment, manual grant, revocation lists, host names); the console grammar has 1354 entries. |

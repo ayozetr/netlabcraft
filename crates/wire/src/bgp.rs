@@ -47,6 +47,9 @@ const ATTR_LOCAL_PREF: u8 = 5;
 const ATTR_COMMUNITIES: u8 = 8;
 const ATTR_ORIGINATOR_ID: u8 = 9;
 const ATTR_CLUSTER_LIST: u8 = 10;
+const ATTR_EXT_COMMUNITIES: u8 = 16;
+/// Most extended communities read from, or written to, one attribute (hostile input).
+pub const MAX_EXT_COMMUNITIES: usize = 32;
 /// Most communities read from one attribute (hostile input).
 const MAX_COMMUNITIES: usize = 64;
 /// Most cluster ids read from, or written to, one CLUSTER_LIST (hostile input).
@@ -69,6 +72,124 @@ pub const OPEN_BAD_PEER_AS: u8 = 2;
 /// Cease subcodes (RFC 4486).
 pub const CEASE_SHUTDOWN: u8 = 2;
 pub const CEASE_RESET: u8 = 4;
+
+/// Extended community types (RFC 4360, the high-order octet without its two flag bits) and subtypes.
+pub const EXT_TWO_OCTET_AS: u8 = 0x00;
+pub const EXT_IPV4_ADDRESS: u8 = 0x01;
+/// RFC 5668: the global administrator is a four-octet AS number.
+pub const EXT_FOUR_OCTET_AS: u8 = 0x02;
+pub const EXT_SUB_ROUTE_TARGET: u8 = 0x02;
+pub const EXT_SUB_ROUTE_ORIGIN: u8 = 0x03;
+/// The bit of the type octet that marks a community as non-transitive.
+const EXT_NON_TRANSITIVE: u8 = 0x40;
+
+/// What an extended community says about a route: the VPN a route belongs to (a route target) or
+/// the site it came from (a route origin, also called site of origin).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtKind {
+    RouteTarget,
+    RouteOrigin,
+}
+
+impl ExtKind {
+    /// The word the console uses: `rt` or `soo`.
+    pub fn word(self) -> &'static str {
+        match self {
+            ExtKind::RouteTarget => "rt",
+            ExtKind::RouteOrigin => "soo",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            ExtKind::RouteTarget => "RT",
+            ExtKind::RouteOrigin => "SoO",
+        }
+    }
+
+    fn subtype(self) -> u8 {
+        match self {
+            ExtKind::RouteTarget => EXT_SUB_ROUTE_TARGET,
+            ExtKind::RouteOrigin => EXT_SUB_ROUTE_ORIGIN,
+        }
+    }
+}
+
+/// An extended community as eight octets in one number (RFC 4360): the type, the subtype and six
+/// octets of value (a global administrator and a local one). Built from `kind` and the two parts.
+fn ext_build(kind_type: u8, kind: ExtKind, global: &[u8], local: &[u8]) -> u64 {
+    let mut b = [0u8; 8];
+    for (slot, v) in b.iter_mut().zip([kind_type, kind.subtype()].iter().chain(global).chain(local)) {
+        *slot = *v;
+    }
+    u64::from_be_bytes(b)
+}
+
+/// A route target or route origin with a two-octet AS number and a four-octet local value.
+pub fn ext_as2(kind: ExtKind, asn: u16, local: u32) -> u64 {
+    ext_build(EXT_TWO_OCTET_AS, kind, &asn.to_be_bytes(), &local.to_be_bytes())
+}
+
+/// One with an IPv4 address and a two-octet local value.
+pub fn ext_ipv4(kind: ExtKind, addr: Ipv4Addr, local: u16) -> u64 {
+    ext_build(EXT_IPV4_ADDRESS, kind, &addr.octets(), &local.to_be_bytes())
+}
+
+/// One with a four-octet AS number and a two-octet local value (RFC 5668).
+pub fn ext_as4(kind: ExtKind, asn: u32, local: u16) -> u64 {
+    ext_build(EXT_FOUR_OCTET_AS, kind, &asn.to_be_bytes(), &local.to_be_bytes())
+}
+
+/// `ASN:NN` or `A.B.C.D:NN`, as the console writes a route target or origin. An AS number that
+/// fits in two octets gets the two-octet form (and a 32-bit local value), a larger one the
+/// four-octet form (and a 16-bit local value), an address the IPv4 form.
+pub fn ext_parse(kind: ExtKind, text: &str) -> Option<u64> {
+    let (global, local) = text.trim().rsplit_once(':')?;
+    if global.contains('.') {
+        let addr: Ipv4Addr = global.parse().ok()?;
+        return Some(ext_ipv4(kind, addr, local.parse().ok()?));
+    }
+    let asn: u32 = global.parse().ok()?;
+    match u16::try_from(asn) {
+        Ok(small) => Some(ext_as2(kind, small, local.parse().ok()?)),
+        Err(_) => Some(ext_as4(kind, asn, local.parse().ok()?)),
+    }
+}
+
+/// Whether an extended community is a route target or a route origin, and which.
+pub fn ext_kind(c: u64) -> Option<ExtKind> {
+    let b = c.to_be_bytes();
+    let (kind_type, sub) = (b.first().copied()? & !EXT_NON_TRANSITIVE & 0x3f, b.get(1).copied()?);
+    if !matches!(kind_type, EXT_TWO_OCTET_AS | EXT_IPV4_ADDRESS | EXT_FOUR_OCTET_AS) {
+        return None;
+    }
+    match sub {
+        EXT_SUB_ROUTE_TARGET => Some(ExtKind::RouteTarget),
+        EXT_SUB_ROUTE_ORIGIN => Some(ExtKind::RouteOrigin),
+        _ => None,
+    }
+}
+
+/// Whether the community may cross an AS boundary (the non-transitive bit is clear).
+pub fn ext_transitive(c: u64) -> bool {
+    c.to_be_bytes().first().is_some_and(|t| t & EXT_NON_TRANSITIVE == 0)
+}
+
+/// An extended community as the console shows it: `RT:65001:100`, `SoO:10.0.0.1:5`, or the eight
+/// octets in hex for a type this simulator does not name.
+pub fn ext_text(c: u64) -> String {
+    let b = c.to_be_bytes();
+    let (Some(kind), Some(t)) = (ext_kind(c), b.first().map(|t| t & 0x3f)) else { return format!("0x{c:016x}") };
+    let at = |i: usize| b.get(i).copied().unwrap_or(0);
+    let label = kind.label();
+    match t {
+        EXT_TWO_OCTET_AS => {
+            format!("{label}:{}:{}", u16::from_be_bytes([at(2), at(3)]), u32::from_be_bytes([at(4), at(5), at(6), at(7)]))
+        }
+        EXT_IPV4_ADDRESS => format!("{label}:{}:{}", Ipv4Addr::new(at(2), at(3), at(4), at(5)), u16::from_be_bytes([at(6), at(7)])),
+        _ => format!("{label}:{}:{}", u32::from_be_bytes([at(2), at(3), at(4), at(5)]), u16::from_be_bytes([at(6), at(7)])),
+    }
+}
 
 /// An OPEN message: the sender's AS number, hold time and BGP identifier.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -102,6 +223,9 @@ pub struct PathAttrs {
     pub confed_path: Vec<u32>,
     /// The AS_CONFED_SET segment (RFC 5065).
     pub confed_set: Vec<u32>,
+    /// The EXTENDED COMMUNITIES attribute (RFC 4360), each as eight octets in one number (see
+    /// [`ext_as2`], [`ext_ipv4`] and [`ext_text`]).
+    pub ext_communities: Vec<u64>,
 }
 
 impl Default for PathAttrs {
@@ -120,6 +244,7 @@ impl Default for PathAttrs {
             cluster_list: Vec::new(),
             confed_path: Vec::new(),
             confed_set: Vec::new(),
+            ext_communities: Vec::new(),
         }
     }
 }
@@ -260,6 +385,10 @@ impl Message {
                         let value: Vec<u8> = a.communities.iter().take(MAX_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
                         attrs.extend(attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_COMMUNITIES, &value));
                     }
+                    if !a.ext_communities.is_empty() {
+                        let value: Vec<u8> = a.ext_communities.iter().take(MAX_EXT_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
+                        attrs.extend(attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &value));
+                    }
                     if let Some(o) = a.originator_id {
                         attrs.extend(attribute(FLAG_OPTIONAL, ATTR_ORIGINATOR_ID, &o.octets()));
                     }
@@ -364,6 +493,7 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
         cluster_list: Vec::new(),
         confed_path: Vec::new(),
         confed_set: Vec::new(),
+        ext_communities: Vec::new(),
     };
     let mut at = 0usize;
     // Every attribute takes at least three bytes, so this loop is bounded by the input.
@@ -412,6 +542,12 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
                 for c in value.chunks_exact(4).take(MAX_COMMUNITIES) {
                     let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
                     a.communities.push(u32::from_be_bytes(raw));
+                }
+            }
+            ATTR_EXT_COMMUNITIES => {
+                for c in value.chunks_exact(8).take(MAX_EXT_COMMUNITIES) {
+                    let raw: [u8; 8] = c.try_into().map_err(|_| t())?;
+                    a.ext_communities.push(u64::from_be_bytes(raw));
                 }
             }
             ATTR_ORIGINATOR_ID => a.originator_id = Some(ip_at(value, 0).ok_or_else(t)?),
@@ -531,6 +667,7 @@ mod tests {
                 cluster_list: vec![Ipv4Addr::new(2, 2, 2, 2), Ipv4Addr::new(3, 3, 3, 3)],
                 confed_path: vec![65_010, 65_011],
                 confed_set: vec![65_012],
+                ext_communities: vec![ext_as2(ExtKind::RouteTarget, 65_001, 100), ext_ipv4(ExtKind::RouteOrigin, Ipv4Addr::new(10, 0, 0, 1), 5)],
             }),
             nlri: vec![net("10.2.0.0/16"), net("192.168.5.0/24"), net("0.0.0.0/0"), net("203.0.113.7/32")],
         });
@@ -581,6 +718,7 @@ mod tests {
                     cluster_list: vec![Ipv4Addr::new(8, 8, 8, 8)],
                     confed_path: vec![65_003],
                     confed_set: vec![65_004],
+                    ext_communities: vec![ext_as2(ExtKind::RouteTarget, 65_001, 100), ext_as4(ExtKind::RouteOrigin, 4_200_000_001, 7)],
                 }),
                 nlri: vec![net("10.2.0.0/16")],
             }),
@@ -635,6 +773,61 @@ mod tests {
         });
         let Ok(Message::Update(back)) = Message::decode(&plain.encode()) else { panic!("did not decode") };
         assert!(back.attrs.is_some_and(|a| a.communities.is_empty() && a.as_set.is_empty()));
+    }
+
+    #[test]
+    fn extended_communities_use_the_rfc_4360_layout() {
+        // Two-octet AS: type 0x00, subtype 0x02 (route target), the AS, then a four-octet value.
+        let rt = ext_as2(ExtKind::RouteTarget, 65_001, 100);
+        assert_eq!(rt.to_be_bytes(), [0x00, 0x02, 0xFD, 0xE9, 0, 0, 0, 100]);
+        // IPv4 address: type 0x01, subtype 0x03 (route origin), the address, then a two-octet value.
+        let soo = ext_ipv4(ExtKind::RouteOrigin, Ipv4Addr::new(10, 0, 0, 1), 5);
+        assert_eq!(soo.to_be_bytes(), [0x01, 0x03, 10, 0, 0, 1, 0, 5]);
+        // Four-octet AS (RFC 5668): type 0x02.
+        let big = ext_as4(ExtKind::RouteTarget, 4_200_000_001, 7);
+        assert_eq!(big.to_be_bytes(), [0x02, 0x02, 0xFA, 0x56, 0xEA, 0x01, 0, 7]);
+        assert_eq!((ext_text(rt), ext_text(soo), ext_text(big)), ("RT:65001:100".into(), "SoO:10.0.0.1:5".into(), "RT:4200000001:7".into()));
+        assert_eq!((ext_kind(rt), ext_kind(soo), ext_kind(0x0005_0000_0000_0000)), (Some(ExtKind::RouteTarget), Some(ExtKind::RouteOrigin), None));
+        assert_eq!(ext_text(0x0005_0000_0000_0001), "0x0005000000000001");
+        assert!(ext_transitive(rt) && !ext_transitive(0x4002_0000_0000_0000));
+        // What the console types parses to the same values, and nonsense does not parse.
+        assert_eq!(ext_parse(ExtKind::RouteTarget, "65001:100"), Some(rt));
+        assert_eq!(ext_parse(ExtKind::RouteOrigin, "10.0.0.1:5"), Some(soo));
+        assert_eq!(ext_parse(ExtKind::RouteTarget, "4200000001:7"), Some(big));
+        for bad in ["", "65001", "65001:", ":5", "65001:99999999999", "10.0.0.1:70000", "4200000001:70000", "a:b", "300.0.0.1:1"] {
+            assert_eq!(ext_parse(ExtKind::RouteTarget, bad), None, "{bad}");
+        }
+        // They ride in the UPDATE as attribute 16, optional and transitive (flags 0xC0), eight octets each.
+        let attrs =
+            PathAttrs { as_path: vec![65_001], next_hop: Ipv4Addr::new(10, 0, 0, 1), ext_communities: vec![rt, soo, big], ..PathAttrs::default() };
+        let u = Message::Update(Update { withdrawn: Vec::new(), attrs: Some(attrs.clone()), nlri: vec![net("10.0.0.0/8")] });
+        let bytes = u.encode();
+        assert!(bytes.windows(3).any(|w| w == [0xC0, ATTR_EXT_COMMUNITIES, 24]), "{bytes:?}");
+        let Ok(Message::Update(back)) = Message::decode(&bytes) else { panic!("did not decode") };
+        assert_eq!(back.attrs, Some(attrs));
+    }
+
+    #[test]
+    fn a_hostile_extended_community_attribute_is_bounded_and_never_read_past_its_end() {
+        // Forty values keep the first MAX_EXT_COMMUNITIES.
+        let many: Vec<u64> = (1..=40).map(|i| ext_as2(ExtKind::RouteTarget, 1, i)).collect();
+        let u = Message::Update(Update {
+            withdrawn: Vec::new(),
+            attrs: Some(PathAttrs { ext_communities: many, ..PathAttrs::default() }),
+            nlri: vec![net("10.0.0.0/8")],
+        });
+        let Ok(Message::Update(back)) = Message::decode(&u.encode()) else { panic!("did not decode") };
+        assert_eq!(back.attrs.map(|a| a.ext_communities.len()), Some(MAX_EXT_COMMUNITIES));
+        // A value that is not a whole number of octets-by-eight drops the odd bytes; a short one reads as none.
+        let odd = attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &[0, 2, 0, 1, 0, 0, 0, 5, 9, 9, 9]);
+        assert_eq!(read_attrs(&odd).map(|a| a.ext_communities), Ok(vec![ext_as2(ExtKind::RouteTarget, 1, 5)]));
+        let short = attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &[0, 2, 0]);
+        assert_eq!(read_attrs(&short).map(|a| a.ext_communities), Ok(Vec::new()));
+        // An attribute whose length runs past the data is an error, at every cut.
+        let whole = attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &ext_as2(ExtKind::RouteTarget, 1, 5).to_be_bytes());
+        for n in 1..whole.len() {
+            assert!(read_attrs(whole.get(..n).unwrap_or_default()).is_err(), "{n} bytes");
+        }
     }
 
     #[test]
