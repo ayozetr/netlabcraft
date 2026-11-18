@@ -57,6 +57,8 @@ pub struct OspfSeed {
     pub type1: bool,
     /// The tag the external LSA carries (0: none).
     pub tag: u32,
+    /// `nssa-only`: in a not-so-stubby area the type 7 LSA is not translated.
+    pub nssa_only: bool,
 }
 
 /// What each router redistributes into each protocol.
@@ -257,7 +259,7 @@ fn derive(t: &Topology, tables: &BTreeMap<DeviceId, Vec<RouteEntry>>) -> Seeds {
                     if !conf::passes(d, &o.distribute, false, None, r.net, metric) {
                         continue;
                     }
-                    seeds.push(OspfSeed { net: r.net, metric, type1, tag: sets.tag.or(line.tag).unwrap_or(r.tag) });
+                    seeds.push(OspfSeed { net: r.net, metric, type1, tag: sets.tag.or(line.tag).unwrap_or(r.tag), nssa_only: line.nssa_only });
                 }
             }
             seeds.truncate(MAX_SEEDS);
