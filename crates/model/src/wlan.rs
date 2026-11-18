@@ -82,7 +82,20 @@ impl WlanConf {
 pub struct WifiLogin {
     pub user: String,
     pub password: String,
+    /// Refuse a RADIUS server whose certificate does not validate against `trusted_cas` (and,
+    /// with a `server_name`, is not for that name).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub validate_server: bool,
+    /// The CA certificates (PEM) this host trusts for that check.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub trusted_cas: Vec<String>,
+    /// The name the server's certificate must be for; empty: any.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub server_name: String,
 }
+
+/// Most CA certificates a host trusts for its login.
+pub const MAX_TRUSTED_CAS: usize = 8;
 
 /// How wide an access point's radio reaches unless told otherwise, in metres.
 pub const DEFAULT_COVERAGE_M: f32 = 250.0;

@@ -105,7 +105,7 @@ impl Sim {
         let mut frames = Vec::new();
         for d in t.devices.iter().filter(|d| d.lldp_on) {
             // Each device advertises at its own `lldp timer`; the tick is one second.
-            if (at / 1_000_000) % crate::lldp::timer_secs(d) != 0 {
+            if !(at / 1_000_000).is_multiple_of(crate::lldp::timer_secs(d)) {
                 continue;
             }
             for (i, p) in d.ports.iter().enumerate() {

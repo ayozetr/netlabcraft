@@ -202,9 +202,18 @@ pub enum Id {
     ShowIpIntBrief,
     ShowIpRoute,
     ShowIpRouteTag,
+    // Forwarding table and candidate defaults (exec/cef.rs).
+    ShowIpCef,
+    ShowIpCefDetail,
+    ShowIpCefSummary,
+    ShowIpCefAddress,
+    ShowIpCefAddressDetail,
+    IpDefaultNetwork,
+    NoIpDefaultNetwork,
     ShowInterfaces,
     ShowInterface,
     ShowIntTrunk,
+    ShowIntSwitchport,
     ShowVlan,
     ShowVlanBrief,
     ShowMac,
@@ -334,6 +343,15 @@ pub enum Id {
     CopyStartRun,
     CopyFlashTftp,
     CopyTftpFlash,
+    CopyRunFlash,
+    CopyStartFlash,
+    CopyFlashRun,
+    CopyFlashStart,
+    CopyFlashFtp,
+    CopyFtpFlash,
+    CopyHttpRun,
+    CopyHttpStart,
+    CopyHttpFlash,
     DhcpLease,
     NoDhcpLease,
     DhcpDomain,
@@ -1602,10 +1620,54 @@ pub static SPECS: &[Spec] = &[
         "The route for exactly this network and mask"
     ),
     spec!(ShowIpRouteTag, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), K("tag"), Arg("<0-4294967295>")], "The routes that carry this tag"),
+    spec!(ShowIpCef, EXECS, Modes::BOTH, [K("show"), K("ip"), K("cef")], "The forwarding table: each prefix, its next hop and interface"),
+    spec!(ShowIpCefDetail, EXECS, Modes::BOTH, [K("show"), K("ip"), K("cef"), K("detail")], "The forwarding table with each next hop's adjacency"),
+    spec!(
+        ShowIpCefSummary,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("cef"), K("summary")],
+        "How many prefixes the forwarding table holds and of what kind"
+    ),
+    spec!(
+        ShowIpCefAddress,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("cef"), Arg("A.B.C.D")],
+        "The forwarding entry that carries traffic to an address"
+    ),
+    spec!(
+        ShowIpCefAddressDetail,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("cef"), Arg("A.B.C.D"), K("detail")],
+        "The forwarding entry for an address with its adjacency"
+    ),
+    spec!(
+        IpDefaultNetwork,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("default-network"), Arg("A.B.C.D")],
+        "Use the route to this network as the default route when there is none"
+    ),
+    spec!(
+        NoIpDefaultNetwork,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("default-network"), Arg("A.B.C.D")],
+        "Stop using this network as a candidate default"
+    ),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),
     spec!(ShowIntTrunk, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("trunk")], "Trunk ports"),
+    spec!(
+        ShowIntSwitchport,
+        EXECS,
+        Modes::SWITCH.or(Modes::CARD),
+        [K("show"), K("interfaces"), K("switchport")],
+        "Switchport settings of every port"
+    ),
     spec!(ShowInterface, EXECS, BOTH_FW, [K("show"), K("interfaces"), Rest("<interface>")], "One interface's details"),
     spec!(ShowVlan, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan")], "VLAN database"),
     spec!(ShowVlanBrief, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan"), K("brief")], "VLAN database"),
@@ -2447,6 +2509,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoClockRate, Modes::IF, Modes::ROUTER, [K("no"), K("clock"), K("rate")], "Remove the clock rate"),
     spec!(ShowControllers, EXECS, Modes::BOTH, [K("show"), K("controllers"), Rest("<interface>")], "Cable type at an interface (DCE or DTE)"),
     spec!(ShowClock, EXECS, Modes::BOTH, [K("show"), K("clock")], "The device's date and time"),
+    spec!(ShowClock, EXECS, Modes::BOTH, [K("show"), K("clock"), K("detail")], "The date and time, where it came from and the uptime"),
     spec!(ClockSet, Modes::EXEC, Modes::BOTH, [K("clock"), K("set"), Rest("hh:mm:ss <day> <month> <year>")], "Set the date and time"),
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash:")], "Files in flash memory"),
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash")], "Files in flash memory"),
@@ -2561,6 +2624,69 @@ pub static SPECS: &[Spec] = &[
         [K("copy"), K("tftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
         "Copy a file from a TFTP server into flash"
     ),
+    spec!(
+        CopyRunFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("running-config"), K("flash:"), Arg("NAME")],
+        "Keep the running configuration as a file in flash"
+    ),
+    spec!(
+        CopyStartFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("startup-config"), K("flash:"), Arg("NAME")],
+        "Keep the startup configuration as a file in flash"
+    ),
+    spec!(
+        CopyFlashRun,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("running-config"), Arg("NAME")],
+        "Merge a configuration file from flash into the running one"
+    ),
+    spec!(
+        CopyFlashStart,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("startup-config"), Arg("NAME")],
+        "Make a configuration file in flash the startup configuration"
+    ),
+    spec!(
+        CopyFlashFtp,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("ftp:"), Rest("<file> <address> [name on the server]")],
+        "Back up a flash file to an FTP server"
+    ),
+    spec!(
+        CopyFtpFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("ftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
+        "Copy a file from an FTP server into flash"
+    ),
+    spec!(
+        CopyHttpRun,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("http:"), K("running-config"), Rest("<address> <path>")],
+        "Merge a configuration fetched from a web server"
+    ),
+    spec!(
+        CopyHttpStart,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("http:"), K("startup-config"), Rest("<address> <path>")],
+        "Make a page of a web server the startup configuration"
+    ),
+    spec!(
+        CopyHttpFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("http:"), K("flash:"), Rest("<address> <path> [name in flash]")],
+        "Fetch a page of a web server into flash"
+    ),
     spec!(ShowUsers, EXECS, Modes::BOTH, [K("show"), K("users")], "Who is logged in, and where"),
     spec!(
         TerminalLength,
@@ -2596,6 +2722,9 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowLldpNeighborsDetail, EXECS, Modes::BOTH, [K("show"), K("lldp"), K("entry"), K("*")], "LLDP neighbours with everything they advertise"),
     spec!(ShowProcesses, EXECS, Modes::BOTH, [K("show"), K("processes")], "What the device is busy with"),
     spec!(ShowProcesses, EXECS, Modes::BOTH, [K("show"), K("processes"), K("cpu")], "What the device is busy with"),
+    spec!(ShowProcesses, EXECS, Modes::BOTH, [K("show"), K("processes"), K("cpu"), K("sorted")], "Tasks ordered by run time"),
+    spec!(ShowProcesses, EXECS, Modes::BOTH, [K("show"), K("processes"), K("cpu"), K("history")], "Processor use over time"),
+    spec!(ShowProcesses, EXECS, Modes::BOTH, [K("show"), K("processes"), K("memory")], "Memory held by each task"),
     spec!(ShowMemory, EXECS, Modes::BOTH, [K("show"), K("memory")], "Memory in use"),
     spec!(ShowMemory, EXECS, Modes::BOTH, [K("show"), K("memory"), K("statistics")], "Memory in use"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface")], "Layer-3 settings of every interface"),
@@ -5527,6 +5656,9 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowTechSupport, Modes::EXEC, Modes::BOTH, [K("show"), K("tech-support")], "Everything for a support request"),
     spec!(ShowBoot, EXECS, Modes::BOTH, [K("show"), K("boot")], "What the device starts from"),
     spec!(ShowEnv, EXECS, Modes::BOTH, [K("show"), K("environment")], "Power and temperature"),
+    spec!(ShowEnv, EXECS, Modes::BOTH, [K("show"), K("environment"), K("all")], "Power and temperature"),
+    spec!(ShowEnv, EXECS, Modes::BOTH, [K("show"), K("environment"), K("power")], "Power supplies"),
+    spec!(ShowEnv, EXECS, Modes::BOTH, [K("show"), K("environment"), K("temperature")], "Temperatures and fans"),
     spec!(ShowInventory, EXECS, Modes::BOTH, [K("show"), K("inventory")], "Hardware"),
     spec!(DeleteVlanDat, Modes::EXEC, Modes::SWITCH, [K("delete"), Rest("flash:vlan.dat")], "Delete the VLAN database (takes effect at reload)"),
     spec!(ShowIpv6Interface, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("interface"), Rest("<interface>")], "One interface's IPv6 settings"),

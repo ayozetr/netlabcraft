@@ -540,9 +540,29 @@ pub fn routing_table_with(
             out.push(r.clone());
         }
     }
+    // `ip default-network`: a route to the candidate network is also the default route, when
+    // there is no other.
+    if !out.iter().any(|r| r.net.prefix == 0) {
+        for dn in &d.default_networks {
+            let classful = Ipv4Net::new(*dn, classful_prefix(*dn)).network();
+            if let Some(r) = out.iter().find(|r| r.net == classful && r.code != 'L').cloned() {
+                out.push(RouteEntry { net: Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), ..r });
+                break;
+            }
+        }
+    }
     // Stable: the paths of one destination keep the order the protocol gave them.
     out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     out
+}
+
+/// The prefix length of an address's class (A, B or C).
+fn classful_prefix(a: Ipv4Addr) -> u8 {
+    match a.octets().first().copied().unwrap_or(0) {
+        0..=127 => 8,
+        128..=191 => 16,
+        _ => 24,
+    }
 }
 
 fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
@@ -702,6 +722,27 @@ pub(crate) fn host_gateway(d: &Device, i: &L3If) -> Option<Ipv4Addr> {
 /// Among several paths to the most specific destination, `flow` picks one.
 #[allow(clippy::too_many_arguments)]
 pub fn route_with(
+    t: &Topology,
+    d: &Device,
+    dst: Ipv4Addr,
+    flow: u32,
+    eigrp_routes: &[eigrp::EigrpRoute],
+    ospf_routes: &[ospf::OspfRoute],
+    rip_routes: &[rip::RipRoute],
+    bgp_routes: &[bgp::BgpRoute],
+) -> Option<(L3If, Ipv4Addr)> {
+    let found = route_core(t, d, dst, flow, eigrp_routes, ospf_routes, rip_routes, bgp_routes);
+    if found.is_some() || d.default_networks.is_empty() {
+        return found;
+    }
+    // `ip default-network`: with no route at all, a route to a candidate network is the way out.
+    d.default_networks.iter().find_map(|dn| {
+        route_core(t, d, *dn, flow, eigrp_routes, ospf_routes, rip_routes, bgp_routes).map(|(i, nh)| (i, if nh == *dn { dst } else { nh }))
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn route_core(
     t: &Topology,
     d: &Device,
     dst: Ipv4Addr,
@@ -1238,6 +1279,11 @@ pub struct Sim {
     /// Reloads that were asked for (`reload in|at`): the simulated time each device restarts at,
     /// and the reason typed.
     reloads: BTreeMap<DeviceId, (u64, String)>,
+    /// When each device last started (simulated µs) and why; a device never restarted is absent
+    /// (it started with the simulation).
+    boots: BTreeMap<DeviceId, (u64, String)>,
+    /// The reason of a scheduled reload that came due, until `reset_device` takes it.
+    due_reasons: BTreeMap<DeviceId, String>,
     seq: u64,
     queue: BinaryHeap<Reverse<Queued>>,
     state: BTreeMap<DeviceId, DevState>,
@@ -1400,9 +1446,22 @@ impl Sim {
         let now = self.now;
         let due: Vec<DeviceId> = self.reloads.iter().filter(|(_, (at, _))| *at <= now).map(|(d, _)| *d).collect();
         for d in &due {
-            self.reloads.remove(d);
+            if let Some((_, why)) = self.reloads.remove(d) {
+                self.due_reasons.insert(*d, why);
+            }
         }
         due
+    }
+
+    /// How long the device has been running (microseconds): since it last restarted, else since
+    /// the simulation began.
+    pub fn uptime_us(&self, d: DeviceId) -> u64 {
+        self.now.saturating_sub(self.boots.get(&d).map_or(0, |b| b.0))
+    }
+
+    /// Why the device last restarted; `None` when it has not restarted since the simulation began.
+    pub fn last_reload_reason(&self, d: DeviceId) -> Option<&str> {
+        self.boots.get(&d).map(|b| b.1.as_str())
     }
 
     /// Simulated time, in microseconds.
@@ -1610,6 +1669,11 @@ impl Sim {
 
     /// Forgets one device's dynamic state (it reloaded).
     pub fn reset_device(&mut self, d: DeviceId) {
+        let why = self.due_reasons.remove(&d).or_else(|| self.reloads.get(&d).map(|(_, w)| w.clone()));
+        let why = why.filter(|w| !w.trim().is_empty()).unwrap_or_else(|| "reload requested".to_string());
+        if self.boots.len() < MAX_MAC_ENTRIES || self.boots.contains_key(&d) {
+            self.boots.insert(d, (self.now, why.chars().take(80).collect()));
+        }
         self.reloads.remove(&d);
         self.state.remove(&d);
         self.l2.forget(d);

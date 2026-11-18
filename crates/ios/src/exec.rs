@@ -17,6 +17,7 @@ pub use dialogs::{Dialog, DialogKind};
 pub(crate) mod archive;
 pub(crate) mod automation;
 pub(crate) mod bgp;
+pub(crate) mod cef;
 pub(crate) mod cellular;
 pub(crate) mod debug;
 mod dialogs;
@@ -44,6 +45,7 @@ pub(crate) mod span;
 pub(crate) mod srcguard;
 pub(crate) mod sweep;
 pub(crate) mod swroute;
+pub(crate) mod system;
 pub(crate) mod track;
 pub(crate) mod voice;
 mod vpn;
@@ -1353,6 +1355,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let table = c.sim.routing_table(c.t, &d);
             Ok(render::ip_route_tagged(&table, tag))
         }
+        Id::ShowIpCef
+        | Id::ShowIpCefDetail
+        | Id::ShowIpCefSummary
+        | Id::ShowIpCefAddress
+        | Id::ShowIpCefAddressDetail
+        | Id::IpDefaultNetwork
+        | Id::NoIpDefaultNetwork => cef::command(&mut c, spec.id, &args),
         Id::ShowIpRoute => {
             let d = c.d()?.clone();
             let table = c.sim.routing_table(c.t, &d);
@@ -1480,6 +1489,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowIntTransceiver => Ok(render::interface_transceivers(c.t, c.d()?)),
         Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?, None)),
+        Id::ShowIntSwitchport | Id::ShowInventory | Id::ShowEnv | Id::ShowProcesses | Id::ShowMemory | Id::ShowVersion | Id::ShowTechSupport => {
+            system::command(&mut c, spec, &args)
+        }
         Id::ShowIpInterface => {
             let only = match args.first().map(|a| a.trim()).filter(|a| !a.is_empty()) {
                 Some(a) => Some(c.iface_ref(a)?),
@@ -1553,7 +1565,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ConfigRegister
         | Id::CopyStartRun
         | Id::CopyFlashTftp
-        | Id::CopyTftpFlash => mgmt::command(&mut c, spec.id, &args),
+        | Id::CopyTftpFlash
+        | Id::CopyRunFlash
+        | Id::CopyStartFlash
+        | Id::CopyFlashRun
+        | Id::CopyFlashStart
+        | Id::CopyFlashFtp
+        | Id::CopyFtpFlash
+        | Id::CopyHttpRun
+        | Id::CopyHttpStart
+        | Id::CopyHttpFlash => mgmt::command(&mut c, spec.id, &args),
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
@@ -1595,6 +1616,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             })
         }
         Id::ShowClock => {
+            if spec.path.iter().any(|t| matches!(t, grammar::Tok::K("detail"))) {
+                return system::command(&mut c, spec, &args);
+            }
             let (now, set) = c.sim.clock(c.dev);
             Ok(crate::clock::show(now, set))
         }
@@ -1676,15 +1700,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowLldp => Ok(render::lldp(c.d()?)),
         Id::ShowLldpNeighbors | Id::ShowLldpNeighborsDetail => Ok(render::lldp_neighbors(c.t, c.sim, c.d()?, spec.id == Id::ShowLldpNeighborsDetail)),
-        Id::ShowProcesses => Ok(render::processes(c.t, c.sim, c.d()?)),
-        Id::ShowMemory => Ok(render::memory(c.d()?)),
         Id::ShowCdp => Ok(render::cdp(c.d()?)),
         Id::ShowCdpNeighbors | Id::ShowCdpNeighborsDetail => Ok(render::cdp_neighbors(c.t, c.sim, c.d()?, spec.id == Id::ShowCdpNeighborsDetail)),
         Id::ShowIntTrunk => Ok(render::trunks(c.t, c.d()?, None)),
         Id::ShowVlan | Id::ShowVlanBrief => Ok(render::vlans(c.t, c.d()?)),
         Id::ShowMac => Ok(render::mac_table(c.t, c.sim, c.d()?)),
         Id::ShowArp => Ok(render::arp(c.t, c.sim, c.d()?)),
-        Id::ShowVersion => Ok(render::version(c.sim, c.d()?)),
         Id::ShowHistory => Ok(c.cli.history.iter().map(|h| format!("  {h}")).collect::<Vec<_>>().join("\n")),
         Id::CopyRunStart | Id::WriteMemory => {
             let cfg = render::running_config(c.d()?);
@@ -4009,16 +4030,6 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowIntDescription => Ok(render::int_descriptions(c.t, c.d()?, None)),
         Id::ShowLogin => Ok(render::login_state(c.d()?, c.sim.login_blocked(c.dev))),
         Id::ShowPrivilege => Ok(format!("Current privilege level is {}", if c.cli.mode == Mode::User { 1 } else { 15 })),
-        Id::ShowTechSupport => {
-            let d = c.d()?;
-            Ok(format!(
-                "------------------ show version ------------------\n{}\n\n------------------ show running-config ------------------\n{}\n\n------------------ show ip interface brief ------------------\n{}\n\n------------------ show interfaces ------------------\n{}",
-                render::version(c.sim, d),
-                render::running_config(d),
-                render::ip_int_brief(c.t, d),
-                render::interfaces(c.t, c.sim, d, None)
-            ))
-        }
         Id::ShowBoot => {
             let d = c.d()?;
             let skip = d.nvram.register() == netlabcraft_model::mgmt::CONFREG_SKIP_STARTUP;
@@ -4034,12 +4045,6 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 },
                 d.nvram.register()
             ))
-        }
-        Id::ShowEnv => Ok("Power supply: OK (simulated)\nFans: OK\nTemperature: normal".into()),
-        Id::ShowInventory => {
-            let d = c.d()?;
-            let m = d.catalogue_model();
-            Ok(format!("NAME: \"{}\", DESCR: \"{}\"\nPID: {}, SN: PC{:08X}", d.name, m.description, m.label, d.id.0))
         }
         Id::DeleteVlanDat => {
             let file = arg(0).trim().to_ascii_lowercase();
