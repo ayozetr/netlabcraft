@@ -14,6 +14,7 @@
 use netlabcraft_core::DeviceId;
 
 use crate::cellular::city_position;
+use crate::iot::BtProfile;
 use crate::{Device, DeviceKind, Topology};
 
 /// Workspace units to a metre on the logical map (a radio's 250 m is 450 units).
@@ -63,22 +64,82 @@ impl Topology {
     /// The music player a Bluetooth speaker is paired with: the nearest one within range
     /// (`None`: none is near, or the speaker is switched off at the power).
     pub fn paired_player(&self, speaker: &Device) -> Option<DeviceId> {
-        if self.is_dark(speaker.id) {
+        if self.is_dark(speaker.id) || speaker.iot.profile != BtProfile::A2dp {
             return None;
         }
-        self.near(speaker, BLUETOOTH_RANGE_M, |d| d.catalogue_model().id == "IoT-Player").first().map(|x| x.0)
+        self.near(speaker, BLUETOOTH_RANGE_M, |d| d.catalogue_model().id == "IoT-Player" && d.iot.pairing_code == speaker.iot.pairing_code)
+            .first()
+            .map(|x| x.0)
     }
 
     /// The Bluetooth speaker a music player is paired with: the nearest one within range.
     pub fn paired_speaker(&self, player: &Device) -> Option<DeviceId> {
-        self.near(player, BLUETOOTH_RANGE_M, |d| d.catalogue_model().id == "IoT-BTSpeaker").first().map(|x| x.0)
+        self.near(player, BLUETOOTH_RANGE_M, |d| {
+            d.catalogue_model().id == "IoT-BTSpeaker" && d.iot.pairing_code == player.iot.pairing_code && d.iot.profile == BtProfile::A2dp
+        })
+        .first()
+        .map(|x| x.0)
     }
 }
 
 /// The id a card or a beacon announces: the one set, else its device number plus one, so two
 /// new cards never share an id.
 pub fn announced_id(d: &Device) -> i32 {
-    if d.iot.value > 0 { d.iot.value } else { i32::try_from(d.id.0).unwrap_or(0).saturating_add(1) }
+    if d.iot.tag > 0 {
+        i32::try_from(d.iot.tag).unwrap_or(i32::MAX)
+    } else if d.iot.value > 0 {
+        d.iot.value
+    } else {
+        i32::try_from(d.id.0).unwrap_or(0).saturating_add(1)
+    }
+}
+
+/// How long the wire of a trip sensor is (metres), and how long a reading of 1 lasts after
+/// something crossed it (seconds).
+pub const TRIP_WIRE_M: f64 = 50.0;
+pub const TRIP_HOLD_S: u64 = 5;
+
+/// Whether the segment `a1`-`a2` crosses the segment `b1`-`b2` (touching counts).
+pub fn segments_cross(a1: (f64, f64), a2: (f64, f64), b1: (f64, f64), b2: (f64, f64)) -> bool {
+    fn side(p: (f64, f64), q: (f64, f64), r: (f64, f64)) -> f64 {
+        (q.0 - p.0) * (r.1 - p.1) - (q.1 - p.1) * (r.0 - p.0)
+    }
+    fn within(p: (f64, f64), q: (f64, f64), r: (f64, f64)) -> bool {
+        r.0 >= p.0.min(q.0) && r.0 <= p.0.max(q.0) && r.1 >= p.1.min(q.1) && r.1 <= p.1.max(q.1)
+    }
+    let (d1, d2, d3, d4) = (side(b1, b2, a1), side(b1, b2, a2), side(a1, a2, b1), side(a1, a2, b2));
+    if ((d1 > 0.0 && d2 < 0.0) || (d1 < 0.0 && d2 > 0.0)) && ((d3 > 0.0 && d4 < 0.0) || (d3 < 0.0 && d4 > 0.0)) {
+        return true;
+    }
+    (d1 == 0.0 && within(b1, b2, a1)) || (d2 == 0.0 && within(b1, b2, a2)) || (d3 == 0.0 && within(a1, a2, b1)) || (d4 == 0.0 && within(a1, a2, b2))
+}
+
+impl Topology {
+    /// Where a device is on its map, in metres: the map it is on (0 is the logical workspace, else
+    /// a city) and its position there.
+    pub fn position_m(&self, d: &Device) -> Option<(u32, f64, f64)> {
+        let p = if self.implicit_layout() {
+            (0, f64::from(d.x / UNITS_PER_METRE), f64::from(d.y / UNITS_PER_METRE))
+        } else {
+            let (city, x, y) = city_position(self, d)?;
+            (city, f64::from(x * CITY_UNIT_M), f64::from(y * CITY_UNIT_M))
+        };
+        (p.1.is_finite() && p.2.is_finite()).then_some(p)
+    }
+
+    /// The two ends of a trip sensor's wire: [`TRIP_WIRE_M`] long, through the sensor, along its
+    /// angle.
+    pub fn trip_wire(&self, sensor: &Device) -> Option<((u32, f64, f64), (f64, f64), (f64, f64))> {
+        let (map, x, y) = self.position_m(sensor)?;
+        let (s, c) = f64::from(sensor.iot.angle).to_radians().sin_cos();
+        let half = TRIP_WIRE_M / 2.0;
+        Some(((map, x, y), (x - c * half, y - s * half), (x + c * half, y + s * half)))
+    }
+
+    /// The devices a trip sensor takes for something crossing its wire: the ones that move.
+    pub fn is_mobile(&self, d: &Device) -> bool {
+        MOBILE_MODELS.contains(&d.catalogue_model().id) && !self.is_dark(d.id)
+    }
 }
 
 impl Topology {

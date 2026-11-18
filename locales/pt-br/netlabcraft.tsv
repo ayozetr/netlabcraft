@@ -2400,3 +2400,10 @@ furniture	Table	Mesa
 	no clock rate on the DCE end	sem clock rate na ponta DCE
 	the two ends use different encapsulations	as duas pontas usam encapsulamentos diferentes
 	PPP authentication failed (check the usernames and passwords)	falha na autenticação PPP (confira os usuários e as senhas)
+	Pairing code:	Código de pareamento:
+	Profile:	Perfil:
+	Music (A2DP)	Música (A2DP)
+	Headset	Fone de ouvido
+	Card id (hex):	Id do cartão (hex):
+	Report crossings of the wire	Informar travessias do fio
+	Wire angle (degrees):	Ângulo do fio (graus):

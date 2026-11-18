@@ -2400,3 +2400,10 @@ furniture	Table	桌子
 	no clock rate on the DCE end	DCE 端没有时钟速率
 	the two ends use different encapsulations	两端使用不同的封装
 	PPP authentication failed (check the usernames and passwords)	PPP 认证失败（请检查用户名和密码）
+	Pairing code:	配对码：
+	Profile:	配置文件：
+	Music (A2DP)	音乐 (A2DP)
+	Headset	耳机
+	Card id (hex):	卡片编号 (十六进制)：
+	Report crossings of the wire	报告穿越拉线的物体
+	Wire angle (degrees):	拉线角度 (度)：

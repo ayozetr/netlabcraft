@@ -59,6 +59,7 @@ pub mod ospf_lsdb;
 pub mod parts;
 pub mod pdu;
 pub mod peap;
+pub mod proximity;
 pub mod pki;
 pub mod pppoe;
 pub mod qos;

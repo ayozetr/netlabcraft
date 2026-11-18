@@ -2400,3 +2400,10 @@ furniture	Table	Table
 	no clock rate on the DCE end	pas de débit d'horloge côté DCE
 	the two ends use different encapsulations	les deux extrémités utilisent des encapsulations différentes
 	PPP authentication failed (check the usernames and passwords)	échec de l'authentification PPP (vérifiez les noms d'utilisateur et les mots de passe)
+	Pairing code:	Code d'appairage :
+	Profile:	Profil :
+	Music (A2DP)	Musique (A2DP)
+	Headset	Casque
+	Card id (hex):	Id de la carte (hex) :
+	Report crossings of the wire	Signaler les franchissements du fil
+	Wire angle (degrees):	Angle du fil (degrés) :
