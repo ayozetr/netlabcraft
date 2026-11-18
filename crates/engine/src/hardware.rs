@@ -114,8 +114,10 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             s.sim.reset_device(d);
             // A fresh console: the device starts again at its first prompt.
             s.consoles.remove(&d);
+            // A device coming on may be one too many for its power strip's breaker.
+            let tripped = on && s.topology.plug_of(d).is_some_and(|g| crate::closet::check_breaker(s, g.strip));
             s.changed();
-            Ok(json!({"power": if on { "on" } else { "off" }, "changed": true, "errors": errors}))
+            Ok(json!({"power": if tripped { "off" } else if on { "on" } else { "off" }, "changed": true, "errors": errors, "tripped": tripped}))
         }
         other => Err(EngineError::UnknownCommand(other.to_string())),
     }

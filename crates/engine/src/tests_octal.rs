@@ -116,3 +116,14 @@ fn line_commands_check_the_card_and_the_range() {
     run(&mut s, "R3", "end");
     assert!(run(&mut s, "R3", "clear line 1").contains("no octal card"));
 }
+
+#[test]
+fn an_octal_cable_longer_than_its_standard_refuses_the_reverse_telnet() {
+    let mut s = network();
+    open_line_one(&mut s);
+    let b = s.execute("place.add", json!({"kind": "building", "name": "Workshop", "x": 500, "y": 220})).unwrap()["id"].as_u64().unwrap();
+    let far = s.execute("place.add", json!({"kind": "closet", "parent": b})).unwrap()["id"].as_u64().unwrap();
+    s.execute("device.place", json!({"device": "R2", "place": far})).unwrap();
+    let out = run(&mut s, "R3", "telnet 10.0.0.1 2001");
+    assert!(out.contains("cable too long") && out.contains("octal"), "{out}");
+}

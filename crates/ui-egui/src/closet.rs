@@ -1498,6 +1498,12 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
                         ui.close();
                     }
                     if strip_kind {
+                        if let Some(f) = t.fitting(i) {
+                            ui.label(crate::i18n::trf("Load {} of {} W", &[&t.strip_load(i), &f.rating_w]));
+                            if f.tripped {
+                                ui.label(egui::RichText::new(tl("Breaker tripped")).strong());
+                            }
+                        }
                         let on = t.fitting(i).is_some_and(|f| f.on);
                         if ui.button(if on { tl("Switch Off") } else { tl("Switch On") }).clicked() {
                             app.run("power.strip", json!({"strip": i, "on": !on}));
