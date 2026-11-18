@@ -32,6 +32,7 @@ pub mod hostfw;
 pub mod ifname;
 pub mod iot;
 pub mod keychain;
+pub mod knobs;
 pub mod l2sec;
 pub mod mgmt;
 pub mod models;
@@ -839,6 +840,13 @@ pub struct Ipv6Conf {
     /// Routers: `ipv6 nd other-config-flag` (hosts take DNS and domain from DHCPv6).
     #[serde(default)]
     pub nd_other: bool,
+    /// Routers: `ipv6 nd ra suppress`: no router advertisement is sent here, solicited or not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nd_suppress: bool,
+    /// Routers: `ipv6 nd ra lifetime N`: seconds the advertisement says this router may serve as a
+    /// default router (1800 when not set; 0 says it may not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nd_ra_lifetime: Option<u16>,
     /// `ipv6 traffic-filter NAME in` / `out`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_in: Option<String>,
@@ -965,6 +973,10 @@ pub struct Device {
     /// across reloads).
     #[serde(default, skip_serializing_if = "is_default")]
     pub nvram: mgmt::Nvram,
+    /// Routers and switches: console settings that are kept and shown but change nothing in the
+    /// simulation (`ip classless`, `load-interval`, line options, ...).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub knobs: knobs::Knobs,
     /// Routers and switches: access and management settings.
     #[serde(default)]
     pub access: Access,
@@ -1286,6 +1298,10 @@ pub struct Ospf {
     /// `auto-cost reference-bandwidth N` (Mbit/s; 100 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_bw: Option<u32>,
+    /// `timers throttle spf START HOLD MAX` (milliseconds): how long SPF waits after a change
+    /// of the database, the least between two runs and the most the hold interval grows to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spf_throttle: Option<(u32, u32, u32)>,
     /// Area settings (`area N stub`, `area N range`), by area number.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub areas: BTreeMap<u32, OspfArea>,
@@ -2026,6 +2042,13 @@ pub struct Access {
     /// `ip domain-name`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_name: Option<String>,
+    /// `ip host NAME A.B.C.D`: names this device resolves by itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<(String, Ipv4Addr)>,
+    /// `ip name-server A.B.C.D …`: the DNS servers, the first of which is asked (`Device::dns`
+    /// holds it).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub name_servers: Vec<Ipv4Addr>,
     /// The RSA key size, once `crypto key generate rsa` ran (SSH needs it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rsa_bits: Option<u16>,
@@ -2207,6 +2230,7 @@ impl Device {
             dhcp_lease: None,
             mgmt: mgmt::Mgmt::default(),
             nvram: mgmt::Nvram::default(),
+            knobs: knobs::Knobs::default(),
             access: Access::default(),
             stp_priority: BTreeMap::new(),
             svis: Vec::new(),

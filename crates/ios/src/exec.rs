@@ -23,6 +23,7 @@ pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
 pub(crate) mod keychain;
+pub(crate) mod knobs;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod netflow;
@@ -34,6 +35,7 @@ pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
 pub(crate) mod span;
+pub(crate) mod sweep;
 pub(crate) mod swroute;
 pub(crate) mod voice;
 mod vpn;
@@ -1166,6 +1168,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, c.sim, d, Some(r)))
         }
+        Id::ShowIntTransceiver => Ok(render::interface_transceivers(c.t, c.d()?)),
         Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?, None)),
         Id::ShowIpInterface => {
             let only = match args.first().map(|a| a.trim()).filter(|a| !a.is_empty()) {
@@ -1244,16 +1247,31 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
-            let pick = ["adj", "events", "hello"].into_iter().find(|w| !what.is_empty() && w.starts_with(what.as_str()));
+            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet"]
+                .into_iter()
+                .find(|w| !what.is_empty() && w.starts_with(what.as_str()));
             if !what.is_empty() && pick.is_none() {
-                return Err("% debug ip ospf adj, events or hello".into());
+                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood or packet".into());
             }
             let on = spec.id == Id::DebugIpOspf;
             let (kinds, note): (&[DebugKind], &str) = match pick {
                 Some("adj") => (&[DebugKind::OspfAdj], "each neighbour's adjacency states are reported"),
                 Some("events") => (&[DebugKind::OspfEvents], "interface, DR election and SPF events are reported"),
+                Some("lsa-generation") => (&[DebugKind::OspfLsa], "the LSAs this router originates and flushes are reported"),
+                Some("flood") => (&[DebugKind::OspfFlood], "the LSAs sent and received in updates are reported"),
+                Some("packet") => (&[DebugKind::OspfPacket], "every OSPF packet this router hears is reported"),
                 Some(_) => (&[DebugKind::OspfHello], "the hellos this router hears are reported"),
-                None => (&[DebugKind::OspfHello, DebugKind::OspfAdj, DebugKind::OspfEvents], "all of it"),
+                None => (
+                    &[
+                        DebugKind::OspfHello,
+                        DebugKind::OspfAdj,
+                        DebugKind::OspfEvents,
+                        DebugKind::OspfLsa,
+                        DebugKind::OspfFlood,
+                        DebugKind::OspfPacket,
+                    ],
+                    "all of it",
+                ),
             };
             for k in kinds {
                 c.sim.set_debug(c.dev, *k, on);
@@ -1261,7 +1279,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on {
                 format!("OSPF debugging is on: {note}.")
             } else {
-                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj and events"))
+                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood and packet"))
             })
         }
         Id::ShowClock => {
@@ -1906,9 +1924,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
+        Id::ShowIpOspfMaxage => routing::ospf_maxage(&mut c),
         Id::ShowIpOspf => {
             let st = c.sim.ospf_state(c.t);
-            Ok(render::ospf_summary(c.d()?, &st))
+            let now = c.sim.now_us();
+            Ok(render::ospf_summary(c.d()?, &st, c.sim.state(c.dev), now))
         }
         Id::ShowIpOspfVirtualLinks => {
             let st = c.sim.ospf_state(c.t);
@@ -2813,6 +2833,47 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             d.access.users.retain(|u| u.name != arg(0));
             if d.access.users.len() == before { Err(format!("% No user {}", arg(0))) } else { Ok(String::new()) }
         }
+        Id::IpHost => {
+            let name: String = arg(0).chars().filter(|ch| !ch.is_control()).take(64).collect();
+            if name.is_empty() || name.parse::<std::net::Ipv4Addr>().is_ok() {
+                return Err("% A host name is a word that is not an address".into());
+            }
+            let a = parse_ip(arg(1)).map_err(|e| format!("% {e}"))?;
+            let d = c.dm()?;
+            d.access.hosts.retain(|(n, _)| !n.eq_ignore_ascii_case(&name));
+            if d.access.hosts.len() >= 64 {
+                return Err("% At most 64 host names".into());
+            }
+            d.access.hosts.push((name, a));
+            Ok(String::new())
+        }
+        Id::NoIpHost => {
+            let d = c.dm()?;
+            let before = d.access.hosts.len();
+            d.access.hosts.retain(|(n, _)| !n.eq_ignore_ascii_case(arg(0)));
+            if d.access.hosts.len() == before { Err(format!("% No host named {}", arg(0))) } else { Ok(String::new()) }
+        }
+        Id::IpNameServer | Id::NoIpNameServer => {
+            let mut given = Vec::new();
+            for w in arg(0).split_whitespace().take(6) {
+                given.push(parse_ip(w).map_err(|e| format!("% {e}"))?);
+            }
+            let d = c.dm()?;
+            if spec.id == Id::IpNameServer {
+                for a in given {
+                    if !d.access.name_servers.contains(&a) {
+                        d.access.name_servers.push(a);
+                    }
+                }
+                d.access.name_servers.truncate(6);
+            } else if given.is_empty() {
+                d.access.name_servers.clear();
+            } else {
+                d.access.name_servers.retain(|a| !given.contains(a));
+            }
+            d.dns = d.access.name_servers.first().copied();
+            Ok(String::new())
+        }
         Id::DomainName | Id::NoDomainName => {
             let v = (spec.id == Id::DomainName).then(|| arg(0).chars().take(64).collect::<String>());
             c.dm()?.access.domain_name = v;
@@ -3114,14 +3175,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
-        Id::Ipv6DhcpServer | Id::NoIpv6DhcpServer | Id::NdManaged | Id::NoNdManaged | Id::NdOther | Id::NoNdOther => {
+        Id::Ipv6DhcpServer
+        | Id::NoIpv6DhcpServer
+        | Id::NdManaged
+        | Id::NoNdManaged
+        | Id::NdOther
+        | Id::NoNdOther
+        | Id::NdSuppress
+        | Id::NoNdSuppress
+        | Id::NdRaLifetime
+        | Id::NoNdRaLifetime => {
             let id = spec.id;
             let pool = arg(0).to_string();
+            let lifetime = if id == Id::NdRaLifetime {
+                Some(arg(0).parse::<u16>().ok().filter(|n| *n <= 9_000).ok_or("% The router lifetime is 0-9000 seconds")?)
+            } else {
+                None
+            };
             c.each_v6(|v6, _, _| {
                 match id {
                     Id::Ipv6DhcpServer => v6.dhcp_server = Some(pool.clone()),
                     Id::NoIpv6DhcpServer => v6.dhcp_server = None,
                     Id::NdManaged | Id::NoNdManaged => v6.nd_managed = id == Id::NdManaged,
+                    Id::NdSuppress | Id::NoNdSuppress => v6.nd_suppress = id == Id::NdSuppress,
+                    Id::NdRaLifetime | Id::NoNdRaLifetime => v6.nd_ra_lifetime = lifetime,
                     _ => v6.nd_other = id == Id::NdOther,
                 }
                 Ok(())
@@ -3415,6 +3492,33 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::IfTransceiver => {
+            let removed = line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("no"));
+            let single = if removed {
+                false
+            } else {
+                match arg(0).to_ascii_lowercase().as_str() {
+                    "single-mode" => true,
+                    "multi-mode" => false,
+                    _ => return Err("% multi-mode or single-mode".into()),
+                }
+            };
+            let ifs = match &c.cli.mode {
+                Mode::Iface(ifs) => ifs.clone(),
+                _ => return Err("% Not in interface mode".into()),
+            };
+            let d = c.d()?;
+            for r in &ifs {
+                if !matches!(d.port_medium(r.port), Some(netlabcraft_model::cable::Medium::Fiber | netlabcraft_model::cable::Medium::Combo)) {
+                    let name = d.ports.get(r.port).map_or(String::new(), |p| p.name.clone());
+                    return Err(format!("% {name} takes no transceiver: only fiber and combo ports do"));
+                }
+            }
+            c.each_if(|p, _| {
+                p.single_mode = single;
+                Ok(())
+            })
+        }
         Id::IfMdix | Id::NoIfMdix => {
             let off = spec.id == Id::NoIfMdix;
             c.each_if(|p, _| {
@@ -3498,11 +3602,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }),
         Id::ShowHosts => {
             let a = &c.d()?.access;
-            Ok(format!(
-                "Default domain: {}\nName lookup: {}",
+            let servers = if a.name_servers.is_empty() {
+                "no name servers set".to_string()
+            } else {
+                format!("name servers {}", a.name_servers.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "))
+            };
+            let mut s = format!(
+                "Default domain: {}\nName lookup: {} ({servers})",
                 a.domain_name.clone().unwrap_or_else(|| "not set".into()),
-                if a.no_domain_lookup { "off (no ip domain-lookup)" } else { "on (no name servers set)" }
-            ))
+                if a.no_domain_lookup { "off (no ip domain-lookup)" } else { "on" },
+            );
+            if !a.hosts.is_empty() {
+                s.push_str(&format!("\n\n{:<24} {}", "Host", "Address"));
+                for (n, ip) in &a.hosts {
+                    s.push_str(&format!("\n{n:<24} {ip} (static)"));
+                }
+            }
+            Ok(s)
         }
         Id::NatSideCmd | Id::NoNatSide => {
             let side = match arg(0).to_ascii_lowercase().as_str() {
@@ -4190,6 +4306,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
+        Id::OspfTimersThrottleSpf | Id::NoOspfTimersThrottleSpf => {
+            let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+            if spec.id == Id::NoOspfTimersThrottleSpf {
+                o.spf_throttle = None;
+                return Ok(String::new());
+            }
+            let ms = |i: usize| arg(i).parse::<u32>().ok().filter(|n| *n <= 600_000).ok_or("% Milliseconds: 0-600000".to_string());
+            let (start, hold, max) = (ms(0)?, ms(1)?, ms(2)?);
+            if max < hold {
+                return Err("% The longest wait must be at least the hold interval".into());
+            }
+            o.spf_throttle = Some((start, hold, max));
+            Ok(String::new())
+        }
         Id::OspfPassive | Id::NoOspfPassive if c.cli.mode == Mode::Ospf => routing::ospf_passive(&mut c, spec.id == Id::OspfPassive, arg(0)),
         Id::OspfPassive | Id::NoOspfPassive => {
             let r = c.iface_ref(arg(0))?;
@@ -4580,6 +4710,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if warn { "Login is on but the line has no password yet: it won't ask for one until you set it.".into() } else { String::new() })
         }
         Id::Accepted => Ok("Accepted (not simulated yet).".into()),
+        Id::Knob | Id::NoKnob => knobs::command(&mut c, spec, &args),
+        Id::ShowTerminal
+        | Id::ShowLine
+        | Id::ShowCdpInterface
+        | Id::ShowMacAging
+        | Id::More
+        | Id::Pwd
+        | Id::ShowSnmpCommunity
+        | Id::ShowSnmpHost
+        | Id::ShowSnmpGroup
+        | Id::ShowSnmpUser => sweep::command(&mut c, spec.id, &args),
         Id::BannerMotd => {
             let text = arg(0);
             let mut chars = text.chars();
@@ -5515,7 +5656,35 @@ impl Ctx<'_> {
         Ok(render::ping(dst.into(), &probes, opts))
     }
 
+    /// A name typed where an address goes: the device's own host table first, then its DNS server.
+    /// Returns the address as text and the line that says how the name was resolved.
+    fn name_to_address(&mut self, target: &str) -> Result<(String, String), String> {
+        let t = target.trim();
+        if t.parse::<std::net::IpAddr>().is_ok() || !t.chars().any(|ch| ch.is_ascii_alphabetic()) {
+            return Ok((t.to_string(), String::new()));
+        }
+        let d = self.d()?;
+        if let Some((_, a)) = d.access.hosts.iter().find(|(n, _)| n.eq_ignore_ascii_case(t)) {
+            return Ok((a.to_string(), format!("Translating \"{t}\"...static [OK]\n")));
+        }
+        let (Some(server), false) = (d.dns, d.access.no_domain_lookup) else {
+            return Err("% Unrecognized host or address, or protocol not running.".into());
+        };
+        let name = match &d.access.domain_name {
+            Some(dn) if !t.contains('.') => format!("{t}.{dn}"),
+            _ => t.to_string(),
+        };
+        let a = self.sim.dns_resolve(self.t, self.dev, &name).map_err(|e| format!("% {e}"))?;
+        Ok((a.to_string(), format!("Translating \"{t}\"...domain server ({server}) [OK]\n")))
+    }
+
     fn ping(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
+        let (target, said) = self.name_to_address(target)?;
+        let out = self.ping_address(&target, count, data)?;
+        Ok(format!("{said}{out}"))
+    }
+
+    fn ping_address(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
         let mut opts = PingOptions { count, ..PingOptions::default() };
         if let Some(n) = data {
             opts.size = n;
@@ -5530,6 +5699,12 @@ impl Ctx<'_> {
     }
 
     fn traceroute(&mut self, target: &str) -> R {
+        let (target, said) = self.name_to_address(target)?;
+        let out = self.traceroute_address(&target)?;
+        Ok(format!("{said}{out}"))
+    }
+
+    fn traceroute_address(&mut self, target: &str) -> R {
         if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
             let hops = self.sim.traceroute6(self.t, self.dev, dst6, 30, 2_000_000).map_err(|e| format!("% {e}"))?;
             return Ok(render::traceroute(dst6.into(), &hops));

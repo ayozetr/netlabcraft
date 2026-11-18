@@ -134,7 +134,7 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
     Some(match id {
         "closet.list" => list(s, p),
         "furniture.add" => furniture_add(s, p),
-        "furniture.rename" | "furniture.move" | "furniture.remove" => furniture_edit(s, id, p),
+        "furniture.rename" | "furniture.move" | "furniture.remove" | "furniture.resize" => furniture_edit(s, id, p),
         "furniture.mount" => mount(s, p),
         "furniture.unmount" => unmount(s, p),
         "passive.add" => passive_add(s, p),
@@ -219,6 +219,10 @@ fn furniture_edit(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
     let mut quick = false;
     match cmd {
         "furniture.rename" => t.rename_furniture(id, text(p, "name")?)?,
+        "furniture.resize" => {
+            let size = count(p, "size")?.ok_or_else(|| bad("`size` (rack units or shelf levels) is required"))?;
+            t.resize_furniture(id, size)?;
+        }
         "furniture.move" => {
             let (x, y) = (float(p, "x").ok_or_else(|| bad("`x` is required"))?, float(p, "y").ok_or_else(|| bad("`y` is required"))?);
             t.move_furniture(id, x, y)?;

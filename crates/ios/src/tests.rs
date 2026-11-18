@@ -22,8 +22,12 @@ mod ike_rsa;
 mod inspections;
 mod interface_counters;
 mod ipsec_crypto;
+mod ipv6_ra;
+mod knobs;
+mod knobs_routing;
 mod leftovers;
 mod line_protocol;
+mod name_resolution;
 mod nat_timeouts;
 mod nat_verbose;
 mod ospf6_auth;
@@ -31,6 +35,7 @@ mod ospf_areas;
 mod ospf_auth_rollover;
 mod ospf_database;
 mod ospf_debug;
+mod ospf_lsdb_copies;
 mod pki;
 mod policy;
 mod protocols_summary;
@@ -41,6 +46,7 @@ mod routing;
 mod security;
 mod span;
 mod stp_views;
+mod sweep;
 mod swroute;
 mod troubleshoot;
 
@@ -876,7 +882,7 @@ fn ospf_by_typing() {
         assert!(db.iter().any(|x| x.contains(want)), "{want}: {db:#?}");
     }
     assert_eq!(db.len(), 10, "{db:#?}");
-    assert!(lab.try_run(r1, "debug ip ospf bogus").contains("adj, events or hello"));
+    assert!(lab.try_run(r1, "debug ip ospf bogus").contains("lsa-generation, flood or packet"));
     lab.run(r1, "no debug ip ospf");
     assert!(lab.run(r1, "show debugging").contains("No debugging"));
     lab.try_run(r1, "conf t");

@@ -534,8 +534,16 @@ pub static CATALOG: &[CommandInfo] = &[
         "Smart thing settings",
         "",
         None,
-        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) | 0-180 (servo) | 0-16777215 (RGB LED, 0xRRGGBB), "red"?|"green"?|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: signal generator 0..20000 Hz} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "active", "paired", "message"} (reports at once)"#,
+        r#"{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) | 0-180 (servo) | 0-16777215 (RGB LED, 0xRRGGBB), "red"?|"green"?|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: 0..20000 Hz (a signal generator's output, the pitch a speaker, player, buzzer, alarm or siren plays (0: its own), the pitch a sound detector is tuned to (0: any; it hears only sounds within a tenth of it)), "pairing_code"?: "0000".."9999" (a Bluetooth speaker pairs with a player that has the same code), "profile"?: "a2dp"|"headset" (a Bluetooth speaker; a headset pairs with no player), "tag"?: an RFID card's id typed in (a number, or up to eight hex digits; 0: the card's own), "crossing"?: true|false (a trip sensor: read 1 for five seconds after something that moves crosses its 50 m wire instead of while something is near), "angle"?: 0..359 (a trip sensor: the wire's direction)} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "active", "paired", "pairing_code", "profile", "tag", "crossing", "angle", "message"} (reports at once)"#,
         true
+    ),
+    c!(
+        "iot.beacon",
+        "Beacon log",
+        "",
+        None,
+        r#"{"device": beacon} → {"device", "audience": [names of the things that hear it], "log": [{"time_s", "thing", "event": "heard"|"lost"}]}: what a beacon keeps (the last 60 things that came into its 100 m range or left it, as of the last step of the simulator)"#,
+        false
     ),
     c!(
         "board.program",
@@ -591,7 +599,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Environments",
         "Options",
         Some("Shift+E"),
-        r#"{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"|"inherited"|"default"|"room", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read."#,
+        r#"{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"|"inherited"|"default"|"room"|"live", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read, "live" what a place holds now where its parts are moving it (environment.physics)."#,
         false
     ),
     c!(
@@ -632,6 +640,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"time"?: "HH:MM:SS" or seconds from midnight (set the time of day now), "paused"?: true|false, "real_minutes"?: 1-1440, "sim_minutes"?: 1-1440 (every `real_minutes` of simulated lab time pass `sim_minutes` in the environment; the time shown does not jump when the ratio changes)} → environment.get. The clock follows the lab's simulated time (it starts at 08:00:00); one undo step when something changes"#,
+        true
+    ),
+    c!(
+        "environment.physics",
+        "Physics of the places",
+        "",
+        None,
+        r#"{"enabled"?: true|false} → {"physics"}: with it on, each place that holds smart things has its own physics: the heaters, air conditioners, fans, furnaces, humidifiers, sprinklers, fire sprinklers, windows and lamps standing in a place change that place's variables by rates (a part moves a variable toward where it settles; the variable covers 63 % of the way in 0.5 to 20 minutes, depending on the variable), the place settles back toward what it sets when the part stops, flames make smoke, carbon monoxide and heat, an open window pulls the place toward the one above it (faster in wind), and a sound fades with the distance to the sensor; environment.get shows what a place holds now as source "live". Off (the default): a running part adds a fixed amount at once, as before; one undo step"#,
         true
     ),
     c!(
@@ -934,6 +950,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!("furniture.rename", "Rename furniture", "", None, r#"{"furniture": name or number, "name"}"#, true),
+    c!(
+        "furniture.resize",
+        "Resize furniture",
+        "",
+        None,
+        r#"{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size"#,
+        true
+    ),
     c!("furniture.move", "Move furniture", "", None, r#"{"furniture", "x", "y", "transient"?: false}: where it stands in the closet"#, true),
     c!("furniture.remove", "Remove furniture", "", None, r#"{"furniture"}: what stood on it stays in the closet, loose"#, true),
     c!(
@@ -1038,8 +1062,16 @@ pub static CATALOG: &[CommandInfo] = &[
         "Cable information",
         "",
         None,
-        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything"#,
+        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}, "budget": null | {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" | "degraded" | "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)"#,
         false
+    ),
+    c!(
+        "link.splices",
+        "Fiber splices",
+        "",
+        None,
+        r#"{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)"#,
+        true
     ),
     c!(
         "pc.terminal",

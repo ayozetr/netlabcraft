@@ -220,6 +220,19 @@
 	cable	Kabel
 	Cable Length	Kabellänge
 	Cable Length…	Kabellänge…
+	Loss budget	Dämpfungsbudget
+	within the budget	innerhalb des Budgets
+	degraded: little margin left	eingeschränkt: kaum Reserve
+	over the budget	über dem Budget
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB verloren von {} dB ({} Steckverbinder, {} Spleiße)
+	More splices	Mehr Spleiße
+	Fewer splices	Weniger Spleiße
+	fiber loses {} dB, over the {} dB the transceivers tolerate	die Faser verliert {} dB, mehr als die {} dB, die die Transceiver vertragen
+	Resize…	Größe ändern…
+	Resize	Größe ändern
+	Units ({} to {}):	Einheiten ({} bis {}):
+	Levels ({} to {}):	Ebenen ({} bis {}):
+	Enter a whole number	Gib eine ganze Zahl ein
 	Cable Modem	Kabelmodem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Kabelmodem: verbindet seinen Koaxial-Port (Coaxial0) mit seinem Ethernet-Port (Ethernet1)
 	cable too long: {} m copper, max 100 m	Kabel zu lang: {} m Kupfer, max. 100 m
@@ -2415,3 +2428,12 @@ furniture	Table	Tisch
 	no clock rate on the DCE end	keine Taktrate am DCE-Ende
 	the two ends use different encapsulations	die beiden Enden verwenden unterschiedliche Kapselungen
 	PPP authentication failed (check the usernames and passwords)	PPP-Authentifizierung fehlgeschlagen (Benutzernamen und Kennwörter prüfen)
+	Each place has its own physics	Jeder Ort hat seine eigene Physik
+	Parts change the place they stand in by rates, and the place settles back when they stop	Geräte verändern ihren Ort mit einer Rate, und der Ort kehrt zurück, wenn sie anhalten
+	Pairing code:	Kopplungscode:
+	Profile:	Profil:
+	Music (A2DP)	Musik (A2DP)
+	Headset	Headset
+	Card id (hex):	Karten-ID (hex):
+	Report crossings of the wire	Überquerungen des Drahts melden
+	Wire angle (degrees):	Winkel des Drahts (Grad):

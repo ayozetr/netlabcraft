@@ -970,9 +970,9 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.adapter" | "device.power.source" | "phone.configure" | "cloud.map" | "device.psu" => crate::families::run(s, cmd, p),
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" | "softphone.config" | "softphone.status" | "softphone.dial" | "softphone.answer"
         | "softphone.hangup" => crate::voice::run(s, cmd, p),
-        "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
+        "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" | "iot.beacon" => crate::iot::run(s, cmd, p),
         "environment.get" | "environment.set" | "environment.clear" | "environment.keyframe.add" | "environment.keyframe.remove" | "environment.clock"
-        | "environment.export" | "environment.import" => crate::envs::run(s, cmd, p),
+        | "environment.export" | "environment.import" | "environment.physics" => crate::envs::run(s, cmd, p),
         "board.program" | "board.status" | "board.wire" => crate::board::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
         | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),
@@ -1122,6 +1122,24 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
             s.changed();
             let resolved = s.topology.link_at(ea).map_or(cable, |l| s.topology.resolved_cable(l));
             Ok(json!({"a": s.topology.end_label(ea), "b": s.topology.end_label(eb), "cable": cable.id(), "resolved": resolved.id()}))
+        }
+        "link.splices" => {
+            let d = device_param(s, p, "device")?;
+            let port = port_param(s, d, str_param(p, "port")?)?;
+            let count = p
+                .get("count")
+                .and_then(Value::as_u64)
+                .and_then(|n| u32::try_from(n).ok())
+                .ok_or_else(|| bad("`count` (0 to 50 splices) is required"))?;
+            let end = End { device: d, port };
+            let mut t = s.topology.clone();
+            t.set_splices(end, count)?;
+            s.checkpoint();
+            s.topology = t;
+            s.changed();
+            let t = &s.topology;
+            let l = t.link_at(end).ok_or_else(|| EngineError::Failed("the cable is gone".into()))?;
+            Ok(link_info_json(t, l))
         }
         "link.info" => {
             let d = device_param(s, p, "device")?;
@@ -1631,6 +1649,22 @@ fn link_info_json(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) 
         "problem": netlabcraft_sim::cable_problem(t, l.a),
         "why_down": if up { None } else { netlabcraft_sim::link_why_down(t, l) },
         "transceivers": transceivers,
+        "budget": t.fiber_budget(l).map(|b| {
+            let round = |v: f32| (f64::from(v) * 100.0).round() / 100.0;
+            json!({
+                "meters": b.meters,
+                "connectors": b.connectors,
+                "splices": b.splices,
+                "loss_db": round(b.loss_db),
+                "budget_db": round(b.budget_db),
+                "margin_db": round(b.margin_db()),
+                "state": match b.state() {
+                    netlabcraft_model::physical::BudgetState::Ok => "ok",
+                    netlabcraft_model::physical::BudgetState::Degraded => "degraded",
+                    netlabcraft_model::physical::BudgetState::Over => "over",
+                },
+            })
+        }),
     })
 }
 
