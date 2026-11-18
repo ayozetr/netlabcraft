@@ -623,6 +623,15 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `copy startup-config running-config` | privileged | router, switch | Merge the saved configuration into the running one |
 | `copy flash: tftp: <file> <address> [name on the server]` | privileged | router, switch | Back up a flash file to a TFTP server |
 | `copy tftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from a TFTP server into flash |
+| `copy running-config flash: NAME` | privileged | router, switch | Keep the running configuration as a file in flash |
+| `copy startup-config flash: NAME` | privileged | router, switch | Keep the startup configuration as a file in flash |
+| `copy flash: running-config NAME` | privileged | router, switch | Merge a configuration file from flash into the running one |
+| `copy flash: startup-config NAME` | privileged | router, switch | Make a configuration file in flash the startup configuration |
+| `copy flash: ftp: <file> <address> [name on the server]` | privileged | router, switch | Back up a flash file to an FTP server |
+| `copy ftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from an FTP server into flash |
+| `copy http: running-config <address> <path>` | privileged | router, switch | Merge a configuration fetched from a web server |
+| `copy http: startup-config <address> <path>` | privileged | router, switch | Make a page of a web server the startup configuration |
+| `copy http: flash: <address> <path> [name in flash]` | privileged | router, switch | Fetch a page of a web server into flash |
 | `show users` | user, privileged | router, switch | Who is logged in, and where |
 | `terminal length N \| width N \| monitor` | user, privileged | router, switch | Terminal settings (output here is never paged) |
 | `no terminal monitor` | user, privileged | router, switch | Stop copying log messages to this session |

@@ -18,6 +18,7 @@ mod bgp_process_timers;
 mod bgp_reflection;
 mod cef;
 mod console_depth;
+mod copy_transfers;
 mod debug_crypto;
 mod debug_framework;
 mod debug_topics;
