@@ -254,6 +254,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `end` | config, interface, subinterface, vlan, object | router, switch, firewall | Return to privileged mode |
 | `configure terminal` | privileged | router, switch, firewall | Configure from the terminal |
 | `ping A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Send echo requests |
+| `ping` | user, privileged | router, switch, firewall | Send echo requests, asking for the options one question at a time |
 | `ping A.B.C.D\|X:X::X [repeat <1-1000>] [size <36-18024>] [source A.B.C.D\|INTERFACE] [timeout <0-3600>]` | user, privileged | router, switch, firewall | Send echo requests with options |
 | `show ip traffic` | user, privileged | router, switch | IPv4 packets counted by what happened to them |
 | `show tcp brief` | user, privileged | router, switch | TCP connections to and from this device |
@@ -261,6 +262,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `history size <0-256>` |  | router, switch | How many commands a session remembers |
 | `no history size` |  | router, switch | Remember the default number of commands |
 | `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Trace the route to a destination |
+| `traceroute` | user, privileged | router, switch, firewall | Trace the route to a destination, asking for the options one question at a time |
 | `show running-config` | privileged | router, switch, firewall | Current configuration |
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
@@ -1661,7 +1663,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree vlan <1-4094>[,-] priority <0-61440>` | config | switch | Bridge priority (multiples of 4096) |
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
-| `spanning-tree mode {pvst\|rapid-pvst}` | config | switch | Classic (30 s to forward) or rapid spanning tree |
+| `spanning-tree mode {pvst\|rapid-pvst\|mst}` | config | switch | Classic (30 s to forward), rapid, or multiple spanning tree |
+| `spanning-tree mst configuration` | config | switch | Edit the multiple spanning tree region: name, revision and which VLANs each instance holds |
+| `no spanning-tree mst configuration` | config | switch | Empty the region's name, revision and instance table |
+| `name NAME` |  | switch | Name the region (switches share a region only with the same name) |
+| `revision <0-65535>` |  | switch | The region's revision number |
+| `instance <1-15> vlan <1-4094>[,-]` |  | switch | Map VLANs to an instance (each VLAN is in one instance) |
+| `no instance <1-15>` |  | switch | Delete an instance; its VLANs go back to the common tree |
+| `spanning-tree mst <0-15> priority <0-61440>` | config | switch | Bridge priority in an instance (multiples of 4096) |
+| `no spanning-tree mst <0-15> priority` | config | switch | Back to priority 32768 in an instance |
+| `spanning-tree mst <0-15> root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) of an instance |
+| `spanning-tree mst <0-15> cost <1-200000000>` | interface | switch | Path cost of this port in an instance |
+| `no spanning-tree mst <0-15> cost` | interface | switch | Path cost of this port in an instance from its speed again |
+| `spanning-tree mst <0-15> port-priority <0-240>` | interface | switch | Port priority in an instance (multiples of 16) |
+| `no spanning-tree mst <0-15> port-priority` | interface | switch | Port priority back to 128 in an instance |
+| `show spanning-tree mst` | user, privileged | switch | Every instance's tree on this switch |
+| `show spanning-tree mst configuration` | user, privileged | switch | The region's name, revision, digest and instance table |
+| `show spanning-tree mst <0-15>` | user, privileged | switch | One instance's tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
 | `ip dhcp snooping` | config | switch | Turn DHCP snooping on (then name its VLANs) |
@@ -1717,6 +1735,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no errdisable recovery interval` | config | switch | Back to 300 seconds |
 | `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
 | `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
+| `errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Shut ports for this cause again (detection is on unless turned off) |
+| `no errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Stop shutting ports for this cause: the frame is still dropped, the port stays up |
+| `show errdisable detect` | user, privileged | switch | Which causes shut a port |
 | `monitor session <1-66> source interface <interfaces> [both\|rx\|tx]` | config | switch | Copy the frames that enter or leave these ports (ranges such as `fa0/1 - 3, fa0/5` work) to the session's destination |
 | `monitor session <1-66> source vlan <1-4094>[,-] [both\|rx\|tx]` | config | switch | Copy the frames of these VLANs, on every port, to the session's destination |
 | `monitor session <1-66> destination interface <interface>` | config | switch | The port that receives the copies: it forwards no other traffic |

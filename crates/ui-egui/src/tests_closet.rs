@@ -45,6 +45,20 @@ mod t {
     }
 
     #[test]
+    fn a_switched_off_device_is_drawn_dimmed_and_stays_a_node() {
+        let mut h = closet();
+        h.run_steps(3);
+        let names: Vec<String> = h.state().session.topology.devices.iter().map(|d| d.name.clone()).collect();
+        h.state_mut().session.execute("device.power", json!({"device": names[0], "on": false})).unwrap();
+        for dark in [false, true] {
+            h.state_mut().ui.dark = dark;
+            h.run_steps(3);
+            assert!(h.query_by_label(&format!("{}, on Rack0", names[0])).is_some());
+        }
+        assert!(h.state().session.topology.device(h.state().session.topology.resolve(&names[0]).unwrap()).unwrap().powered_off);
+    }
+
+    #[test]
     fn the_resize_dialog_resizes_a_rack_through_the_command() {
         let mut h = closet();
         h.run_steps(3);
