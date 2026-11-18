@@ -100,6 +100,8 @@ labs! {
     lab_70_troubleshoot_dhcp_snooping => "70-troubleshoot-dhcp-snooping.md",
     lab_71_troubleshoot_acl_order => "71-troubleshoot-acl-order.md",
     lab_72_debug_nat => "72-debug-nat.md",
+    lab_73_python_on_a_board => "73-python-on-a-board.md",
+    lab_74_javascript_on_a_microcontroller => "74-javascript-on-a-microcontroller.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up

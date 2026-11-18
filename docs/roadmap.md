@@ -53,8 +53,8 @@ the reference app:
 
 1. A CCNA-style lab book (VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch
    security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): **met**.
-   [docs/labs/](labs/README.md) holds 60 numbered original labs (4 for CCNA 1, 24 for CCNA 2, 31 for
-   CCNA 3 and one wireless-security lab for both of the first two, counted by the course column of
+   [docs/labs/](labs/README.md) holds 62 numbered original labs (4 for CCNA 1, 24 for CCNA 2, 31 for
+   CCNA 3, one wireless-security lab for both of the first two and two board-programming labs, counted by the course column of
    the table; 19 are troubleshooting labs and 6 labs on reading output) and one unnumbered cellular lab; each one's blocks run as
    written in `crates/engine/tests/lab_book.rs`, and 19 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
    turned up landed with regression tests (M8.1).
