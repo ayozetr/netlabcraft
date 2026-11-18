@@ -2370,3 +2370,30 @@ furniture	Table	Table
 	Backup written to {}	Sauvegarde écrite dans {}
 	Application size	Taille de l'application
 	Enter the password first: some tabs are locked.	Saisissez d'abord le mot de passe : certains onglets sont verrouillés.
+	Up	Actif
+	Down	Inactif
+	Properties…	Propriétés…
+	Open First Device	Ouvrir le premier appareil
+	Open Second Device	Ouvrir le second appareil
+	Show Info	Afficher les infos
+	Kind	Type
+	First end	Première extrémité
+	Second end	Seconde extrémité
+	Status	État
+	Why it is down	Pourquoi il est coupé
+	Transceivers	Transceivers
+	set by hand	fixée à la main
+	from where the devices stand	d'après l'emplacement des appareils
+	Both ends single-mode	Les deux extrémités monomode
+	Both ends multi-mode	Les deux extrémités multimode
+	Delete Cable	Supprimer le câble
+	Cable Properties	Propriétés du câble
+	single-mode (1310 nm)	monomode (1310 nm)
+	multi-mode (850 nm)	multimode (850 nm)
+	{} is switched off or has no power	{} est éteint ou sans alimentation
+	{} is shut down	{} est désactivé
+	{} is err-disabled	{} est en err-disabled
+	the two ends are fixed at different speeds	les deux extrémités sont fixées à des vitesses différentes
+	no clock rate on the DCE end	pas de débit d'horloge côté DCE
+	the two ends use different encapsulations	les deux extrémités utilisent des encapsulations différentes
+	PPP authentication failed (check the usernames and passwords)	échec de l'authentification PPP (vérifiez les noms d'utilisateur et les mots de passe)
