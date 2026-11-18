@@ -21,7 +21,7 @@ use std::collections::BTreeSet;
 use netlabcraft_core::DeviceId;
 use serde::{Deserialize, Serialize};
 
-use crate::physical::{PlaceKind, clean_name};
+use crate::physical::clean_name;
 use crate::{End, Link, ModelError, Result, Topology, finite};
 
 /// Most pieces of furniture in a lab.
@@ -1303,7 +1303,7 @@ impl Topology {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::physical::DEFAULT_CLOSET;
+    use crate::physical::{DEFAULT_CLOSET, PlaceKind};
     use crate::{DeviceKind, file};
 
     fn lab() -> (Topology, DeviceId, DeviceId, DeviceId) {

@@ -739,7 +739,11 @@ fn draw_furniture(p: &Painter, kind: FurnitureKind, size: u32, name: &str, whole
             p.rect_stroke(rail, 0.0, Stroke::new(1.0, Color32::from_gray(0x70)), StrokeKind::Inside);
             for u in 0..size {
                 let y = top + (u as f32 + 0.5) * RACK_UNIT_H * z;
-                p.rect_filled(Rect::from_center_size(rail.center_top() + vec2(0.0, y - top), vec2(4.0 * z, 14.0 * z)), 2.0 * z, Color32::from_gray(0x50));
+                p.rect_filled(
+                    Rect::from_center_size(rail.center_top() + vec2(0.0, y - top), vec2(4.0 * z, 14.0 * z)),
+                    2.0 * z,
+                    Color32::from_gray(0x50),
+                );
                 p.text(
                     pos2(whole.left() + 10.0 * z, y),
                     Align2::CENTER_CENTER,
@@ -1538,12 +1542,8 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
                 app.ui.physical.length = Some((l.a, m.to_string()));
                 ui.close();
             }
-            let boards: Vec<(u32, String)> = t
-                .furniture_in(place)
-                .iter()
-                .filter(|f| f.kind == FurnitureKind::CablePegboard)
-                .map(|f| (f.id, f.name.clone()))
-                .collect();
+            let boards: Vec<(u32, String)> =
+                t.furniture_in(place).iter().filter(|f| f.kind == FurnitureKind::CablePegboard).map(|f| (f.id, f.name.clone())).collect();
             if !boards.is_empty() {
                 ui.menu_button(tl("Hang on a Peg"), |ui| {
                     for (id, n) in &boards {
