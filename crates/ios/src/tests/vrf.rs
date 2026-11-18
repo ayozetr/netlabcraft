@@ -90,7 +90,8 @@ fn changing_vrf_removes_the_address_and_the_global_table_does_not_see_it() {
 fn hosts_reach_each_other_through_the_vrf_and_the_tables_are_apart() {
     let (mut lab, r1, _r2, pc1, _pc2) = pair();
     let out = lab.run(pc1, "ping 192.168.3.10");
-    assert!(out.contains("seq 2: reply from 192.168.3.10"), "{out}");
+    // The routers drop what waits for ARP, so the first echoes may be lost.
+    assert!(out.contains("seq 4: reply from 192.168.3.10"), "{out}");
     // Each VRF has its own ARP table, and the same address is not the same neighbour.
     let red = lab.run(r1, "show ip arp vrf RED");
     assert!(red.contains("192.168.1.10") && red.contains("10.0.12.2"), "{red}");
@@ -154,7 +155,8 @@ fn ospf_runs_inside_a_vrf() {
     assert!(run.contains(" network 10.0.12.0 0.0.0.3 area 0"), "{run}");
     // The global router has no process of its own.
     assert!(lab.t.device(r1).unwrap().ospf.is_none());
-    assert!(lab.try_run(r1, "conf t\nrouter ospf 11 vrf BLUE").starts_with("% "));
+    lab.run(r1, "conf t");
+    assert!(lab.try_run(r1, "router ospf 11 vrf BLUE").starts_with("% "));
 }
 
 #[test]
