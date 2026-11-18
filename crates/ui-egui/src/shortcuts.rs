@@ -481,7 +481,8 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
             (Some(d), _) => {
                 app.run("device.remove", json!({"device": d.0}));
             }
-            (None, Some(c)) => crate::cable_window::delete(app, c),
+            (None, Some(netlabcraft_model::cable_ref::CableRef::Link(c))) => crate::cable_window::delete(app, c),
+            (None, Some(_)) => {}
             (None, None) => app.set_tool(Tool::Delete),
         },
         Act::Inspect => app.set_tool(Tool::Inspect),

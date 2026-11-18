@@ -328,13 +328,13 @@ pub struct UiState {
     pub native_remembered: BTreeMap<String, NativeGeometry>,
     /// The cable whose accessible node has the keyboard focus (named by its first end), drawn
     /// highlighted.
-    pub cable_focus: Option<netlabcraft_model::End>,
+    pub cable_focus: Option<netlabcraft_model::cable_ref::CableRef>,
     /// The cable picked by a click (named by its first end), drawn highlighted.
-    pub selected_cable: Option<netlabcraft_model::End>,
+    pub selected_cable: Option<netlabcraft_model::cable_ref::CableRef>,
     /// The cable under the pointer (named by its first end), drawn highlighted lightly.
-    pub hover_cable: Option<netlabcraft_model::End>,
+    pub hover_cable: Option<netlabcraft_model::cable_ref::CableRef>,
     /// The cable whose Properties window is open (named by its first end).
-    pub cable_window: Option<netlabcraft_model::End>,
+    pub cable_window: Option<netlabcraft_model::cable_ref::CableRef>,
     /// The geometry each open native window was opened with (fixed while it is open).
     pub(crate) native_start: BTreeMap<DeviceId, NativeGeometry>,
     /// Native windows to bring to the front on their next frame.
