@@ -4633,6 +4633,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoBgpNeighborPassword
         | Id::BgpNeighborRemovePrivate
         | Id::NoBgpNeighborRemovePrivate
+        | Id::BgpNeighborLocalAs
+        | Id::NoBgpNeighborLocalAs
         | Id::BgpNeighborSoftReconf
         | Id::NoBgpNeighborSoftReconf
         | Id::BgpAlwaysCompareMed
