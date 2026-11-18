@@ -2052,7 +2052,8 @@ fn the_resize_shape_tool_picks_a_drawing_and_drags_its_handles() {
     h.run_steps(2);
     let now = h.state().session.topology.device(d.id).unwrap();
     assert_eq!((now.x, now.y), before);
-    click(&mut h, on_screen(&h, d.x + 10.0, d.y + 10.0));
+    let at = on_screen(&h, d.x + 10.0, d.y + 10.0);
+    click(&mut h, at);
     assert_eq!(h.state().ui.selected, None);
     // Clicking empty ground selects nothing.
     let empty = on_screen(&h, 600.0, 500.0);
