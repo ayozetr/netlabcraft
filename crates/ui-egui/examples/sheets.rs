@@ -446,9 +446,14 @@ fn create_kinds_sheet(dir: &str, dark: bool) {
     let (p_sw, p_plc) = (port(&s, "SW1", 0), port(&s, "PLC1", 0));
     cmd(&mut s, "furniture.hang", json!({"furniture": "Cable Pegboard0", "device": "SW1", "port": p_sw}));
     cmd(&mut s, "furniture.hang", json!({"furniture": "Cable Pegboard0", "device": "PLC1", "port": p_plc, "peg": 4}));
-    app_sheet(dir, &format!("create-kinds-{suffix}"), s, (1750.0, 1350.0), dark, move |app| {
+    app_sheet(dir, &format!("create-kinds-{suffix}"), s, (1500.0, 1000.0), dark, move |app| {
         app.set_physical(true);
         app.enter_place(closet);
+        // Everything in view: the furniture is 1560 by 970 closet units.
+        let frame = app.session.topology.closet_layout(closet).frames.first().map(|(_, c)| (c.x, c.y));
+        let (x, y) = frame.unwrap_or((0.0, 0.0));
+        app.ui.zoom = 0.62;
+        app.ui.pan = vec2(20.0, 50.0) - vec2(x, y) * 0.62;
     });
 }
 
