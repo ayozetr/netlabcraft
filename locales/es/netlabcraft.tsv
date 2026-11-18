@@ -1897,6 +1897,16 @@ event	no APN	sin APN
 	Rename	Renombrar
 	Name:	Nombre:
 	{}, {} units	{}, {} unidades
+	Turn to the Front	Girar hacia el frente
+	Turn to the Back	Girar hacia atrás
+	Loose Devices	Dispositivos sueltos
+	As a Grid	En cuadrícula
+	As a List	En lista
+	Width in cells ({} to {}):	Ancho en celdas ({} a {}):
+	Depth in cells ({} to {}):	Profundidad en celdas ({} a {}):
+	{}, {} by {} cells	{}, {} por {} celdas
+	{}, rear view	{}, vista trasera
+	{} (rear)	{} (trasera)
 	{}, {} levels	{}, {} niveles
 	{}, on {}	{}, en {}
 	Rack	Bastidor
