@@ -1237,6 +1237,60 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no transport output {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
 | `transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Protocol assumed for a host name typed alone |
 | `no transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
+| `maximum-paths <1-32>` |  | router, switch | Most equal-cost routes RIP installs |
+| `no maximum-paths` |  | router, switch | Return this setting to its default |
+| `distance <1-255>` |  | router, switch | Administrative distance of RIP routes |
+| `no distance` |  | router, switch | Return this setting to its default |
+| `output-delay <8-50>` |  | router, switch | Milliseconds between the packets of an update |
+| `no output-delay` |  | router, switch | Return this setting to its default |
+| `validate-update-source` |  | router, switch | Accept updates only from a neighbour on the same subnet (on) |
+| `no validate-update-source` |  | router, switch | Turn this off (it is on by default) |
+| `eigrp stub` |  | router, switch | Act as a stub router that advertises only what it is told to |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `eigrp stub [connected] [static] [summary] [receive-only] [redistributed]` |  | router, switch | Act as a stub router that advertises only the routes named |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `distance eigrp <1-255> <1-255>` |  | router, switch | Administrative distances of internal and external EIGRP routes |
+| `no distance eigrp` |  | router, switch | Return this setting to its default |
+| `eigrp log-neighbor-changes` |  | router, switch | Log the neighbours that come and go |
+| `no eigrp log-neighbor-changes` |  | router, switch | Return this setting to its default |
+| `metric weights <0-8> <0-255> <0-255> <0-255> <0-255> <0-255>` |  | router, switch | The K values of the metric |
+| `no metric weights` |  | router, switch | Return this setting to its default |
+| `ip rip send version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface sends |
+| `no ip rip send version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip receive version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface accepts |
+| `no ip rip receive version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication mode {md5\|text}` | interface, subinterface | router | How RIP updates are authenticated here |
+| `no ip rip authentication mode {md5\|text}` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication key-chain WORD` | interface, subinterface | router | The key chain that authenticates RIP updates here |
+| `no ip rip authentication key-chain` | interface, subinterface | router | Return this setting to its default |
+| `ip rip v2-broadcast` | interface, subinterface | router | Send RIP version 2 updates as broadcasts |
+| `no ip rip v2-broadcast` | interface, subinterface | router | Return this setting to its default |
+| `ip rip triggered` | interface, subinterface | router | Send RIP updates only when the table changes |
+| `no ip rip triggered` | interface, subinterface | router | Return this setting to its default |
+| `ip bandwidth-percent eigrp <1-65535> <1-999999>` | interface, subinterface | router | Percent of the bandwidth EIGRP may use |
+| `no ip bandwidth-percent eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Sign EIGRP packets here with MD5 |
+| `no ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication key-chain eigrp <1-65535> WORD` | interface, subinterface | router | The key chain that signs EIGRP packets here |
+| `no ip authentication key-chain eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers <1-254> <1-254>` | interface, subinterface | router | HSRP hello and hold times in seconds |
+| `no standby <0-255> timers` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers msec <15-999> msec <50-3000>` | interface, subinterface | router | HSRP hello and hold times in milliseconds |
+| `no standby <0-255> timers msec` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> authentication [text\|md5 key-string] KEY` | interface, subinterface | router | HSRP authentication string |
+| `no standby <0-255> authentication` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> name WORD` | interface, subinterface | router | A name for the HSRP group |
+| `no standby <0-255> name` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> preempt delay minimum <0-3600>` | interface, subinterface | router | Seconds to wait before taking over |
+| `no standby <0-255> preempt delay minimum` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> mac-address H.H.H` | interface, subinterface | router | The virtual MAC address of the HSRP group |
+| `no standby <0-255> mac-address` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> follow WORD` | interface, subinterface | router | Follow another HSRP group |
+| `no standby <0-255> follow` | interface, subinterface | router | Return this setting to its default |
+| `standby use-bia` | interface, subinterface | router | Use the interface MAC address as the virtual one |
+| `no standby use-bia` | interface, subinterface | router | Return this setting to its default |
+| `vrrp <1-255> description TEXT` | interface, subinterface | router | A note on the VRRP group |
+| `no vrrp <1-255> description` | interface, subinterface | router | Return this setting to its default |
 | `ipv6 access-list WORD` | config | router, switch | Create or edit an IPv6 access list |
 | `no ipv6 access-list WORD` | config | router, switch | Delete an IPv6 access list |
 | `permit {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Allow matching packets |

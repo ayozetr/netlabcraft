@@ -617,6 +617,7 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, " maximum-paths {n}");
         }
         let _ = writeln!(s, "{}", if e.auto_summary { " auto-summary" } else { " no auto-summary" });
+        crate::exec::knobs::proto_lines(&mut s, d, "eigrp");
         let _ = writeln!(s, "!");
     }
     crate::exec::bgp::running_config(&mut s, d);
@@ -642,6 +643,7 @@ pub fn running_config(d: &Device) -> String {
         if let Some([u, i, h, f]) = r.timers {
             let _ = writeln!(s, " timers basic {u} {i} {h} {f}");
         }
+        crate::exec::knobs::proto_lines(&mut s, d, "rip");
         let _ = writeln!(s, "!");
     }
     if d.kind == DeviceKind::Switch

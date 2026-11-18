@@ -20,6 +20,7 @@ mod inspections;
 mod interface_counters;
 mod ipsec_crypto;
 mod knobs;
+mod knobs_routing;
 mod leftovers;
 mod line_protocol;
 mod nat_timeouts;
