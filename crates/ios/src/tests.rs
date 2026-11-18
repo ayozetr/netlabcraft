@@ -15,6 +15,7 @@ mod bgp_peer_groups;
 mod bgp_reflection;
 mod console_depth;
 mod debug_framework;
+mod debug_topics;
 mod error_counters;
 mod families;
 mod ike_rsa;
