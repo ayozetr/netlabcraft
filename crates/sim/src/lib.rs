@@ -110,6 +110,26 @@ pub const DEFAULT_CLOCK: i64 = 1_767_225_600;
 /// Most messages a logging buffer keeps.
 pub const MAX_LOG: usize = 256;
 pub const MAC_AGING_US: u64 = 300 * 1_000_000;
+
+/// The number a console setting kept in the device's global settings ends with (`cdp timer 20`
+/// is 20), if the setting is there and does not start with `no`.
+pub fn knob_number(d: &Device, key: &str) -> Option<u64> {
+    let line = d.knobs.global.get(key)?;
+    if line.starts_with("no ") {
+        return None;
+    }
+    line.split_whitespace().last().and_then(|w| w.parse().ok())
+}
+
+/// How long a learned MAC address stays in the table: `mac address-table aging-time` seconds
+/// (0 never ages an address), else five minutes.
+pub fn mac_aging_us(d: &Device) -> u64 {
+    match knob_number(d, "mac address-table aging-time").or_else(|| knob_number(d, "mac-address-table aging-time")) {
+        Some(0) => u64::MAX,
+        Some(secs) => secs.saturating_mul(1_000_000),
+        None => MAC_AGING_US,
+    }
+}
 pub const ARP_AGING_US: u64 = 4 * 3_600 * 1_000_000;
 /// How long a host keeps a packet waiting for an ARP reply, and how often it re-asks.
 const ARP_WAIT_US: u64 = 2_000_000;
@@ -815,7 +835,38 @@ pub fn route_with(
     {
         return None;
     }
+    // Without `ip classless`, a default route does not carry traffic for a classful network of
+    // which the router knows some subnet: the unknown subnet is unreachable.
+    if let Some((0, ..)) = &best
+        && d.knobs.is_off("ip classless")
+    {
+        let major = classful_net(dst);
+        let known = ifs
+            .iter()
+            .map(|i| i.net)
+            .chain(d.routes.iter().map(|r| r.net))
+            .chain(eigrp_routes.iter().map(|r| r.net))
+            .chain(ospf_routes.iter().map(|r| r.net))
+            .chain(rip_routes.iter().map(|r| r.net))
+            .chain(bgp_routes.iter().map(|r| r.net));
+        if known.into_iter().any(|n| n.prefix > 0 && major.contains(n.addr)) {
+            return None;
+        }
+    }
     best.map(|(_, _, i, nh)| (i, nh))
+}
+
+/// The classful network (A, B or C) an address falls in.
+fn classful_net(a: Ipv4Addr) -> Ipv4Net {
+    let first = a.octets().first().copied().unwrap_or(0);
+    let prefix = if first < 128 {
+        8
+    } else if first < 192 {
+        16
+    } else {
+        24
+    };
+    Ipv4Net::new(a, prefix).network()
 }
 
 /// A learned ARP binding.
@@ -957,6 +1008,14 @@ pub struct DevState {
     icmp6: Vec<v6::Icmp6Event>,
     /// `clock set`: Unix seconds at simulated time zero, when someone set the clock.
     clock_base: Option<i64>,
+    /// When the last destination-unreachable message went out (`ip icmp rate-limit unreachable`).
+    last_unreachable_us: Option<u64>,
+    /// Messages numbered so far (`service sequence-numbers`).
+    log_seq: u64,
+    /// The second `logging rate-limit` is counting in, and the messages let through in it.
+    log_rate: (u64, u32),
+    /// Messages `logging rate-limit` held back.
+    pub log_held_back: u64,
     /// The logging buffer (`show logging`): (simulated µs, message).
     pub log: VecDeque<(u64, String)>,
     /// Messages waiting to be printed on the device's console.
@@ -1374,17 +1433,36 @@ impl Sim {
     pub(crate) fn log_at(&mut self, d: DeviceId, msg: &str, sev: u8) {
         let (unix, _) = self.clock(d);
         let cfg = self.log_cfg.get(&d).copied().unwrap_or_default();
-        let line = format!("{} {msg}", logcfg::stamp(unix, self.now, if sev == 7 { cfg.ts_debug } else { cfg.ts_log }));
+        let mut line = format!("{} {msg}", logcfg::stamp(unix, self.now, if sev == 7 { cfg.ts_debug } else { cfg.ts_log }));
         let now = self.now;
         let st = self.st(d);
+        if sev <= cfg.trap && st.syslog_out.len() < MAX_LOG {
+            st.syslog_out.push(msg.to_string());
+        }
+        // `logging rate-limit N [except LEVEL]`: no more than N messages a second reach the
+        // buffer, the console and the monitor sessions, apart from the severe ones.
+        if let Some((limit, except)) = cfg.rate
+            && sev > except
+        {
+            let second = now / 1_000_000;
+            if st.log_rate.0 != second {
+                st.log_rate = (second, 0);
+            }
+            if st.log_rate.1 >= limit {
+                st.log_held_back = st.log_held_back.saturating_add(1);
+                return;
+            }
+            st.log_rate.1 += 1;
+        }
+        if cfg.seq {
+            st.log_seq = st.log_seq.saturating_add(1);
+            line = format!("#{:06} {line}", st.log_seq);
+        }
         if sev <= cfg.buffered {
             if st.log.len() >= MAX_LOG {
                 st.log.pop_front();
             }
             st.log.push_back((now, line.clone()));
-        }
-        if sev <= cfg.trap && st.syslog_out.len() < MAX_LOG {
-            st.syslog_out.push(msg.to_string());
         }
         if sev <= cfg.monitor {
             if st.monitor.len() >= MAX_LOG {
@@ -2761,7 +2839,7 @@ impl Sim {
         let known = if f.dst.is_group() {
             None
         } else {
-            st.macs.get(&(vlan.get(), f.dst)).filter(|e| now.saturating_sub(e.learned_us) < MAC_AGING_US).map(|e| e.port)
+            st.macs.get(&(vlan.get(), f.dst)).filter(|e| now.saturating_sub(e.learned_us) < mac_aging_us(d)).map(|e| e.port)
         };
         // The switch's own VLAN interface.
         if in_port.is_some()
@@ -3512,6 +3590,17 @@ impl Sim {
             && d.knobs.iface.get(&ifc.name).and_then(|lines| lines.get("ip unreachables")).is_some_and(|l| l.starts_with("no "))
         {
             return;
+        }
+        // `ip icmp rate-limit unreachable MS`: at most one destination-unreachable message per interval.
+        if matches!(msg, Icmp::Unreachable { .. })
+            && let Some(ms) = knob_number(d, "ip icmp rate-limit unreachable").filter(|ms| *ms > 0)
+        {
+            let now = self.now;
+            let st = self.st(d.id);
+            if st.last_unreachable_us.is_some_and(|last| now.saturating_sub(last) < ms.saturating_mul(1_000)) {
+                return;
+            }
+            st.last_unreachable_us = Some(now);
         }
         let err =
             Ipv4 { id: self.ip_id(), ttl: default_ttl(d.kind), protocol: PROTO_ICMP, src: ifc.net.addr, dst: offending.src, payload: msg.encode() };
