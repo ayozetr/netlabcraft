@@ -136,3 +136,41 @@ fn a_peer_group_hands_its_distribute_list_and_options_to_its_members() {
         "a member writes only what differs: {run}"
     );
 }
+
+#[test]
+fn a_prefix_limit_ends_the_session_unless_it_only_warns() {
+    let (mut lab, r1, r2) = pair();
+    assert!(lab.run(r2, "show ip bgp").contains("172.16.1.0/24"));
+    // The neighbour sends two prefixes: a limit of one is passed.
+    lab.run(r2, "conf t\nrouter bgp 65002\nneighbor 10.0.12.1 maximum-prefix 1\nend");
+    advance(&mut lab, 4);
+    let table = lab.run(r2, "show ip bgp");
+    assert!(!table.contains("172.16.1.0/24") && !table.contains("172.16.2.0/24"), "the session ended: {table}");
+    let sum = lab.run(r2, "show ip bgp summary");
+    assert!(!sum.contains("Established"), "{sum}");
+    let other = lab.run(r1, "show ip bgp neighbors 10.0.12.2");
+    assert!(!other.contains("Established"), "the other end sees it end too: {other}");
+    // A limit that only warns keeps the session.
+    lab.run(r2, "conf t\nrouter bgp 65002\nneighbor 10.0.12.1 maximum-prefix 1 warning-only\nend");
+    advance(&mut lab, 4);
+    assert!(lab.run(r2, "show ip bgp").contains("172.16.2.0/24"), "warning-only");
+    // A limit that is not passed, then none at all.
+    lab.run(r2, "conf t\nrouter bgp 65002\nneighbor 10.0.12.1 maximum-prefix 2\nend");
+    advance(&mut lab, 4);
+    assert!(lab.run(r2, "show ip bgp").contains("172.16.1.0/24"));
+    assert!(!lab.run(r2, "conf t\nrouter bgp 65002\nneighbor 10.0.12.1 maximum-prefix 5").contains("does not change"));
+}
+
+#[test]
+fn a_neighbours_advertised_and_accepted_routes_are_listed() {
+    let (mut lab, r1, r2) = pair();
+    let adv = lab.run(r1, "show ip bgp neighbors 10.0.12.2 advertised-routes");
+    assert!(adv.contains("172.16.1.0/24") && adv.contains("172.16.2.0/24"), "{adv}");
+    let got = lab.run(r2, "show ip bgp neighbors 10.0.12.1 routes");
+    assert!(got.contains("172.16.1.0/24") && got.contains("65001"), "{got}");
+    assert!(lab.try_run(r2, "show ip bgp neighbors 10.0.12.9 routes").starts_with("% No neighbour"));
+    assert!(lab.try_run(r2, "show ip bgp neighbors 10.0.12.9 advertised-routes").starts_with("% No neighbour"));
+    lab.run(r1, "conf t\nrouter bgp 65001\nneighbor 10.0.12.2 shutdown\nend");
+    advance(&mut lab, 2);
+    assert!(lab.run(r1, "show ip bgp neighbors 10.0.12.2 advertised-routes").contains("not Established"));
+}

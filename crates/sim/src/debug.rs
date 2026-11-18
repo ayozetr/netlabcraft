@@ -39,6 +39,8 @@ pub enum DebugKind {
     OspfFlood,
     /// `debug ip ospf packet`: every OSPF packet this router hears.
     OspfPacket,
+    /// `debug ip ospf retransmission`: updates and descriptions sent again.
+    OspfRxmt,
     /// `debug eigrp packets`: the EIGRP packets this router hears.
     Eigrp,
     /// `debug eigrp fsm`: route computations (feasible successors).
@@ -117,6 +119,7 @@ impl DebugKind {
         DebugKind::OspfLsa,
         DebugKind::OspfFlood,
         DebugKind::OspfPacket,
+        DebugKind::OspfRxmt,
         DebugKind::Eigrp,
         DebugKind::EigrpFsm,
         DebugKind::EigrpNeighbors,
@@ -167,6 +170,7 @@ impl DebugKind {
             DebugKind::OspfLsa => ("OSPF LSA", "OSPF LSA generation"),
             DebugKind::OspfFlood => ("OSPF flood", "OSPF flooding"),
             DebugKind::OspfPacket => ("OSPF packet", "OSPF packets"),
+            DebugKind::OspfRxmt => ("OSPF retransmission", "OSPF retransmissions"),
             DebugKind::Eigrp => ("EIGRP", "EIGRP"),
             DebugKind::EigrpFsm => ("EIGRP route", "EIGRP route computations"),
             DebugKind::EigrpNeighbors => ("EIGRP neighbour", "EIGRP neighbours"),

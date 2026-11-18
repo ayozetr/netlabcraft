@@ -131,6 +131,9 @@ fn parse_line(p: Proto, text: &str) -> Result<Redist, String> {
             i += 2;
         } else if lw == "subnets" && p == Proto::Ospf {
             i += 1;
+        } else if lw == "nssa-only" && p == Proto::Ospf {
+            line.nssa_only = true;
+            i += 1;
         } else if lw == "route-map" {
             line.route_map = Some(name_ok(rest.get(i + 1).map_or("", String::as_str))?);
             i += 2;
