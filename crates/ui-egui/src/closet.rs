@@ -1623,7 +1623,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
                     for (id, label) in &far {
                         if ui.button(label).clicked() {
                             let port = app.session.topology.first_free_cord_port(*id).map_or(1, |n| n.saturating_add(1));
-                            app.run("backbone.add", json!({"a": unwire.clone(), "b": {"panel": id, "port": port}}));
+                            app.run("backbone.add", json!({"a": unwire["a"].clone(), "b": {"panel": id, "port": port}}));
                             ui.close();
                         }
                     }
