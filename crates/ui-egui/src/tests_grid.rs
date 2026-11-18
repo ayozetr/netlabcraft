@@ -115,7 +115,7 @@ mod t {
         app.ui.prefs.grid.set_on(GridLevel::Intercity, true);
         assert_eq!(g::snap_xy(app, 33.0, 47.0), (40.0, 40.0));
         app.ui.prefs.grid.set_spacing(GridLevel::Intercity, 1000.0, 500.0);
-        assert_eq!(g::snap_xy(app, 33.0, 47.0), (30.0, 50.0));
+        assert_eq!(g::snap_xy(app, 33.0, 47.0), (30.0, 45.0));
         // A city shows its buildings in metres of one unit each.
         app.run("view.enter_place", json!({"id": 1}));
         app.ui.prefs.grid.set_on(GridLevel::City, true);
