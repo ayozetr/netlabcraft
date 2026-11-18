@@ -85,7 +85,7 @@ Packet Tracer activities (estimated from the public course outlines). Each topic
 how much of what its labs do works here, depth included: a command that is accepted but not
 simulated scores low. The weighted sum then loses points for labs nobody has run: **5 points**
 while no lab book had been run end to end (beta gate 1), and **2 points** now that the
-[lab book](labs/README.md) runs. The 2 points stay because the book is our own (63 labs, not
+[lab book](labs/README.md) runs. The 2 points stay because the book is our own (72 labs, not
 the course's own activities, which can't be copied), so the topics it doesn't exercise can
 still hide surprises. Topics the book exercises are scored from what its labs showed; the
 others from the features and tests alone. The earlier figures (CCNA 2 ~92%, CCNA 3 ~91% in the
