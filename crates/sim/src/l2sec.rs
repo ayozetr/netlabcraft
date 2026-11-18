@@ -220,6 +220,9 @@ impl Sim {
 
     /// A frame for spanning tree (a BPDU) on a switch port: BPDU guard err-disables the port.
     pub(crate) fn l2_bpdu_in(&mut self, t: &Topology, d: &Device, port: usize, f: &Frame) -> Result<(), String> {
+        if f.dst == netlabcraft_wire::udld::UDLD_GROUP {
+            return self.udld_in(d, port, f);
+        }
         // BPDU filter: the port takes no BPDUs at all (nor does BPDU guard see them).
         if f.dst == netlabcraft_wire::control::STP_GROUP && crate::stp::bpdufilter_on(d, port) {
             return Ok(());
@@ -668,6 +671,8 @@ impl Sim {
             self.events.push(PortEvent::Recovered { device: dev, port: i });
             let name = t.device(dev).and_then(|d| d.ports.get(i)).map_or(String::new(), |p| p.name.clone());
             self.log(dev, &format!("{name}: errdisable recovery ({}): the port comes back up", cause.name()));
+            self.udld_shut.remove(&(dev, i));
         }
+        self.udld_check(t);
     }
 }

@@ -52,6 +52,7 @@ pub(crate) mod system;
 pub(crate) mod track;
 pub(crate) mod voice;
 mod vpn;
+pub(crate) mod vrf;
 mod wlan;
 
 /// Lines of history kept per session.
@@ -188,6 +189,8 @@ pub enum Mode {
     Archive,
     /// `S1(config-mst)#`: `spanning-tree mst configuration`.
     MstConfig,
+    /// `R1(config-vrf)#`: `ip vrf NAME`.
+    Vrf(String),
 }
 
 impl Mode {
@@ -243,6 +246,7 @@ impl Mode {
             Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
             Mode::Archive => Modes::ARCHIVE,
             Mode::MstConfig => Modes::MST,
+            Mode::Vrf(_) => Modes::VRF,
         }
     }
 }
@@ -283,6 +287,9 @@ pub struct Cli {
     pub opened_us: Option<u64>,
     /// Simulated time (µs) of the last line typed, for `exec-timeout` and `session-timeout`.
     pub active_us: Option<u64>,
+    /// `router ospf N vrf NAME` and `address-family ipv4 vrf NAME`: the VRF whose process the
+    /// routing mode edits (its commands run on the VRF's copy, see `vrf::dispatch_in_vrf`).
+    pub vrf_ctx: Option<String>,
 }
 
 /// What a block of pasted PEM text is for.
@@ -695,8 +702,10 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Line(_) => format!("{n}(config-line)#"),
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
+        Mode::Bgp if cli.vrf_ctx.is_some() => format!("{n}(config-router-af)#"),
         Mode::Ospf | Mode::Rip | Mode::Eigrp | Mode::Bgp => format!("{n}(config-router)#"),
         Mode::BgpAf6 => format!("{n}(config-router-af)#"),
+        Mode::Vrf(_) => format!("{n}(config-vrf)#"),
         Mode::RouteMap(..) => format!("{n}(config-route-map)#"),
         Mode::Ospf6 | Mode::Eigrp6 | Mode::Rip6 => format!("{n}(config-rtr)#"),
         Mode::Acl6(_) => format!("{n}(config-ipv6-acl)#"),
@@ -1161,6 +1170,10 @@ fn caret(line: &str, word: usize) -> String {
 type R = Result<String, String>;
 
 fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> R {
+    vrf::dispatch_in_vrf(t, sim, dev, cli, line)
+}
+
+fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> R {
     let dbits = t.device(dev).map(|d| device_bits(d, &cli.mode)).ok_or("% That device no longer exists")?;
     let config_bits = t.device(dev).map_or(dbits, |d| device_bits(d, &Mode::Config));
     let words: Vec<&str> = line.split_whitespace().collect();
@@ -1243,6 +1256,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::KeyChainKey(..)
                 | Mode::Archive
                 | Mode::MstConfig
+                | Mode::Vrf(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -1327,6 +1341,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::KeyChain(_)
                 | Mode::Archive
                 | Mode::MstConfig
+                | Mode::Vrf(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
@@ -2727,6 +2742,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowMst
         | Id::ShowMstConfig
         | Id::ShowMstInstance => mst::command(&mut c, spec.id, &args),
+        Id::IpVrf
+        | Id::NoIpVrf
+        | Id::VrfRd
+        | Id::NoVrfRd
+        | Id::VrfRouteTarget
+        | Id::NoVrfRouteTarget
+        | Id::VrfDescription
+        | Id::IpVrfForwarding
+        | Id::NoIpVrfForwarding
+        | Id::IpRouteVrf
+        | Id::NoIpRouteVrf
+        | Id::ShowIpRouteVrf
+        | Id::ShowIpVrf
+        | Id::ShowIpVrfDetail
+        | Id::ShowIpVrfInterfaces
+        | Id::ShowIpArpVrf
+        | Id::PingVrf
+        | Id::PingVrfRepeat
+        | Id::RouterOspfVrf
+        | Id::NoRouterOspfVrf
+        | Id::ShowIpBgpVrf
+        | Id::ShowIpBgpVrfSummary
+        | Id::ShowOspfNeighborVrf
+        | Id::BgpAddressFamilyVrf => vrf::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
@@ -2926,6 +2965,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2RelayTrustAll
         | Id::L2NoRelayTrustAll
         | Id::L2RelayTrusted
+        | Id::StormLevel
+        | Id::NoStormLevel
+        | Id::StormAction
+        | Id::NoStormAction
+        | Id::ShowStormControl
+        | Id::UdldGlobal
+        | Id::NoUdldGlobal
+        | Id::UdldMessageTime
+        | Id::UdldReset
+        | Id::UdldPort
+        | Id::UdldPortAggressive
+        | Id::NoUdldPort
+        | Id::ShowUdld
         | Id::L2NoRelayTrusted => l2sec::command(&mut c, spec.id, &args),
         Id::MonitorSource
         | Id::MonitorSourceVlan
@@ -4739,7 +4791,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::BgpAddressFamily6
         | Id::ShowBgpIpv6Summary
         | Id::BgpExitAddressFamily
-        | Id::BgpAddressFamilyOther => bgp::option_command(&mut c, spec, &args),
+        | Id::BgpAddressFamilyOther => {
+            // A plain address family, or leaving one, ends a VRF's address family.
+            c.cli.vrf_ctx = None;
+            bgp::option_command(&mut c, spec, &args)
+        }
         Id::FlowExportDestination
         | Id::NoFlowExportDestination
         | Id::FlowExportVersion
@@ -5993,22 +6049,26 @@ impl Ctx<'_> {
         if d.is_switchport(r.port) {
             return Err("% This is a switch port: `no switchport` first (multilayer switches), or address a VLAN interface".into());
         }
-        if let Some(l) = d.loopbacks.iter().find(|l| l.ip.is_some_and(|ip| ip.overlaps(net))) {
+        // Addresses may repeat across VRFs: only interfaces of the same table can overlap.
+        let my_name = d.ports.get(r.port).map(|p| r.sub.map_or(p.name.clone(), |s| format!("{}.{s}", p.name))).unwrap_or_default();
+        let my_vrf = d.vrf_of(&my_name);
+        if let Some(l) = d.loopbacks.iter().find(|l| d.vrf_of(&l.name()) == my_vrf && l.ip.is_some_and(|ip| ip.overlaps(net))) {
             return Err(format!("% {} overlaps {}", net.network(), l.name()));
         }
         // VLAN interfaces count too on a switch.
-        if let Some(s) = d.svis.iter().find(|s| s.ip.is_some_and(|ip| ip.overlaps(net))) {
+        if let Some(s) = d.svis.iter().find(|s| d.vrf_of(&format!("Vlan{}", s.vlan)) == my_vrf && s.ip.is_some_and(|ip| ip.overlaps(net))) {
             return Err(format!("% {} overlaps Vlan{}", net.network(), s.vlan));
         }
         // No two interfaces of one router on overlapping subnets.
         for (i, p) in d.ports.iter().enumerate() {
             let others = std::iter::once((None, p.ip)).chain(p.subifs.iter().map(|s| (Some(s.number), s.ip)));
             for (sub, ip) in others {
+                let name = sub.map_or(p.name.clone(), |n| format!("{}.{n}", p.name));
                 if let Some(ip) = ip
                     && !(i == r.port && sub == r.sub)
+                    && d.vrf_of(&name) == my_vrf
                     && ip.overlaps(net)
                 {
-                    let name = sub.map_or(p.name.clone(), |n| format!("{}.{n}", p.name));
                     return Err(format!("% {} overlaps {} on {name}", net.network(), ip.network()));
                 }
             }

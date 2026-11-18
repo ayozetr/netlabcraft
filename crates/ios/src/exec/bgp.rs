@@ -806,6 +806,15 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
     }
 }
 
+/// `show ip bgp vrf NAME [summary]`: the VRF's own BGP simulation.
+pub(super) fn vrf_show(c: &mut Ctx, name: &str, brief: bool) -> R {
+    let dev = c.dev;
+    let (sub, topo) = c.sim.vrf_inner(c.t, name).ok_or_else(|| format!("% VRF {name} does not exist"))?;
+    let view = sub.bgp_state(topo);
+    let d = topo.device(dev).ok_or("% That device no longer exists")?;
+    Ok(if brief { summary(d, &view) } else { table(d, &view) })
+}
+
 /// What the console says after it keeps a setting that changes nothing in the simulation.
 const KEPT: &str = "Accepted: kept in the configuration; it does not change what the simulator does.";
 

@@ -69,6 +69,7 @@ mod shallow_settings;
 mod sla;
 mod span;
 mod srcguard;
+mod storm_udld;
 mod stp_views;
 mod sweep;
 mod swroute;
@@ -77,6 +78,7 @@ mod system_show;
 mod track;
 mod troubleshoot;
 mod usb_stick;
+mod vrf;
 
 struct Lab {
     t: Topology,
@@ -468,6 +470,9 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nroute-map RM permit 10",
                     "en\nconf t\nint lo0",
                     "en\nconf t\nrouter ospf 1",
+                    "en\nconf t\nip vrf V",
+                    "en\nconf t\nip vrf V\nexit\nrouter ospf 1 vrf V",
+                    "en\nconf t\nip vrf V\nexit\nrouter bgp 65001\naddress-family ipv4 vrf V",
                     "en\nconf t\nip access-list extended X",
                     "en\nconf t\nip dhcp pool P",
                     "en\nconf t\ntelephony-service\nmax-dn 4\nmax-ephones 4\nexit\nephone-dn 1",

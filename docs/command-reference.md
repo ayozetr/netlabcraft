@@ -202,6 +202,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer, medium, cable}], console: {port, peer} \| null}]` |
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) \| "console" \| "straight-through" \| "cross-over" \| "fiber-single-mode" \| "fiber-multi-mode" \| "phone" \| "coaxial" \| "serial-dce" \| "serial-dte" \| "octal" \| "iot-custom" \| "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, or (a data cable) a host's USB port (PC, laptop, server: two each, router and switch: one) to a printer, a board, a USB stick, a tablet or a smartphone, the host's port named `USB1`, `USB2` in `a_port` or `b_port` (default: the first free one) and reaching 5 m, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable (a USB device's one port, or "USB1", "USB2" on a host), "Console" on the far device or "Async" on the card's router for an octal cable}` |
+| `link.one_way` | Cut a cable one way | Edit |  | `{"device", "port": "interface", "cut"?: true (default) \| false} → {"port", "cut"}: what this port sends is lost (a cut fibre strand), while what the far end sends still arrives, so the link stays up and only a protocol that checks both directions (UDLD) notices; `cut: false` restores it` |
 | `link.list` | List cables |  |  | `{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables and USB data cables "usb"; octal cables "octal")` |
 | `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "reach": {"max_m", "standard"} \| null, "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
 | `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
@@ -1472,12 +1473,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree transmit hold-count` | config | switch | Return this setting to its default |
 | `spanning-tree etherchannel guard misconfig` | config | switch | Warn about a misconfigured EtherChannel (on) |
 | `no spanning-tree etherchannel guard misconfig` | config | switch | Turn this off (it is on by default) |
-| `udld enable` | config | switch | Detect one-way fibre links on every fibre port |
-| `no udld enable` | config | switch | Return this setting to its default |
-| `udld aggressive` | config | switch | Detect one-way links and shut the port |
-| `no udld aggressive` | config | switch | Return this setting to its default |
-| `udld message time <1-90>` | config | switch | Seconds between UDLD probes |
-| `no udld message time` | config | switch | Return this setting to its default |
 | `udld recovery` | config | switch | Bring a UDLD-disabled port back on a timer |
 | `no udld recovery` | config | switch | Return this setting to its default |
 | `mac address-table aging-time <0-1000000>` | config | switch | Seconds a learned address is kept (0: forever) |
@@ -1534,14 +1529,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no power efficient-ethernet` | interface, subinterface | switch | Return this setting to its default |
 | `channel-protocol {lacp\|pagp}` | interface, subinterface | switch | Protocol that bundles this port |
 | `no channel-protocol {lacp\|pagp}` | interface, subinterface | switch | Return this setting to its default |
-| `udld port` | interface, subinterface | switch | Detect one-way links on this port |
-| `no udld port` | interface, subinterface | switch | Return this setting to its default |
-| `udld port aggressive` | interface, subinterface | switch | Detect one-way links on this port and shut it |
-| `no udld port aggressive` | interface, subinterface | switch | Return this setting to its default |
-| `storm-control {broadcast\|multicast\|unicast} level <0.00-100.00>` | interface, subinterface | switch | Traffic level that starts a storm response |
-| `no storm-control {broadcast\|multicast\|unicast} level` | interface, subinterface | switch | Return this setting to its default |
-| `storm-control action {shutdown\|trap}` | interface, subinterface | switch | What to do when a storm is detected |
-| `no storm-control action {shutdown\|trap}` | interface, subinterface | switch | Return this setting to its default |
+| `storm-control {broadcast\|multicast\|unicast} level {<0.00-100.00>\|bps N\|pps N} [FALLING]` | interface, subinterface | switch | Level of this kind of traffic (percent of the link, bits or packets a second) above which the excess is dropped; a second level says when the storm ends |
+| `no storm-control {broadcast\|multicast\|unicast} level` | interface, subinterface | switch | No limit for this kind of traffic |
+| `storm-control action {shutdown\|trap}` | interface, subinterface | switch | Err-disable the port, or log the storm, when a level is passed |
+| `no storm-control action {shutdown\|trap}` | interface, subinterface | switch | Only drop the excess |
+| `no storm-control action` | interface, subinterface | switch | Only drop the excess |
+| `udld {enable\|aggressive}` | config | switch | Run UDLD on every port that has no setting of its own (aggressive also shuts a port whose neighbour falls silent) |
+| `no udld {enable\|aggressive}` | config | switch | Stop running UDLD on the ports that have no setting of their own |
+| `udld message time <1-90>` | config | switch | Seconds between UDLD probes (15 by default) |
+| `udld reset` | privileged | switch | Bring back the ports UDLD shut down |
+| `udld port` | interface, subinterface | switch | Detect one-way links on this port: probes are sent and heard, and a one-way link shuts the port |
+| `udld port aggressive` | interface, subinterface | switch | As `udld port`, and a neighbour that was heard and goes silent shuts the port too |
+| `no udld port` | interface, subinterface | switch | No UDLD on this port, whatever the switch-wide setting says |
+| `no udld port aggressive` | interface, subinterface | switch | No UDLD on this port, whatever the switch-wide setting says |
+| `show udld` | user, privileged | switch | Each UDLD port, its neighbour and whether the link works both ways |
+| `show udld <interface>` | user, privileged | switch | One port's UDLD state |
+| `show storm-control` | user, privileged | switch | Each port's storm-control levels and what it measured |
+| `show storm-control <interface>\|broadcast\|multicast\|unicast` | user, privileged | switch | One port's, or one kind of traffic's, storm-control state |
 | `switchport protected` | interface, subinterface | switch | Do not forward to other protected ports |
 | `no switchport protected` | interface, subinterface | switch | Return this setting to its default |
 | `switchport block {unicast\|multicast}` | interface, subinterface | switch | Do not flood unknown traffic out of this port |
@@ -1816,6 +1820,32 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
 | `spanning-tree mode {pvst\|rapid-pvst\|mst}` | config | switch | Classic (30 s to forward), rapid, or multiple spanning tree |
+| `ip vrf NAME` | config | router, switch | Define a VRF and edit it: its own routing and ARP tables |
+| `no ip vrf NAME` | config | router, switch | Delete a VRF; its interfaces go back to the global table |
+| `rd ASN:NN\|A.B.C.D:NN` |  | router, switch | The route distinguisher that makes this VRF's prefixes unique |
+| `no rd` |  | router, switch | Remove the route distinguisher |
+| `route-target {import\|export\|both} ASN:NN\|A.B.C.D:NN` |  | router, switch | A route target this VRF imports or exports (kept and shown; VRF-lite does not move routes with it) |
+| `no route-target {import\|export\|both} ASN:NN\|A.B.C.D:NN` |  | router, switch | Remove a route target |
+| `description TEXT` |  | router, switch | Describe the VRF |
+| `ip vrf forwarding NAME` | interface, subinterface | router, switch | Put this interface in a VRF (its IPv4 address is removed) |
+| `no ip vrf forwarding` | interface, subinterface | router, switch | Back to the global table (its IPv4 address is removed) |
+| `ip route vrf NAME A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>]` | config | router, switch | Add a static route to a VRF's table |
+| `no ip route vrf NAME A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route of a VRF |
+| `no ip route vrf NAME A.B.C.D MASK` | config | router, switch | Remove the static routes of a VRF to a network |
+| `show ip route vrf NAME` | user, privileged | router, switch | A VRF's routing table |
+| `show ip vrf` | user, privileged | router, switch | The VRFs: route distinguisher and interfaces |
+| `show ip vrf brief` | user, privileged | router, switch | The VRFs: route distinguisher and interfaces |
+| `show ip vrf detail` | user, privileged | router, switch | Every VRF with its route targets, interfaces and protocols |
+| `show ip vrf interfaces` | user, privileged | router, switch | Each VRF interface, its address and VRF |
+| `show ip arp vrf NAME` | user, privileged | router, switch | A VRF's ARP table |
+| `ping vrf NAME A.B.C.D` | user, privileged | router, switch | Send echo requests through a VRF |
+| `ping vrf NAME A.B.C.D [repeat <1-1000>] [size <36-18024>] [source A.B.C.D] [timeout <0-3600>]` | user, privileged | router, switch | Send echo requests through a VRF with options |
+| `router ospf <1-65535> vrf NAME` | config | router, switch | Start or configure the OSPF process of a VRF |
+| `no router ospf <1-65535> vrf NAME` | config | router, switch | Remove the OSPF process of a VRF |
+| `show ip bgp vrf NAME` | user, privileged | router, switch | The BGP table of a VRF |
+| `show ip bgp vrf NAME summary` | user, privileged | router, switch | The BGP sessions of a VRF |
+| `show ip ospf neighbor vrf NAME` | user, privileged | router, switch | The OSPF neighbours of a VRF |
+| `address-family ipv4 vrf NAME` |  | router, switch | Configure BGP inside a VRF |
 | `spanning-tree mst configuration` | config | switch | Edit the multiple spanning tree region: name, revision and which VLANs each instance holds |
 | `no spanning-tree mst configuration` | config | switch | Empty the region's name, revision and instance table |
 | `name NAME` |  | switch | Name the region (switches share a region only with the same name) |
@@ -1901,14 +1931,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show spanning-tree brief` | user, privileged | switch | One line per VLAN: the root, its cost, the root port and how many ports forward, learn or block |
 | `show spanning-tree detail` | user, privileged | switch | Every VLAN's tree, port by port |
 | `show spanning-tree interface <interface>` | user, privileged | switch | One port's role and state in every VLAN, and its protection settings (`detail` after the port: each VLAN in full) |
-| `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
-| `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
+| `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Bring ports shut for this reason back by themselves |
+| `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
 | `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |
 | `no errdisable recovery interval` | config | switch | Back to 300 seconds |
 | `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
 | `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
-| `errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Shut ports for this cause again (detection is on unless turned off) |
-| `no errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Stop shutting ports for this cause: the frame is still dropped, the port stays up |
+| `errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Shut ports for this cause again (detection is on unless turned off) |
+| `no errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Stop shutting ports for this cause: the frame is still dropped, the port stays up |
 | `show errdisable detect` | user, privileged | switch | Which causes shut a port |
 | `monitor session <1-66> source interface <interfaces> [both\|rx\|tx]` | config | switch | Copy the frames that enter or leave these ports (ranges such as `fa0/1 - 3, fa0/5` work) to the session's destination |
 | `monitor session <1-66> source vlan <1-4094>[,-] [both\|rx\|tx]` | config | switch | Copy the frames of these VLANs, on every port, to the session's destination |
