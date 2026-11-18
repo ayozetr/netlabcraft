@@ -118,6 +118,9 @@ pub struct Effects {
     /// The loudest thing playing (dB) and its pitch (Hz); 0: silence.
     pub sound_db: u32,
     pub sound_hz: u32,
+    /// The light of the brightest lamp, in percent of the room's light (a smart LED's brightness
+    /// scales its 70); `None`: the lamps shine at their usual 70.
+    pub lamp_percent: Option<u32>,
     /// The wind outside (kph); it speeds up what an open window lets in or out. 0: still air.
     pub wind_kph: u32,
 }
@@ -189,7 +192,8 @@ impl Climate {
     fn light_level(&self, e: &Environment, fx: &Effects) -> i64 {
         let day = i64::from(e.outside_light);
         let through = if fx.windows_open > 0 { day * 3 / 4 } else { 0 };
-        (day / 4 + through + if fx.lamps > 0 { 70 } else { 0 }).clamp(0, 100)
+        let lamp = if fx.lamps > 0 { i64::from(fx.lamp_percent.unwrap_or(70).min(100)) } else { 0 };
+        (day / 4 + through + lamp).clamp(0, 100)
     }
 
     /// One second of simulated time.
@@ -312,6 +316,21 @@ mod tests {
         run(&mut c, &e, &Effects::default(), 20_000);
         assert_eq!(c.reading("temperature"), Some(10));
         assert_eq!(c.temperature_m, 10_000, "it arrives exactly, no stall and no overshoot");
+    }
+
+    #[test]
+    fn a_dimmed_lamp_lights_the_room_less() {
+        let e = Environment { enabled: true, outside_light: 0, ..Environment::default() };
+        let light = |fx: Effects| {
+            let mut c = Climate::from_settings(&e);
+            c.step_second(&e, &fx);
+            c.light
+        };
+        assert_eq!(light(Effects { lamps: 1, ..Effects::default() }), 70, "a lamp as before");
+        assert_eq!(light(Effects { lamps: 1, lamp_percent: Some(70), ..Effects::default() }), 70);
+        assert_eq!(light(Effects { lamps: 1, lamp_percent: Some(21), ..Effects::default() }), 21, "a smart LED at 30 %");
+        assert_eq!(light(Effects { lamps: 1, lamp_percent: Some(0), ..Effects::default() }), 0, "switched on at 0 %");
+        assert_eq!(light(Effects { lamp_percent: Some(50), ..Effects::default() }), 0, "no lamp, no light");
     }
 
     #[test]
