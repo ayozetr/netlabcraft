@@ -80,9 +80,9 @@ mod wlan_page;
 #[cfg(test)]
 mod tests;
 mod tests_closet;
-mod tests_grid;
 mod tests_environments;
 mod tests_families;
+mod tests_grid;
 #[cfg(test)]
 mod tests_prefs;
 mod tests_prefs2;
