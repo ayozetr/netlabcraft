@@ -132,7 +132,11 @@ mod t {
         key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
         assert!(!h.state().ui.physical.menu.open, "Esc closes it");
         assert!(h.state().session.topology.physical.furniture.is_empty());
+        // Esc gives up the focus, as it does everywhere: take it back to use the keyboard again.
+        h.get_by_label("Create New…").focus();
+        h.run_steps(2);
         key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
+        assert!(h.state().ui.physical.menu.open);
         key(&mut h, egui::Key::ArrowDown, egui::Modifiers::NONE);
         key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
         let made = h.state().session.topology.physical.furniture.clone();

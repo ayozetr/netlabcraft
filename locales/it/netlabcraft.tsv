@@ -144,7 +144,6 @@
 	address or device name	indirizzo o nome del dispositivo
 	Address pool (network/prefix)	Pool di indirizzi (rete/prefisso)
 	Address {} · gateway {}	Indirizzo {} · gateway {}
-	Adds a place to the map shown; drag it into position	Aggiunge un luogo alla mappa mostrata; trascinalo in posizione
 	After a delay	Dopo un ritardo
 	Agent address	Indirizzo dell'agent
 	Agents and scripts drive NetLabCraft through	Agenti e script pilotano NetLabCraft tramite
@@ -1839,7 +1838,6 @@ event	write request for	richiesta di scrittura di
 	Selection	Selezione
 	Show Event List	Mostra elenco eventi
 	Simulation Back	Simulazione indietro
-	{} is not available at this level of the Physical view.	{} non è disponibile a questo livello della vista fisica.
 	Automatically Choose Connection Type	Scegli automaticamente il tipo di connessione
 	Single Mode Fiber	Fibra monomodale
 	Multi Mode Fiber	Fibra multimodale

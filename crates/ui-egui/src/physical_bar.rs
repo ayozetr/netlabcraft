@@ -241,15 +241,33 @@ pub fn create_button(app: &mut PacketApp, ui: &mut egui::Ui) {
             .fixed_pos(r.right_bottom() + vec2(0.0, 3.0))
             .show(ui.ctx(), |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(280.0);
+                    ui.set_min_width(330.0);
                     for (i, what) in items.iter().enumerate() {
-                        let mut b = egui::Button::new(tl(what.label())).selected(i == sel).min_size(vec2(268.0, 24.0));
-                        if let Some(act) = what.act() {
-                            b = b.shortcut_text(shortcuts::text(act));
-                        }
-                        let rb = ui.add(b);
+                        let name = tl(what.label());
+                        let (row, rb) = ui.allocate_exact_size(vec2(318.0, 26.0), Sense::click());
+                        rb.widget_info(|| WidgetInfo::labeled(egui::accesskit::Role::Button, true, name));
                         if rb.hovered() {
                             sel = i;
+                        }
+                        let p = ui.painter_at(row);
+                        if i == sel {
+                            p.rect_filled(row, 4.0, ui.visuals().selection.bg_fill);
+                        }
+                        p.text(
+                            row.left_center() + vec2(8.0, 0.0),
+                            Align2::LEFT_CENTER,
+                            name,
+                            egui::FontId::proportional(15.0),
+                            ui.visuals().text_color(),
+                        );
+                        if let Some(act) = what.act() {
+                            p.text(
+                                row.right_center() - vec2(8.0, 0.0),
+                                Align2::RIGHT_CENTER,
+                                shortcuts::text(act),
+                                egui::FontId::proportional(13.0),
+                                ui.visuals().weak_text_color(),
+                            );
                         }
                         if rb.clicked() {
                             chosen = Some(*what);

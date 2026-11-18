@@ -144,7 +144,6 @@
 	address or device name	地址或设备名称
 	Address pool (network/prefix)	地址池（网络/前缀）
 	Address {} · gateway {}	地址 {} · 网关 {}
-	Adds a place to the map shown; drag it into position	在显示的地图上添加一个地点；将其拖到合适位置
 	After a delay	延迟后
 	Agent address	代理地址
 	Agents and scripts drive NetLabCraft through	代理和脚本通过以下方式控制 NetLabCraft
@@ -1839,7 +1838,6 @@ event	write request for	写请求
 	Selection	选择
 	Show Event List	显示事件列表
 	Simulation Back	模拟后退
-	{} is not available at this level of the Physical view.	{} 在物理视图的此层级不可用。
 	Automatically Choose Connection Type	自动选择连接类型
 	Single Mode Fiber	单模光纤
 	Multi Mode Fiber	多模光纤

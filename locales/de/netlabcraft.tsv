@@ -144,7 +144,6 @@
 	address or device name	Adresse oder Gerätename
 	Address pool (network/prefix)	Adresspool (Netz/Präfix)
 	Address {} · gateway {}	Adresse {} · Gateway {}
-	Adds a place to the map shown; drag it into position	Fügt der gezeigten Karte einen Ort hinzu; in Position ziehen
 	After a delay	Nach einer Verzögerung
 	Agent address	Agent-Adresse
 	Agents and scripts drive NetLabCraft through	Agenten und Skripte steuern NetLabCraft über
@@ -1839,7 +1838,6 @@ event	write request for	Schreibanfrage für
 	Selection	Auswahl
 	Show Event List	Ereignisliste anzeigen
 	Simulation Back	Simulation zurück
-	{} is not available at this level of the Physical view.	{} ist auf dieser Ebene der physischen Ansicht nicht verfügbar.
 	Automatically Choose Connection Type	Verbindungstyp automatisch wählen
 	Single Mode Fiber	Singlemode-Glasfaser
 	Multi Mode Fiber	Multimode-Glasfaser
