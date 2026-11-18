@@ -17,8 +17,8 @@ use netlabcraft_wire::x509::{self, Certificate, Crl, Request};
 
 use super::{Ctx, Mode, Outcome, Paste, PasteKind, R};
 use crate::grammar::Id;
-use netlabcraft_sim::Sim;
 use netlabcraft_sim::pki::ReqState;
+use netlabcraft_sim::{DebugKind, Sim};
 
 /// The key size an unqualified `crypto key generate rsa` and a new CA use.
 pub const DEFAULT_BITS: usize = 1024;
@@ -450,9 +450,15 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
                 let Some(r) = c.sim.pki_requests(c.dev).into_iter().find(|r| r.id == n) else { continue };
                 if grant {
                     let cert = simpki::sign_request(c.d()?, now, &r.der, n)?;
+                    c.sim.debug_log(
+                        c.dev,
+                        DebugKind::CryptoPki,
+                        &format!("request {n} for {} granted: certificate {}", r.subject, hex(&cert.serial)),
+                    );
                     let _ =
                         writeln!(out, "Request {n} for {} granted; its certificate (serial {}):\n{}", r.subject, hex(&cert.serial), cert.to_pem());
                 } else {
+                    c.sim.debug_log(c.dev, DebugKind::CryptoPki, &format!("request {n} for {} rejected", r.subject));
                     let _ = writeln!(out, "Request {n} for {} rejected.", r.subject);
                 }
             }
@@ -482,6 +488,7 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
             sv.crl_number = sv.crl_number.saturating_add(1);
             let number = sv.crl_number;
             c.sim.pki_forget(c.dev, &gone);
+            c.sim.debug_log(c.dev, DebugKind::CryptoPki, &format!("certificate {hexed} revoked: revocation list number {number} published"));
             Ok(format!(
                 "Certificate {hexed} revoked; revocation list number {number} is published at {} (`crypto pki crl request`).",
                 simpki::CRL_PATH
@@ -757,6 +764,11 @@ fn enroll(c: &mut Ctx<'_>, name: &str, now: i64) -> R {
         when(cert.not_before),
         when(cert.not_after)
     );
+    c.sim.debug_log(
+        c.dev,
+        DebugKind::CryptoPki,
+        &format!("trustpoint {name} enrolled: certificate {} for {}", hex(&cert.serial), cert.subject.text()),
+    );
     Ok(note.trim_end().to_string())
 }
 
@@ -771,6 +783,7 @@ fn authenticate(c: &mut Ctx<'_>, name: &str) -> R {
             }
             let tpm = c.dm()?.pki.trustpoints.iter_mut().find(|t| t.name == name).ok_or("% The trustpoint was deleted")?;
             tpm.ca_certificate = ca.to_pem();
+            c.sim.debug_log(c.dev, DebugKind::CryptoPki, &format!("trustpoint {name} trusts the CA {}", ca.subject.text()));
             Ok(format!("Trusting the CA certificate of {} (fingerprint {}).", ca.subject.text(), simpki::fingerprint(&ca)))
         }
         Enrollment::Terminal => {
@@ -801,7 +814,13 @@ fn crl_request(c: &mut Ctx<'_>, name: &str, now: i64) -> R {
     let ca = Certificate::from_pem(&tp.ca_certificate).map_err(|_| format!("% Authenticate the CA first: `crypto pki authenticate {name}`"))?;
     let answer = ask(c, url, "GET", simpki::CRL_PATH, "")?;
     let crl = Crl::from_pem(&answer).map_err(|e| format!("% The CA's answer is not a revocation list: {e}"))?;
-    store_crl(c.t, c.dev, name, &ca, &crl, now)
+    let stored = store_crl(c.t, c.dev, name, &ca, &crl, now)?;
+    c.sim.debug_log(
+        c.dev,
+        DebugKind::CryptoPki,
+        &format!("trustpoint {name} holds revocation list number {} with {} revoked", crl.number, crl.revoked().len()),
+    );
+    Ok(stored)
 }
 
 /// Keeps a CRL in a trustpoint when its CA issued it.
@@ -858,10 +877,14 @@ pub(crate) fn paste_done(t: &mut Topology, sim: &mut Sim, dev: DeviceId, p: Past
     let now = sim.clock(dev).0;
     match paste_apply(t, sim, dev, &p, now) {
         Ok(output) => {
+            sim.debug_log(dev, DebugKind::CryptoPki, &format!("the pasted text for {} was accepted", p.name));
             sim.topology_changed(t);
             Outcome { output, changed: true, clear: false }
         }
-        Err(output) => Outcome { output, ..Outcome::default() },
+        Err(output) => {
+            sim.debug_log(dev, DebugKind::CryptoPki, &format!("the pasted text for {} was refused: {}", p.name, output.trim_start_matches("% ")));
+            Outcome { output, ..Outcome::default() }
+        }
     }
 }
 

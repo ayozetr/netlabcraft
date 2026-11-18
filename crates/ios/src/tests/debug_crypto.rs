@@ -3,6 +3,7 @@
 //! off.
 
 use netlabcraft_core::DeviceId;
+use netlabcraft_model::DeviceKind;
 
 use super::{Lab, ping_settled, two_sites};
 
@@ -91,4 +92,46 @@ fn pki_debugging_reports_the_certificate_checks_of_ike() {
     );
     lab.run(r1, "no debug crypto pki");
     assert!(lab.run(r1, "show debugging").contains("No debugging is on"));
+}
+
+#[test]
+fn pki_debugging_reports_enrollment_and_revocation() {
+    let mut lab = Lab::new();
+    let ca = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    lab.cable(ca, "g0/0", r2, "g0/0");
+    lab.run(
+        ca,
+        "en\nconf t\nhostname CA1\nint g0/0\nip address 10.0.0.1 255.255.255.0\nno shut\nexit\nip http server\ncrypto pki server LABCA\nissuer-name CN=Lab Root CA, O=NetLab\nno shutdown\nend",
+    );
+    lab.run(
+        r2,
+        "en\nconf t\nhostname Edge\nint g0/0\nip address 10.0.0.2 255.255.255.0\nno shut\nexit\ncrypto pki trustpoint LAB\nenrollment url http://10.0.0.1\nsubject-name CN=edge.lab.test\nexit\nend",
+    );
+    lab.run(r2, "debug crypto pki");
+    lab.run(ca, "debug crypto pki");
+    lab.run(r2, "conf t\ncrypto pki authenticate LAB\ncrypto pki enroll LAB\nend");
+    lab.run(ca, "conf t\ncrypto pki server LABCA grant all");
+    lab.run(r2, "conf t\ncrypto pki enroll LAB\nend");
+    let edge = lab.run(r2, "show logging");
+    assert!(edge.contains("PKI debug: trustpoint LAB trusts the CA CN=Lab Root CA, O=NetLab"), "{edge}");
+    assert!(edge.contains("PKI debug: trustpoint LAB enrolled: certificate "), "{edge}");
+    let granted = lab.run(ca, "end\nshow logging");
+    assert!(granted.contains("PKI debug: request 1 for CN=edge.lab.test granted: certificate "), "{granted}");
+    let serial = netlabcraft_sim::pki::serial_hex(
+        &netlabcraft_wire::x509::Certificate::from_pem(&lab.t.device(r2).unwrap().pki.trustpoint("LAB").unwrap().certificate).unwrap().serial,
+    );
+    lab.run(ca, &format!("conf t\ncrypto pki server LABCA revoke {serial}\nend"));
+    assert!(lab.run(ca, "show logging").contains(&format!("PKI debug: certificate {serial} revoked: revocation list number 1 published")));
+    // Pasted text that is refused is reported with the reason; off, nothing more is said.
+    lab.run(r2, "conf t\ncrypto pki trustpoint HAND\nenrollment terminal\nexit\ncrypto pki authenticate HAND\nnot a certificate");
+    lab.try_run(r2, "quit");
+    lab.run(r2, "end");
+    assert!(lab.run(r2, "show logging").contains("PKI debug: the pasted text for HAND was refused: The pasted text is not a certificate"));
+    lab.run(r2, "no debug crypto pki");
+    let before = lab.run(r2, "show logging");
+    lab.run(r2, "conf t\ncrypto pki authenticate HAND\nstill not a certificate");
+    lab.try_run(r2, "quit");
+    lab.run(r2, "end");
+    assert_eq!(lab.run(r2, "show logging").matches("PKI debug:").count(), before.matches("PKI debug:").count());
 }

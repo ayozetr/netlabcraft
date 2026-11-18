@@ -178,6 +178,9 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-18 | minor | Console sweep: the commands the public courses teach were checked against the grammar; 155 settings are kept and shown, routers and switches resolve host names, router advertisements can be suppressed, BGP gains distribute lists, bestpath settings and activation (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) items 9 and 17). The grammar has 1823 entries (measured:  rows). |
+| 2026-11-18 | minor | IKE `authentication rsa-sig` is real (IKEv1 main mode and IKEv2 IKE_AUTH sign and verify with trustpoint certificates); the console grammar gains `pki trustpoint` in the IKEv2 profile. |
+| 2026-11-18 | minor | The PKI flows of gaps item 3 are done (terminal enrollment, manual grant, revocation lists, host names); the console grammar has 1354 entries. |
+| 2026-11-18 | minor | PEAP's Diffie-Hellman is MODP group 14 (2048 bits) instead of a 61-bit toy group (M9.12). |
 | 2026-11-18 | minor | OSPF NSSA: P bit, Nt bit, forwarding address and `translate type7 always` (see [protocol-parity.md](protocol-parity.md)); percentages not re-scored. |
 | 2026-11-18 | minor | OSPF LSA copies per router, MaxAge flush, SPF counters and throttle timers, `debug ip ospf lsa-generation\|flood\|packet` (see [protocol-parity.md](protocol-parity.md)): 1343 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | Cables are objects, fiber loss budgets and resizable racks and shelves (see [ui-parity.md](ui-parity.md) and [hardware-parity.md](hardware-parity.md)): `link.info`, `link.splices`, `furniture.resize`, `transceiver type` and `show interfaces transceiver`. The Summary is counted again from the code: 220 `c!(` entries in the engine catalog and 1772 `spec!(` rows in the grammar (other changes had added commands since the last count). |
