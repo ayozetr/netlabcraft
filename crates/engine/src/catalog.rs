@@ -542,7 +542,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Board program",
         "",
         None,
-        r#"{"device": programmable board, "source"?: "BoardScript program", "run"?: true|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile is refused with its line"#,
+        r#"{"device": programmable board, "source"?: "program text", "language"?: "boardscript"|"python" (Board SBC)|"javascript" (Board MCU), "run"?: true|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile in its language is refused with its line"#,
         true
     ),
     c!(
@@ -550,7 +550,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Board status",
         "",
         None,
-        r#"{"device": programmable board} → {"program", "run", "state": "not started"|"running"|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}"#,
+        r#"{"device": programmable board} → {"program", "language", "languages", "run", "state": "not started"|"running"|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}"#,
         false
     ),
     c!(
@@ -591,7 +591,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Environments",
         "Options",
         Some("Shift+E"),
-        r#"{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"|"inherited"|"default"|"room", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read."#,
+        r#"{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"|"inherited"|"default"|"room"|"live", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read, "live" what a place holds now where its parts are moving it (environment.physics)."#,
         false
     ),
     c!(
@@ -632,6 +632,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"time"?: "HH:MM:SS" or seconds from midnight (set the time of day now), "paused"?: true|false, "real_minutes"?: 1-1440, "sim_minutes"?: 1-1440 (every `real_minutes` of simulated lab time pass `sim_minutes` in the environment; the time shown does not jump when the ratio changes)} → environment.get. The clock follows the lab's simulated time (it starts at 08:00:00); one undo step when something changes"#,
+        true
+    ),
+    c!(
+        "environment.physics",
+        "Physics of the places",
+        "",
+        None,
+        r#"{"enabled"?: true|false} → {"physics"}: with it on, each place that holds smart things has its own physics: the heaters, air conditioners, fans, furnaces, humidifiers, sprinklers, fire sprinklers, windows and lamps standing in a place change that place's variables by rates (a part moves a variable toward where it settles; the variable covers 63 % of the way in 0.5 to 20 minutes, depending on the variable), the place settles back toward what it sets when the part stops, flames make smoke, carbon monoxide and heat, an open window pulls the place toward the one above it (faster in wind), and a sound fades with the distance to the sensor; environment.get shows what a place holds now as source "live". Off (the default): a running part adds a fixed amount at once, as before; one undo step"#,
         true
     ),
     c!(

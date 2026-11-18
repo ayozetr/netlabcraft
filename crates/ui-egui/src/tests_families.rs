@@ -363,6 +363,23 @@ mod boards {
     }
 
     #[test]
+    fn the_programming_tab_offers_the_languages_of_its_board() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "board"})).unwrap();
+        let b = s.topology.resolve("Board1").unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1300.0, 860.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_console(h.state_mut(), b);
+        h.run_steps(3);
+        assert!(h.query_by_label("Language:").is_some(), "a microcontroller board runs more than one language");
+        assert!(h.query_by_label("Program (BoardScript)").is_some());
+        h.state_mut().session.execute("board.program", json!({"device": "Board1", "language": "javascript", "source": "console.log(1)"})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("Program (JavaScript)").is_some(), "the editor's title follows the language");
+        assert_eq!(h.state().session.topology.device(b).map(|d| d.board.language.id()), Some("javascript"));
+    }
+
+    #[test]
     fn the_programming_tab_runs_and_stops_the_board_and_shows_its_pins() {
         let mut s = Session::new();
         s.execute("file.new", json!({"sample": "board"})).unwrap();

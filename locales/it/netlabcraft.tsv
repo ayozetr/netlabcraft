@@ -1043,6 +1043,18 @@
 	Show All/None	Mostra tutto/niente
 	Show as text	Mostra come testo
 	Show grid	Mostra griglia
+	Grid Preferences	Preferenze della griglia
+	Grid Preferences…	Preferenze della griglia…
+	Grid Scale	Scala della griglia
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Imposta la spaziatura della griglia, in metri, per ogni livello dell'area di lavoro fisica. La griglia di un livello viene disegnata quando la sua casella è selezionata.
+	Grid-X (m)	Griglia X (m)
+	Grid-Y (m)	Griglia Y (m)
+	Generic Container	Contenitore generico
+	A wiring closet has no scale, so it has no grid.	Un armadio di cablaggio non ha scala, quindi non ha griglia.
+	Grid Line Color	Colore delle linee della griglia
+	Select Grid Color	Scegli il colore della griglia
+	Grid color {}	Colore della griglia {}
+	{}: zoom in to see the lines	{}: ingrandisci per vedere le linee
 	Device windows as separate windows	Finestre dei dispositivi separate
 	Not available in the web version	Non disponibile nella versione web
 	shown when it fails	mostrato in caso di errore
@@ -2373,6 +2385,9 @@ furniture	Table	Tavolo
 	Backup written to {}	Backup scritto in {}
 	Application size	Dimensione dell'applicazione
 	Enter the password first: some tabs are locked.	Inserisci prima la password: alcune schede sono bloccate.
+	Port, {}	Porta, {}
+	Language:	Lingua:
+	Program ({})	Programma ({})
 	Up	Attivo
 	Down	Inattivo
 	Properties…	Proprietà…
@@ -2400,3 +2415,5 @@ furniture	Table	Tavolo
 	no clock rate on the DCE end	nessun clock rate sull'estremità DCE
 	the two ends use different encapsulations	le due estremità usano incapsulamenti diversi
 	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
+	Each place has its own physics	Ogni luogo ha la sua fisica
+	Parts change the place they stand in by rates, and the place settles back when they stop	Le parti cambiano il luogo con una velocità e il luogo torna al valore quando si fermano
