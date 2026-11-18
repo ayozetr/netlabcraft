@@ -243,6 +243,10 @@ pub enum Id {
     ServicePasswordEncryption,
     NoServicePasswordEncryption,
     DomainLookup,
+    IpHost,
+    NoIpHost,
+    IpNameServer,
+    NoIpNameServer,
     NoDomainLookup,
     DhcpPool,
     NoDhcpPool,
@@ -4048,6 +4052,29 @@ pub static SPECS: &[Spec] = &[
     spec!(NoBannerMotd, Modes::CONFIG, Modes::BOTH, [K("no"), K("banner"), K("motd")], "Remove the message"),
     spec!(ServicePasswordEncryption, Modes::CONFIG, Modes::BOTH, [K("service"), K("password-encryption")], "Write passwords obscured"),
     spec!(NoServicePasswordEncryption, Modes::CONFIG, Modes::BOTH, [K("no"), K("service"), K("password-encryption")], "Write passwords in clear"),
+    spec!(
+        IpHost,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("host"), Arg("NAME"), Arg("A.B.C.D")],
+        "Give a host name an address this device resolves by itself"
+    ),
+    spec!(NoIpHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("host"), Arg("NAME")], "Forget a host name"),
+    spec!(
+        IpNameServer,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("name-server"), Rest("A.B.C.D [A.B.C.D ...]")],
+        "The DNS servers that resolve host names (the first one is asked)"
+    ),
+    spec!(NoIpNameServer, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("name-server")], "Use no DNS server"),
+    spec!(
+        NoIpNameServer,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("name-server"), Rest("A.B.C.D [A.B.C.D ...]")],
+        "Stop using these DNS servers"
+    ),
     spec!(DomainLookup, Modes::CONFIG, Modes::BOTH, [K("ip"), K("domain-lookup")], "Resolve mistyped commands as host names"),
     spec!(NoDomainLookup, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("domain-lookup")], "Don't resolve mistyped commands"),
     spec!(DhcpPool, Modes::CONFIG, Modes::BOTH, [K("ip"), K("dhcp"), K("pool"), Arg("WORD")], "Create or edit a DHCP pool"),

@@ -21,6 +21,7 @@ mod interface_counters;
 mod ipsec_crypto;
 mod leftovers;
 mod line_protocol;
+mod name_resolution;
 mod nat_timeouts;
 mod nat_verbose;
 mod ospf_areas;

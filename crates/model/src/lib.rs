@@ -1986,6 +1986,13 @@ pub struct Access {
     /// `ip domain-name`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain_name: Option<String>,
+    /// `ip host NAME A.B.C.D`: names this device resolves by itself.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hosts: Vec<(String, Ipv4Addr)>,
+    /// `ip name-server A.B.C.D …`: the DNS servers, the first of which is asked (`Device::dns`
+    /// holds it).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub name_servers: Vec<Ipv4Addr>,
     /// The RSA key size, once `crypto key generate rsa` ran (SSH needs it).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub rsa_bits: Option<u16>,

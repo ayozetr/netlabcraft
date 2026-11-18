@@ -1106,6 +1106,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no banner motd` | config | router, switch | Remove the message |
 | `service password-encryption` | config | router, switch | Write passwords obscured |
 | `no service password-encryption` | config | router, switch | Write passwords in clear |
+| `ip host NAME A.B.C.D` | config | router, switch | Give a host name an address this device resolves by itself |
+| `no ip host NAME` | config | router, switch | Forget a host name |
+| `ip name-server A.B.C.D [A.B.C.D ...]` | config | router, switch | The DNS servers that resolve host names (the first one is asked) |
+| `no ip name-server` | config | router, switch | Use no DNS server |
+| `no ip name-server A.B.C.D [A.B.C.D ...]` | config | router, switch | Stop using these DNS servers |
 | `ip domain-lookup` | config | router, switch | Resolve mistyped commands as host names |
 | `no ip domain-lookup` | config | router, switch | Don't resolve mistyped commands |
 | `ip dhcp pool WORD` | config | router, switch | Create or edit a DHCP pool |
