@@ -68,6 +68,7 @@ pub mod pppoe;
 pub mod proximity;
 pub mod qos;
 pub mod ravpn;
+pub mod track;
 
 pub mod redist;
 pub mod rip;
@@ -566,9 +567,13 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
     }
     if d.routes_ip() {
         for r in &d.routes {
+            if !track::route_usable(t, d, r) {
+                continue;
+            }
+            let permanent = d.track.is_permanent(&r.net, &r.via);
             match &r.via {
                 NextHop::Address(a) => {
-                    if ifs.iter().any(|i| i.net.contains(*a)) {
+                    if permanent || ifs.iter().any(|i| i.net.contains(*a)) {
                         out.push(RouteEntry {
                             code: 'S',
                             net: r.net,
@@ -581,12 +586,13 @@ fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
                     }
                 }
                 NextHop::Interface(n) => {
-                    if let Some(i) = find_iface(&ifs, n) {
+                    let name = find_iface(&ifs, n).map(|i| i.name.clone()).or_else(|| permanent.then(|| n.clone()));
+                    if let Some(name) = name {
                         out.push(RouteEntry {
                             code: 'S',
                             net: r.net,
                             via: None,
-                            iface: Some(i.name.clone()),
+                            iface: Some(name),
                             distance: r.distance.unwrap_or(1),
                             metric: 0,
                             tag: r.tag,
@@ -725,7 +731,7 @@ pub fn route_with(
         }
     }
     for r in &d.routes {
-        if !r.net.contains(dst) {
+        if !r.net.contains(dst) || !track::route_usable(t, d, r) {
             continue;
         }
         match &r.via {

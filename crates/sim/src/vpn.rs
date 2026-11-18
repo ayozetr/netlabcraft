@@ -538,7 +538,10 @@ fn owner<'a>(t: &'a Topology, me: &Device, addr: Ipv4Addr) -> Option<&'a Device>
 fn local_check(d: &Device, e: &CryptoMapEntry) -> Result<(Ipv4Addr, String), String> {
     let peer = e.peer.ok_or_else(|| format!("crypto map {} {} has no peer (`set peer`)", e.map, e.seq))?;
     let ts_name = e.transform_set.as_deref().ok_or_else(|| format!("crypto map {} {} has no transform set", e.map, e.seq))?;
-    d.crypto.transform_set(ts_name).ok_or_else(|| format!("transform set {ts_name} does not exist"))?;
+    let ts = d.crypto.transform_set(ts_name).ok_or_else(|| format!("transform set {ts_name} does not exist"))?;
+    if null_only(ts) {
+        return Err(NULL_ONLY.to_string());
+    }
     // With RSA signatures there is no key to share: the certificates stand in for it.
     let key = match d.crypto.key_for(peer) {
         Some(k) => k.to_string(),
@@ -757,6 +760,16 @@ pub(crate) fn no_cipher(ts: &netlabcraft_model::vpn::TransformSet) -> bool {
     !words.iter().any(|w| ["esp-aes", "esp-des", "esp-3des", "esp-null"].contains(&w.as_str()))
         && words.iter().any(|w| ["esp-sha-hmac", "esp-sha256-hmac", "esp-md5-hmac"].contains(&w.as_str()))
         && ah_integ(ts).is_none()
+}
+
+/// Why a transform set of `esp-null` alone cannot be negotiated.
+pub(crate) const NULL_ONLY: &str = "the transform set is ESP with null encryption and no integrity transform, which protects nothing (RFC 4303 §3.2 needs encryption or integrity: add esp-sha-hmac, esp-sha256-hmac or esp-md5-hmac, or a cipher)";
+
+/// Whether a transform set has `esp-null` and nothing else that protects the packets: no
+/// integrity transform and no AH.
+pub(crate) fn null_only(ts: &netlabcraft_model::vpn::TransformSet) -> bool {
+    let words: Vec<&str> = ts.transforms.iter().filter_map(|t| t.split_whitespace().next()).collect();
+    words.contains(&"esp-null") && !words.iter().any(|w| ["esp-sha-hmac", "esp-sha256-hmac", "esp-md5-hmac"].contains(w) || ah_word(w).is_some())
 }
 
 /// Whether a crypto map entry protects only the payload (`mode transport` in its transform set).
