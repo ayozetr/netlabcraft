@@ -155,7 +155,11 @@ switchport voice vlan 100
 end
 ```
 
+A phone that already holds an address asks the server that gave it, which is not on the
+voice VLAN: let go of the address first.
+
 ```console Phone2
+ipconfig /release
 ipconfig /renew
 ```
 
@@ -186,6 +190,7 @@ end
 ```
 
 ```console Phone2
+ipconfig /release
 ipconfig /renew
 ```
 

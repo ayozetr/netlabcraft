@@ -83,11 +83,9 @@ end
 
 PC1 keeps the address it has until the lease ends. A new client is the one that notices:
 
-```console PC2
-ipconfig /renew
-```
-
 ```verify
+PC2> ipconfig /renew
+  expect: DHCP failed
 ping PC2 192.168.70.1 => failure
 S1# show ip dhcp snooping
   expect: DHCP snooping:            on
