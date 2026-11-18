@@ -235,7 +235,7 @@ pub fn create_button(app: &mut PacketApp, ui: &mut egui::Ui) {
     }
     if app.ui.physical.menu.open {
         let mut sel = app.ui.physical.menu.sel;
-        let area = egui::Area::new(egui::Id::new("create_menu"))
+        let area = egui::Area::new(egui::Id::unique("create_menu"))
             .order(egui::Order::Foreground)
             .pivot(Align2::RIGHT_TOP)
             .fixed_pos(r.right_bottom() + vec2(0.0, 3.0))

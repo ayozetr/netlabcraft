@@ -622,6 +622,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
                 ui.close();
                 return;
             };
+            let working = t.working_closet();
             ui.label(egui::RichText::new(format!("{} ({})", tr(&p.name), tr(p.kind.label()))).strong());
             if ui.button(tl("Open")).clicked() {
                 enter(app, id);
@@ -631,8 +632,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
                 app.ui.physical.renaming = Some((id, p.name.clone()));
                 ui.close();
             }
-            if p.kind == PlaceKind::Closet && ui.add_enabled(t.working_closet() != Some(id), egui::Button::new(tl("Set as Working Closet"))).clicked()
-            {
+            if p.kind == PlaceKind::Closet && ui.add_enabled(working != Some(id), egui::Button::new(tl("Set as Working Closet"))).clicked() {
                 app.run("place.working.set", json!({"id": id}));
                 ui.close();
             }
