@@ -1663,7 +1663,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `spanning-tree vlan <1-4094>[,-] priority <0-61440>` | config | switch | Bridge priority (multiples of 4096) |
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
-| `spanning-tree mode {pvst\|rapid-pvst}` | config | switch | Classic (30 s to forward) or rapid spanning tree |
+| `spanning-tree mode {pvst\|rapid-pvst\|mst}` | config | switch | Classic (30 s to forward), rapid, or multiple spanning tree |
+| `spanning-tree mst configuration` | config | switch | Edit the multiple spanning tree region: name, revision and which VLANs each instance holds |
+| `no spanning-tree mst configuration` | config | switch | Empty the region's name, revision and instance table |
+| `name NAME` |  | switch | Name the region (switches share a region only with the same name) |
+| `revision <0-65535>` |  | switch | The region's revision number |
+| `instance <1-15> vlan <1-4094>[,-]` |  | switch | Map VLANs to an instance (each VLAN is in one instance) |
+| `no instance <1-15>` |  | switch | Delete an instance; its VLANs go back to the common tree |
+| `spanning-tree mst <0-15> priority <0-61440>` | config | switch | Bridge priority in an instance (multiples of 4096) |
+| `no spanning-tree mst <0-15> priority` | config | switch | Back to priority 32768 in an instance |
+| `spanning-tree mst <0-15> root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) of an instance |
+| `spanning-tree mst <0-15> cost <1-200000000>` | interface | switch | Path cost of this port in an instance |
+| `no spanning-tree mst <0-15> cost` | interface | switch | Path cost of this port in an instance from its speed again |
+| `spanning-tree mst <0-15> port-priority <0-240>` | interface | switch | Port priority in an instance (multiples of 16) |
+| `no spanning-tree mst <0-15> port-priority` | interface | switch | Port priority back to 128 in an instance |
+| `show spanning-tree mst` | user, privileged | switch | Every instance's tree on this switch |
+| `show spanning-tree mst configuration` | user, privileged | switch | The region's name, revision, digest and instance table |
+| `show spanning-tree mst <0-15>` | user, privileged | switch | One instance's tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
 | `ip dhcp snooping` | config | switch | Turn DHCP snooping on (then name its VLANs) |
