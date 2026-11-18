@@ -145,6 +145,24 @@ pub struct Aaa {
     pub clients: Vec<AaaClient>,
     #[serde(default)]
     pub users: Vec<AaaUser>,
+    /// The certificate the 802.1X (PEAP) login presents, with its private key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cert: Option<AaaCert>,
+}
+
+/// The certificate of an authentication server: its leaf and the CA certificate that issued
+/// it (PEM; the CA's may be empty), and the RSA key the leaf is for (the two primes in hex, as
+/// `pki::KeyPair` keeps them).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct AaaCert {
+    #[serde(default)]
+    pub certificate: String,
+    #[serde(default)]
+    pub ca_certificate: String,
+    #[serde(default)]
+    pub p: String,
+    #[serde(default)]
+    pub q: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

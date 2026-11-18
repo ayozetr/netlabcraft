@@ -93,7 +93,7 @@ pub(crate) fn wifi_from_params(is_host: bool, p: &Value, old: Option<&Wifi>) -> 
     if !user.is_empty() && !is_host {
         return Err("only hosts log in to an enterprise network; the access point is set to a RADIUS server (`radius_ip`), a controller's WLANs with device.wlan".into());
     }
-    let login = (!user.is_empty()).then_some(WifiLogin { user, password });
+    let login = (!user.is_empty()).then_some(WifiLogin { user, password, ..old.and_then(|o| o.login.clone()).unwrap_or_default() });
     let radius_ip = match text("radius_ip").map(str::trim).filter(|a| !a.is_empty()) {
         Some(a) => Some(parse_ip(a).map_err(|e| format!("`radius_ip`: {e}"))?),
         None => None,
