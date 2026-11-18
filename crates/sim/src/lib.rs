@@ -44,7 +44,6 @@ pub mod dhcpsrv;
 pub mod eigrp;
 pub mod eigrp6;
 pub mod fhrp;
-pub mod track;
 pub mod firewall;
 pub mod hostfw;
 pub mod hsrp;
@@ -68,6 +67,7 @@ pub mod pppoe;
 pub mod proximity;
 pub mod qos;
 pub mod ravpn;
+pub mod track;
 
 pub mod redist;
 pub mod rip;

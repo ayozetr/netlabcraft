@@ -340,7 +340,8 @@ impl Session {
     /// changed, refreshes what follows it: static routes and HSRP and VRRP priorities.
     fn apply_track(&mut self) {
         let now = self.sim.now_us();
-        let changed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| netlabcraft_sim::track::tick(&mut self.topology, now))).unwrap_or(false);
+        let changed =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| netlabcraft_sim::track::tick(&mut self.topology, now))).unwrap_or(false);
         if changed {
             self.changed();
         }

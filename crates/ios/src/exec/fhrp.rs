@@ -188,7 +188,9 @@ fn vrrp_extra(c: &mut Ctx, id: Id, args: &[String]) -> R {
             // A number is a tracked object (`track N …`), else an interface.
             let name = match super::track::object_word(arg(1)) {
                 Some(n) => n.to_string(),
-                None => ifname::parse(arg(1).trim()).map(|n| n.to_string()).ok_or_else(|| format!("% `{}` is not an interface name", arg(1).trim()))?,
+                None => {
+                    ifname::parse(arg(1).trim()).map(|n| n.to_string()).ok_or_else(|| format!("% `{}` is not an interface name", arg(1).trim()))?
+                }
             };
             let dec = if args.len() > 2 {
                 arg(2).trim().parse::<u8>().ok().filter(|n| (1..=254).contains(n)).ok_or("% The decrement is 1-254")?

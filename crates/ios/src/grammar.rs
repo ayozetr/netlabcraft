@@ -1557,7 +1557,13 @@ pub static SPECS: &[Spec] = &[
         IpRoute,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>] [track <1-1000>] [permanent]")],
+        [
+            K("ip"),
+            K("route"),
+            Arg("A.B.C.D"),
+            Arg("MASK"),
+            Rest("<next hop or interface> [distance] [tag <1-4294967295>] [track <1-1000>] [permanent]")
+        ],
         "Add a static route (a distance above the protocol's makes it a backup, a tag labels it, track ties it to a tracked object)"
     ),
     spec!(
