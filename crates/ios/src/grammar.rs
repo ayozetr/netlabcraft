@@ -1719,7 +1719,7 @@ macro_rules! spec {
 
 /// Every command. Order matters only for help listings.
 pub static SPECS: &[Spec] = &[
-    spec!(Enable, Modes::USER, BOTH_FW, [K("enable")], "Turn on privileged commands"),
+    spec!(Enable, EXECS, BOTH_FW, [K("enable")], "Turn on privileged commands"),
     spec!(Disable, Modes::EXEC, BOTH_FW, [K("disable")], "Turn off privileged commands"),
     spec!(Exit, Modes::ANY_MODE, BOTH_FW, [K("exit")], "Leave the current mode"),
     spec!(Logout, EXECS, BOTH_FW, [K("logout")], "End the session"),

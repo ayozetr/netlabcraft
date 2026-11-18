@@ -267,7 +267,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 
 | Command | Modes | Devices | What it does |
 |---|---|---|---|
-| `enable` | user | router, switch, firewall | Turn on privileged commands |
+| `enable` | user, privileged | router, switch, firewall | Turn on privileged commands |
 | `disable` | privileged | router, switch, firewall | Turn off privileged commands |
 | `exit` | user, privileged, config, interface, subinterface, vlan, object | router, switch, firewall | Leave the current mode |
 | `logout` | user, privileged | router, switch, firewall | End the session |

@@ -130,38 +130,26 @@ end
 
 ```verify
 PC1> telnet 192.168.84.1
-  expect: ZZZ
 PC1> teacher
-  expect: ZZZ
 PC1> pt-lab84
-  expect: ZZZ
 PC1> show privilege
-  expect: ZZZ
   expect: level is 15
 PC1> show running-config
-  expect: ZZZ
   expect: aaa authorization exec default
 PC1> reload
-  expect: ZZZ
   expect: Command authorization failed
 PC1> exit
-  expect: ZZZ
 ```
 
 `ops` lands at level 7 although it typed the same kind of password:
 
 ```verify
 PC1> telnet 192.168.84.1
-  expect: ZZZ
 PC1> ops
-  expect: ZZZ
 PC1> ops-lab84
-  expect: ZZZ
 PC1> show privilege
-  expect: ZZZ
   expect: level is 7
 PC1> exit
-  expect: ZZZ
 ```
 
 ## Part 3 — The records
