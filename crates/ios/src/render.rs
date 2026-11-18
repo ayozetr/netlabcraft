@@ -558,10 +558,11 @@ pub fn running_config(d: &Device) -> String {
             if a.nssa {
                 let _ = writeln!(
                     s,
-                    " area {n} nssa{}{}{}{}",
+                    " area {n} nssa{}{}{}{}{}",
                     if a.no_summary { " no-summary" } else { "" },
                     if a.nssa_no_redist { " no-redistribution" } else { "" },
                     if a.nssa_default { " default-information-originate" } else { "" },
+                    if a.nssa_default && a.nssa_default_only { " nssa-only" } else { "" },
                     if a.nssa_translate_always { " translate type7 always" } else { "" }
                 );
             }
@@ -3004,7 +3005,11 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState, spf: Opti
                 line.push_str(", totally stubby (no summary routes from other areas, a default instead)");
             }
             if conf.nssa_default {
-                line.push_str(", sends a type 7 default route into the area");
+                line.push_str(if conf.nssa_default_only {
+                    ", sends a type 7 default route into the area (nssa-only: P bit clear)"
+                } else {
+                    ", sends a type 7 default route into the area"
+                });
             }
             if conf.nssa_no_redist {
                 line.push_str(", keeps its own redistributed routes out of the area (no-redistribution)");

@@ -358,7 +358,7 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
     let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
     match id {
         Id::AreaNssa | Id::NoAreaNssa => {
-            let (mut no_summary, mut originate, mut no_redist, mut always) = (false, false, false, false);
+            let (mut no_summary, mut originate, mut no_redist, mut always, mut only) = (false, false, false, false, false);
             let mut words = rest.split_whitespace();
             while let Some(w) = words.next() {
                 let w = w.to_ascii_lowercase();
@@ -369,6 +369,8 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                         return Err("% translate type7 always".into());
                     }
                     always = true;
+                } else if w == "nssa-only" {
+                    only = true;
                 } else if w.starts_with("no-s") && "no-summary".starts_with(&w) {
                     no_summary = true;
                 } else if w.starts_with("no-r") && "no-redistribution".starts_with(&w) {
@@ -377,7 +379,7 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                     originate = true;
                 } else {
                     return Err(format!(
-                        "% `{w}` is not an NSSA option: no-summary, no-redistribution, default-information-originate or translate type7 always"
+                        "% `{w}` is not an NSSA option: no-summary, no-redistribution, default-information-originate, nssa-only or translate type7 always"
                     ));
                 }
             }
@@ -391,6 +393,7 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 a.nssa_default = originate;
                 a.nssa_no_redist = no_redist;
                 a.nssa_translate_always = always;
+                a.nssa_default_only = only;
             } else if let Some(a) = o.areas.get_mut(&area).filter(|a| a.nssa) {
                 if rest.is_empty() {
                     a.nssa = false;
@@ -398,12 +401,14 @@ pub(super) fn ospf_area_type(c: &mut Ctx, id: Id, args: &[String]) -> R {
                     a.nssa_default = false;
                     a.nssa_no_redist = false;
                     a.nssa_translate_always = false;
+                    a.nssa_default_only = false;
                     a.default_cost = None;
                 } else {
                     a.no_summary &= !no_summary;
                     a.nssa_default &= !originate;
                     a.nssa_no_redist &= !no_redist;
                     a.nssa_translate_always &= !always;
+                    a.nssa_default_only &= !only;
                 }
             }
         }

@@ -1849,7 +1849,7 @@ pub static SPECS: &[Spec] = &[
         [
             K("redistribute"),
             Rest(
-                "{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [tag <0-4294967295>] [subnets] [route-map NAME]"
+                "{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [tag <0-4294967295>] [subnets] [nssa-only] [route-map NAME]"
             )
         ],
         "Advertise the routes another source gave as external routes"
@@ -2680,7 +2680,7 @@ pub static SPECS: &[Spec] = &[
             K("area"),
             Arg("<1-4294967295>"),
             K("nssa"),
-            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+            Rest("[no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]")
         ],
         "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
@@ -2694,7 +2694,7 @@ pub static SPECS: &[Spec] = &[
             K("area"),
             Arg("<1-4294967295>"),
             K("nssa"),
-            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+            Rest("[no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]")
         ],
         "Undo only those options of the NSSA"
     ),
