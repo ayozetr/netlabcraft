@@ -26,10 +26,17 @@ fn an_alias_stands_for_a_command_in_its_own_mode_only() {
     // `hn` is a configure-mode alias: the arguments after it are kept.
     lab.run(r1, "conf t\nhn RENAMED\nend");
     assert!(lab.run(r1, "show running-config").contains("hostname RENAMED"));
+<<<<<<< HEAD
     assert!(lab.try_run(r1, "hn").starts_with("% "), "not an exec alias");
     lab.run(r1, "conf t\nno alias exec sib\nend");
     assert!(lab.try_run(r1, "sib").starts_with("% "), "removed");
     assert!(lab.try_run(r1, "alias exec x").starts_with("% "), "a command text is needed");
+=======
+    assert!(lab.try_run(r1, "hn").contains("% "), "not an exec alias");
+    lab.run(r1, "conf t\nno alias exec sib\nend");
+    assert!(lab.try_run(r1, "sib").contains("% "), "removed");
+    assert!(lab.try_run(r1, "alias exec x").contains("% "), "a command text is needed");
+>>>>>>> origin/main
 }
 
 #[test]
