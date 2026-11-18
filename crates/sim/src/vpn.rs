@@ -567,8 +567,9 @@ fn agreed_rsa(a: &Device, b: &Device) -> bool {
 /// Main mode with signatures, from both configurations (no clock): both routers hold a
 /// certificate with its key pair, and each trusts the authority that signed the other's.
 fn cert_check(a: &Device, b: &Device) -> Result<(), String> {
-    let mine = crate::pki::ike_certificate(a).ok_or("this router has no certificate with its key pair for RSA signatures (`crypto pki enroll`)")?;
-    let theirs = crate::pki::ike_certificate(b).ok_or("the peer has no certificate with its key pair for RSA signatures")?;
+    let mine =
+        crate::pki::ike_certificate_for(a, b).ok_or("this router has no certificate with its key pair for RSA signatures (`crypto pki enroll`)")?;
+    let theirs = crate::pki::ike_certificate_for(b, a).ok_or("the peer has no certificate with its key pair for RSA signatures")?;
     if !crate::pki::trusts(a, &theirs) {
         return Err(format!("this router does not trust the authority that signed the peer's certificate ({})", theirs.issuer.text()));
     }
@@ -807,9 +808,17 @@ fn p1_auth(d: &Device, v1: &V1State, initiator: bool, ic: &[u8; 8], rc: &[u8; 8]
     if !v1.rsa() {
         return Ok(vec![Payload::Hash(hash)]);
     }
-    let me = crate::pki::ike_identity(d, None).ok_or("this router has no certificate with its key pair to sign with (`crypto pki enroll`)")?;
+    // The certificate the peer's request (CERTREQ, in message 3 or 4) asks for: from one of the
+    // authorities it named, with the chain up to the authority this router holds.
+    let me = crate::pki::ike_identity_for(d, None, &v1.peer_wants)
+        .ok_or("this router has no certificate with its key pair to sign with (`crypto pki enroll`)")?;
+    if !v1.peer_wants.accepts(&me.chain) {
+        return Err(crate::pki::unwanted(&me));
+    }
     let sig = me.sign(&hash).ok_or("the key pair is too small to sign with")?;
-    Ok(vec![Payload::cert(me.cert.der()), Payload::signature(&sig)])
+    let mut out: Vec<Payload> = me.chain.iter().map(|c| Payload::cert(c.der())).collect();
+    out.push(Payload::signature(&sig));
+    Ok(out)
 }
 
 /// Checks main mode message 5 (`from_initiator`) or 6: the HASH, or the certificate chain and
@@ -1354,7 +1363,15 @@ impl Sim {
         let mut v1 = cur.v1.as_deref().cloned().unwrap_or_default();
         let (ic, rc) = (m.icookie, if cur.rcookie == [0; 8] { m.rcookie } else { cur.rcookie });
         let seed = [&ic[..], &rc[..], &local.octets()[..], &now.to_be_bytes()[..]].concat();
-        let ke_nonce = |ke: Vec<u8>, n: Vec<u8>| vec![Payload::Ke(ke), Payload::Nonce(n)];
+        // With signatures, messages 3 and 4 also say which authorities this router accepts a
+        // certificate from (a CERTREQ for each, RFC 2409 §5.1).
+        let ke_nonce = |ke: Vec<u8>, n: Vec<u8>, rsa: bool| {
+            let mut out = vec![Payload::Ke(ke), Payload::Nonce(n)];
+            if rsa {
+                out.extend(crate::pki::request_names(d).iter().map(|dn| Payload::cert_request_for(dn)));
+            }
+            out
+        };
         let take_ke = |m: &Isakmp| {
             let ke = m.payloads.iter().find_map(|p| if let Payload::Ke(k) = p { Some(k.clone()) } else { None });
             let n = m.payloads.iter().find_map(|p| if let Payload::Nonce(k) = p { Some(k.clone()) } else { None });
@@ -1387,7 +1404,7 @@ impl Sim {
                 v1.suite = Some(suite);
                 v1.ke_i = v1.make_ke(&seed);
                 v1.ni = ike::filler(&[&seed[..], b"ni"].concat(), 16);
-                let out = Isakmp::clear(ic, m.rcookie, ike::EXCH_MAIN, 0, ke_nonce(v1.ke_i.clone(), v1.ni.clone()));
+                let out = Isakmp::clear(ic, m.rcookie, ike::EXCH_MAIN, 0, ke_nonce(v1.ke_i.clone(), v1.ni.clone(), v1.rsa()));
                 let sa = self.st(d.id).ipsec.entry(peer).or_default();
                 sa.rcookie = m.rcookie;
                 self.set_v1(d, peer, v1, IkePhase::Main(3));
@@ -1402,6 +1419,7 @@ impl Sim {
                 };
                 v1.ke_i = ke;
                 v1.ni = ni;
+                v1.peer_wants = crate::pki::Wanted::from_v1(&m.payloads);
                 v1.ke_r = v1.make_ke(&seed);
                 v1.nr = ike::filler(&[&seed[..], b"nr"].concat(), 16);
                 if !v1.derive(my_key.as_bytes(), &ic, &rc, false) {
@@ -1409,7 +1427,7 @@ impl Sim {
                     self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::INVALID_KEY_INFORMATION));
                     return Ok(());
                 }
-                let out = Isakmp::clear(ic, rc, ike::EXCH_MAIN, 0, ke_nonce(v1.ke_r.clone(), v1.nr.clone()));
+                let out = Isakmp::clear(ic, rc, ike::EXCH_MAIN, 0, ke_nonce(v1.ke_r.clone(), v1.nr.clone(), v1.rsa()));
                 self.set_v1(d, peer, v1, IkePhase::Main(4));
                 self.ike_send(t, d, local, peer, &out);
             }
@@ -1421,6 +1439,7 @@ impl Sim {
                 };
                 v1.ke_r = ke;
                 v1.nr = nr;
+                v1.peer_wants = crate::pki::Wanted::from_v1(&m.payloads);
                 if !v1.derive(my_key.as_bytes(), &ic, &rc, true) {
                     self.ike_fail(d, peer, "the peer's Diffie-Hellman value is not valid for the group".into());
                     return Ok(());
