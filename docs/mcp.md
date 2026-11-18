@@ -39,7 +39,7 @@ Other sessions, all through `netlabcraft_run`:
   AP's power comes from, `device.adapter` plugs or unplugs its adapter, `phone.configure` sets
   a phone to SIP and its address (DHCP or static), `device.psu` fits and takes out power
   supplies, and `cloud.map` pairs a cloud's ports.
-- **Boards:** `board.program` sets and runs a BoardScript program, `board.status` returns its
+- **Boards:** `board.program` sets and runs a program (BoardScript, or Python or JavaScript with `language`; see [board-languages.md](board-languages.md)), `board.status` returns its
   state, variables, pins and output, and `board.wire` (or `link.add` with
   `"cable": "iot-custom"`) joins a pin to a smart thing. The components take more of `iot.configure`: `press` (the push switches), `humidity` (a humiture sensor), `variable` (a generic environment sensor), `level`, or `red`, `green` and `blue` (a dimmable LED, a servo, an RGB LED); BoardScript reads and writes them with `read`, `write`, `channel(PIN, 1)` and `rgb(R, G, B)`.
 - **Instructor tools:** `activity.save_answer`, `activity.answer`, `activity.load_answer` and

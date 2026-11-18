@@ -2386,6 +2386,8 @@ furniture	Table	Table
 	Application size	Taille de l'application
 	Enter the password first: some tabs are locked.	Saisissez d'abord le mot de passe : certains onglets sont verrouillés.
 	Port, {}	Port, {}
+	Language:	Langue :
+	Program ({})	Programme ({})
 	Up	Actif
 	Down	Inactif
 	Properties…	Propriétés…

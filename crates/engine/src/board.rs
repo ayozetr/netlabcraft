@@ -3,7 +3,7 @@
 //! `"cable": "iot-custom"`).
 
 use netlabcraft_core::DeviceId;
-use netlabcraft_model::board::{MAX_PROGRAM, analog, find_pin, is_board, pins};
+use netlabcraft_model::board::{Language, MAX_PROGRAM, analog, find_pin, is_board, pins};
 use netlabcraft_model::iot::{is_sensor, thing};
 use netlabcraft_sim::script::{RunState, Val};
 use serde_json::{Map, Value, json};
@@ -70,6 +70,8 @@ pub(crate) fn status(s: &Session, d: DeviceId) -> Value {
         "model": dev.catalogue_model().id,
         "server": dev.iot.server.map(|a| a.to_string()),
         "program": dev.board.program,
+        "language": dev.board.language.id(),
+        "languages": Language::allowed(dev.catalogue_model().id).iter().map(|l| l.id()).collect::<Vec<_>>(),
         "run": dev.board.run,
         "state": state,
         "line": machine.map(|m| m.line),
@@ -179,13 +181,31 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
         }
         "board.program" => {
             let d = board_param(s, p)?;
+            let current = s.topology.device(d).map(|x| (x.board.language, x.catalogue_model().id)).unwrap_or_default();
+            let language = match p.get("language") {
+                None => None,
+                Some(Value::String(x)) => {
+                    let l = Language::parse(x).ok_or_else(|| bad("`language` is boardscript, python or javascript"))?;
+                    if !Language::allowed(current.1).contains(&l) {
+                        let ok: Vec<&str> = Language::allowed(current.1).iter().map(|l| l.id()).collect();
+                        return Err(bad(format!("this board runs {} (not {})", ok.join(" or "), l.id())));
+                    }
+                    Some(l)
+                }
+                Some(_) => return Err(bad("`language` is boardscript, python or javascript")),
+            };
+            let lang = language.unwrap_or(current.0);
             let source = match p.get("source") {
                 None => None,
                 Some(Value::String(x)) if x.chars().count() > MAX_PROGRAM => {
                     return Err(bad(format!("a program is at most {MAX_PROGRAM} characters")));
                 }
                 Some(Value::String(x)) => {
-                    netlabcraft_sim::script::compile(x).map_err(bad)?;
+                    match lang {
+                        Language::BoardScript => netlabcraft_sim::script::compile(x).map(|_| ()),
+                        other => netlabcraft_sim::lang::compile(other, x).map(|_| ()),
+                    }
+                    .map_err(bad)?;
                     Some(x.clone())
                 }
                 Some(_) => return Err(bad("`source` is the program's text")),
@@ -201,11 +221,14 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 Some(Value::String(a)) => Some(Some(netlabcraft_core::parse_ip(a.trim()).map_err(|e| bad(e.to_string()))?)),
                 Some(_) => return Err(bad("`server` is an address")),
             };
-            if source.is_some() || run.is_some() || server.is_some() {
+            if source.is_some() || run.is_some() || server.is_some() || language.is_some() {
                 s.checkpoint();
                 if let Some(dev) = s.topology.device_mut(d) {
                     if let Some(src) = &source {
                         dev.board.program = src.clone();
+                    }
+                    if let Some(l) = language {
+                        dev.board.language = l;
                     }
                     if let Some(r) = run {
                         dev.board.run = r;
@@ -222,7 +245,7 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                     let _ = s.sim.board_start(&s.topology, d);
                 }
                 Some(false) => s.sim.board_stop(d),
-                None if source.is_some() => s.sim.board_reset(d),
+                None if source.is_some() || language.is_some() => s.sim.board_reset(d),
                 None => {}
             }
             s.revision += 1;

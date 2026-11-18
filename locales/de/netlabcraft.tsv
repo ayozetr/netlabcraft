@@ -2386,6 +2386,8 @@ furniture	Table	Tisch
 	Application size	Größe der Anwendung
 	Enter the password first: some tabs are locked.	Gib zuerst das Passwort ein: Einige Register sind gesperrt.
 	Port, {}	Port, {}
+	Language:	Sprache:
+	Program ({})	Programm ({})
 	Up	Aktiv
 	Down	Inaktiv
 	Properties…	Eigenschaften…

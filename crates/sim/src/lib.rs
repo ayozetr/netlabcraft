@@ -51,6 +51,8 @@ pub mod ikev1;
 pub mod ikev2;
 pub mod iot;
 pub mod l2sec;
+pub mod lang;
+mod lang_parse;
 pub mod logcfg;
 pub mod mgmt;
 pub mod netflow;
@@ -78,6 +80,8 @@ pub mod stp;
 mod tests;
 #[cfg(test)]
 mod tests_cell;
+#[cfg(test)]
+mod tests_lang;
 pub mod v6;
 pub mod voice;
 pub mod vpn;
