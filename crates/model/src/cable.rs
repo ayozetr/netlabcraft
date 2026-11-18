@@ -221,6 +221,44 @@ impl Cable {
     }
 }
 
+/// How far a serial cable carries a signal here (metres): the balanced interface of V.35 and X.21
+/// (ITU-T V.11, TIA-422) reaches 1200 m at up to 100 kb/s.
+pub const SERIAL_MAX_M: u32 = 1_200;
+/// How far a console (rollover) cable and an octal line carry a signal (metres; TIA-232-F, 15 m).
+pub const CONSOLE_MAX_M: u32 = 15;
+/// The longest USB cable (metres; USB 2.0 allows 5 m between a host and a device).
+pub const USB_MAX_M: u32 = 5;
+
+/// How far a kind of cable carries a signal and where the figure comes from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Reach {
+    pub meters: u32,
+    /// The medium as the "cable too long" message names it (`copper`, `coaxial`).
+    pub what: &'static str,
+    /// The public standard the limit follows.
+    pub standard: &'static str,
+}
+
+impl Cable {
+    /// The longest run the cable carries, with the standard behind it. `None` for the automatic
+    /// cable (resolve it first) and the IoT custom wire.
+    pub fn reach(self) -> Option<Reach> {
+        let r = |meters, what, standard| Some(Reach { meters, what, standard });
+        match self {
+            Cable::Straight | Cable::Cross => r(crate::physical::COPPER_MAX_M, "copper", "IEEE 802.3 and TIA-568: a 100 m channel"),
+            Cable::FiberMulti => r(FIBER_MULTI_MAX_M, "multi-mode fiber", "IEEE 802.3z 1000BASE-SX: 550 m on 50/125 um fiber"),
+            Cable::FiberSingle => r(FIBER_SINGLE_MAX_M, "single-mode fiber", "IEEE 802.3ah 1000BASE-LX10: 10 km"),
+            Cable::Coaxial => r(COAX_MAX_M, "coaxial", "IEEE 802.3 10BASE5: a 500 m segment"),
+            Cable::Phone => r(PHONE_MAX_M, "phone line", "ITU-T G.992.1 (ADSL): about 5 km on a 0.4 mm pair"),
+            Cable::SerialDce | Cable::SerialDte => r(SERIAL_MAX_M, "serial", "ITU-T V.11 and TIA-422: 1200 m at up to 100 kb/s"),
+            Cable::Console => r(CONSOLE_MAX_M, "console", "TIA-232-F: 15 m"),
+            Cable::Octal => r(CONSOLE_MAX_M, "octal", "TIA-232-F: 15 m a line"),
+            Cable::Usb => r(USB_MAX_M, "USB", "USB 2.0: 5 m a cable"),
+            Cable::Auto | Cable::IotCustom => None,
+        }
+    }
+}
+
 /// What a port takes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

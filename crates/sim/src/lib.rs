@@ -222,7 +222,7 @@ pub fn port_up(t: &Topology, end: End) -> bool {
 /// straight-through between like ports, or a cross-over between unlike ones, with no
 /// auto-MDIX at either end), fiber transceivers that don't suit each other or the cable, or longer
 /// than its medium reaches (copper 100 m, multi-mode fiber 550 m, single-mode fiber 10 km).
-/// Serial cables stand for leased lines and have no length limit here.
+/// Serial cables reach 1200 m (ITU-T V.11); a longer leased line goes through a cloud.
 pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
     if let Some(why) = t.cable_mismatch(end) {
         return Some(why);
@@ -232,15 +232,13 @@ pub fn cable_problem(t: &Topology, end: End) -> Option<String> {
     if t.physical.ignore_lengths {
         return None;
     }
-    let (what, max) = match t.resolved_cable(l) {
-        netlabcraft_model::cable::Cable::SerialDce | netlabcraft_model::cable::Cable::SerialDte => return None,
-        netlabcraft_model::cable::Cable::FiberSingle => ("single-mode fiber", netlabcraft_model::cable::FIBER_SINGLE_MAX_M),
-        netlabcraft_model::cable::Cable::FiberMulti => ("multi-mode fiber", netlabcraft_model::cable::FIBER_MULTI_MAX_M),
-        netlabcraft_model::cable::Cable::Coaxial => ("coaxial", netlabcraft_model::cable::COAX_MAX_M),
-        netlabcraft_model::cable::Cable::Phone => ("phone line", netlabcraft_model::cable::PHONE_MAX_M),
-        _ if t.is_serial(end) => return None,
-        _ => ("copper", netlabcraft_model::physical::COPPER_MAX_M),
-    };
+    let kind = t.resolved_cable(l);
+    // A copper cable that sits in serial ports is a lab shortcut: no limit.
+    if kind.is_copper() && t.is_serial(end) {
+        return None;
+    }
+    let reach = kind.reach()?;
+    let (what, max) = (reach.what, reach.meters);
     let len = t.cable_length(l);
     if len.meters > max {
         return Some(format!("cable too long: {} m {what}, max {max} m", len.meters));

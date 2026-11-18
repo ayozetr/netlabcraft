@@ -113,6 +113,8 @@ struct Facts {
     fiber: Option<(bool, bool)>,
     /// For a fiber cable: its loss budget.
     budget: Option<netlabcraft_model::physical::FiberBudget>,
+    /// How far this kind of cable carries a signal, and the standard behind it.
+    reach: Option<netlabcraft_model::cable::Reach>,
 }
 
 fn facts(app: &PacketApp, end: End) -> Option<Facts> {
@@ -131,6 +133,7 @@ fn facts(app: &PacketApp, end: End) -> Option<Facts> {
         why: if up { None } else { netlabcraft_sim::link_why_down(t, l) },
         fiber: kind.is_fiber().then(|| (t.single_mode_at(l.a), t.single_mode_at(l.b))),
         budget: t.fiber_budget(l),
+        reach: kind.reach(),
     })
 }
 
@@ -171,6 +174,11 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
                 let how = if f.manual { tl("set by hand") } else { tl("from where the devices stand") };
                 ui.label(format!("{} ({how})", physical::length_text(f.meters, metric)));
                 ui.end_row();
+                if let Some(r) = &f.reach {
+                    ui.label(tl("Reach"));
+                    ui.label(format!("{} ({})", physical::length_text(r.meters, metric), r.standard));
+                    ui.end_row();
+                }
                 ui.label(tl("Status"));
                 if f.up {
                     ui.colored_label(tk.link_up, tl("Up"));
