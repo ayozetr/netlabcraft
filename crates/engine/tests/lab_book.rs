@@ -92,7 +92,10 @@ labs! {
     lab_50_ospf_adjacency_states_and_dr_bdr => "50-ospf-adjacency-states-and-dr-bdr.md",
     lab_51_ospf_flooding_retransmission_and_lsa_ageing => "51-ospf-flooding-retransmission-and-lsa-ageing.md",
     lab_52_ospf_nssa_only_type_7_lsas => "52-ospf-nssa-only-type-7-lsas.md",
+    lab_53_ike_with_certificates_and_expiry => "53-ike-with-certificates-and-expiry.md",
+    lab_54_pki_enrolment_by_hand_and_ca_grant => "54-pki-enrolment-by-hand-and-ca-grant.md",
     lab_57_bgp_prefix_limits_and_timers => "57-bgp-prefix-limits-and-timers.md",
+    lab_58_aliases_reload_extended_ping_and_telnet_by_name => "58-aliases-reload-extended-ping-and-telnet-by-name.md",
     lab_61_troubleshoot_site_to_site_vpn => "61-troubleshoot-site-to-site-vpn.md",
     lab_62_troubleshoot_remote_access_vpn => "62-troubleshoot-remote-access-vpn.md",
     lab_63_troubleshoot_wireless_clients => "63-troubleshoot-wireless-clients.md",
@@ -109,6 +112,7 @@ labs! {
     lab_74_javascript_on_a_microcontroller => "74-javascript-on-a-microcontroller.md",
     lab_75_reverse_telnet_through_an_octal_card => "75-reverse-telnet-through-an-octal-card.md",
     lab_81_mst_regions => "81-mst-regions.md",
+    lab_82_igmp_snooping => "82-igmp-snooping.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up

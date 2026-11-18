@@ -292,6 +292,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `write` | privileged | router, switch, firewall | Save the configuration |
 | `erase startup-config` | privileged | router, switch, firewall | Delete the saved configuration |
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
+| `archive` | config | router, switch | Keep copies of the running configuration |
+| `no archive` | config | router, switch | Stop archiving and forget the settings (the copies stay) |
+| `path URL` |  | router, switch | Where the copies are named (for example flash:archive) |
+| `no path` |  | router, switch | No archive path: no copy can be made |
+| `maximum <1-14>` |  | router, switch | Most copies kept (the oldest goes first) |
+| `no maximum` |  | router, switch | Keep 10 copies |
+| `time-period <1-525600>` |  | router, switch | Make a copy when this many minutes have passed since the last |
+| `no time-period` |  | router, switch | No periodic copy |
+| `write-memory` |  | router, switch | Make a copy whenever the startup configuration is saved |
+| `no write-memory` |  | router, switch | Saving the startup configuration makes no copy |
+| `archive config` | privileged | router, switch | Make a copy of the running configuration now |
+| `show archive` | user, privileged | router, switch | The archive's settings and copies |
+| `configure replace NAME` | privileged | router, switch | Replace the running configuration with a copy (startup-config, or a copy's name or number) |
+| `configure revert now` | privileged | router, switch | Replace the running configuration with the newest copy |
 | `reload in <minutes\|hh:mm>` | privileged | router, switch | Restart after a delay of simulated time |
 | `reload in <minutes\|hh:mm> <reason>` | privileged | router, switch | Restart after a delay, with a reason |
 | `reload at <hh:mm>` | privileged | router, switch | Restart at the next time the device clock shows this |
@@ -327,7 +341,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
 | `no interface <subinterface>` | config | router | Delete a subinterface |
-| `ip route A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup, a tag labels it) |
+| `ip route A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>] [track <1-1000>] [permanent]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup, a tag labels it, track ties it to a tracked object) |
 | `no ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route |
 | `no ip route A.B.C.D MASK` | config | router, switch | Remove static routes |
 | `vlan <1-4094>[,-]` | config | switch | Create or edit VLANs |
@@ -952,6 +966,21 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip prefix-list NAME` | user, privileged | router, switch | One prefix list |
 | `show route-map` | user, privileged | router, switch | Every route map |
 | `show route-map NAME` | user, privileged | router, switch | One route map |
+| `track <1-1000> interface <interface> {line-protocol\|ip routing}` | config | router, switch | Track whether an interface works (or routes IP) |
+| `track <1-1000> ip route A.B.C.D/<0-32> reachability` | config | router, switch | Track whether the routing table has a prefix |
+| `track <1-1000> ip route A.B.C.D MASK reachability` | config | router, switch | Track whether the routing table has a prefix |
+| `track <1-1000> ip sla <1-2147483647>` | config | router, switch | Track an IP SLA operation (up while its last probe succeeded) |
+| `track <1-1000> ip sla <1-2147483647> {reachability\|state}` | config | router, switch | Track an IP SLA operation: its reachability (a slow probe counts) or its state |
+| `track <1-1000> list boolean {and\|or}` | config | router, switch | Track several objects together |
+| `track <1-1000>` | config | router, switch | Edit a tracked object |
+| `no track <1-1000>` | config | router, switch | Delete a tracked object |
+| `delay {up\|down} <0-180> [{up\|down} <0-180>]` |  | router, switch | Wait this many seconds before reporting a change of state |
+| `no delay` |  | router, switch | Report changes at once |
+| `object <1-1000>` |  | router, switch | Add an object to the list |
+| `object <1-1000> not` |  | router, switch | Add an object to the list, negated |
+| `no object <1-1000>` |  | router, switch | Take an object out of the list |
+| `show track` | user, privileged | router, switch | Every tracked object, its state and what follows it |
+| `show track <1-1000>` | user, privileged | router, switch | One tracked object |
 | `route-map NAME` | config | router, switch | Create or edit a route map clause |
 | `route-map NAME {permit\|deny} [<1-4294967294>]` | config | router, switch | Create or edit a route map clause that permits or denies |
 | `no route-map NAME` | config | router, switch | Delete a route map |
@@ -1596,10 +1625,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `switchport port-security mac-address H.H.H` | interface | switch | Allow this address |
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
-| `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
+| `telnet A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with Telnet, by address or name |
 | `telnet A.B.C.D <port>` | user, privileged | router | Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it) |
 | `clear line <1-16>` | privileged | router | End the reverse Telnet session held on a line of an octal card |
-| `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
+| `ssh -l USER A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with SSH, by address or name |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
 | `ip ssh time-out <1-120>` | config | router, switch | Seconds an SSH login may take |
@@ -1689,6 +1718,19 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show spanning-tree mst <0-15>` | user, privileged | switch | One instance's tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
+| `ip igmp snooping` | config | switch | Listen to IGMP and send multicast only where it is wanted |
+| `no ip igmp snooping` | config | switch | Flood multicast again |
+| `ip igmp snooping vlan <1-4094>[,-]` | config | switch | Snoop these VLANs (all of them are snooped unless turned off) |
+| `no ip igmp snooping vlan <1-4094>[,-]` | config | switch | Do not snoop these VLANs: multicast floods in them |
+| `ip igmp snooping querier` | config | switch | Send an IGMP general query every minute in each snooped VLAN |
+| `no ip igmp snooping querier` | config | switch | Stop sending queries |
+| `ip igmp snooping querier address A.B.C.D` | config | switch | Source address of the queries in a VLAN that has no interface address |
+| `no ip igmp snooping querier address` | config | switch | No query source address |
+| `show ip igmp snooping` | user, privileged | switch | IGMP snooping settings and the VLANs it watches |
+| `show ip igmp snooping groups` | user, privileged | switch | The groups learned and the ports that joined them |
+| `show ip igmp snooping mrouter` | user, privileged | switch | Ports that lead to a multicast router |
+| `show ip igmp snooping querier` | user, privileged | switch | The queries this switch sends |
+| `clear ip igmp snooping` | privileged | switch | Forget the groups and router ports learned |
 | `ip verify source` | interface | switch | IP source guard: only addresses with a binding on this port may send |
 | `ip verify source port-security` | interface | switch | IP source guard that also checks the source MAC address against the binding |
 | `no ip verify source` | interface | switch | No IP source guard on this port |
@@ -2162,6 +2204,7 @@ Commands:
   ftp <address>                          send and fetch files on an FTP server
   cellular [on|off|apn <name|none>]      phones and tablets: cellular status, data and APN
   netstat                                TCP connections this host set up
+  igmp [join|leave <group>]              list, join or leave multicast groups
   dir                                    list this host's files
   arp -a                                 show the ARP cache
   arp -d [address]                       empty the ARP cache (or forget one entry)

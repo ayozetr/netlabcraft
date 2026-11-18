@@ -14,6 +14,7 @@ use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
 pub use dialogs::{Dialog, DialogKind};
 
+pub(crate) mod archive;
 pub(crate) mod automation;
 pub(crate) mod bgp;
 pub(crate) mod cef;
@@ -24,6 +25,7 @@ pub(crate) mod eigrp6;
 pub(crate) mod families;
 pub(crate) mod fhrp;
 pub(crate) mod firewall;
+pub(crate) mod igmp;
 pub(crate) mod ikev2;
 pub(crate) mod keychain;
 pub(crate) mod knobs;
@@ -42,6 +44,7 @@ pub(crate) mod span;
 pub(crate) mod srcguard;
 pub(crate) mod sweep;
 pub(crate) mod swroute;
+pub(crate) mod track;
 pub(crate) mod voice;
 mod vpn;
 mod wlan;
@@ -129,6 +132,8 @@ pub enum Mode {
     /// `FW1(config-network-object-group)#` / `(config-service-object-group)#`: an object group
     /// (its name, and whether it is a service group).
     ObjectGroup(String, bool),
+    /// `R1(config-track)#`: the tracked object's number.
+    Track(u32),
     /// `R1(config-telephony)#`
     Telephony,
     /// `R1(config-ephone-dn)#`: the directory number's tag.
@@ -169,6 +174,8 @@ pub enum Mode {
     KeyChain(String),
     /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
     KeyChainKey(String, u32),
+    /// `R1(config-archive)#`: `archive`.
+    Archive,
     /// `S1(config-mst)#`: `spanning-tree mst configuration`.
     MstConfig,
 }
@@ -203,6 +210,7 @@ impl Mode {
             Mode::BbaGroup(_) => Modes::BBA_GROUP,
             Mode::VirtualTemplate(_) => Modes::VTEMPLATE,
             Mode::Dialer(_) => Modes::DIALER,
+            Mode::Track(_) => Modes::TRACK,
             Mode::ClassMap(_) => Modes::CLASS_MAP,
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
@@ -223,6 +231,7 @@ impl Mode {
             Mode::PkiServer(_) => Modes::PKI_SERVER,
             Mode::KeyChain(_) => Modes::KEYCHAIN,
             Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
+            Mode::Archive => Modes::ARCHIVE,
             Mode::MstConfig => Modes::MST,
         }
     }
@@ -688,6 +697,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::ClientGroup(_) => format!("{n}(config-isakmp-group)#"),
         Mode::BbaGroup(_) => format!("{n}(config-bba-group)#"),
         Mode::VirtualTemplate(_) | Mode::Dialer(_) => format!("{n}(config-if)#"),
+        Mode::Track(_) => format!("{n}(config-track)#"),
         Mode::ClassMap(_) => format!("{n}(config-cmap)#"),
         Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
         Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
@@ -711,6 +721,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
         Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
         Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
+        Mode::Archive => format!("{n}(config-archive)#"),
         Mode::MstConfig => format!("{n}(config-mst)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
@@ -1130,6 +1141,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::BbaGroup(_)
                 | Mode::VirtualTemplate(_)
                 | Mode::Dialer(_)
+                | Mode::Track(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::PolicyClass(..)
@@ -1152,6 +1164,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
                 | Mode::KeyChainKey(..)
+                | Mode::Archive
                 | Mode::MstConfig
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
@@ -1215,6 +1228,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::BbaGroup(_)
                 | Mode::VirtualTemplate(_)
                 | Mode::Dialer(_)
+                | Mode::Track(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::Object(_)
@@ -1233,6 +1247,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
+                | Mode::Archive
                 | Mode::MstConfig
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
@@ -1262,6 +1277,25 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             c.cli.dialog = Some(Dialog::new(kind));
             Ok("Answer the questions one by one: an empty answer takes the default, `abort` gives up.".into())
         }
+        Id::TrackInterface
+        | Id::TrackIpRoute
+        | Id::TrackSla
+        | Id::TrackList
+        | Id::TrackEnter
+        | Id::NoTrack
+        | Id::TrackDelay
+        | Id::NoTrackDelay
+        | Id::TrackObject
+        | Id::TrackObjectNot
+        | Id::NoTrackObject
+        | Id::ShowTrack => track::command(&mut c, spec.id, &args),
+        Id::ShowIpCef
+        | Id::ShowIpCefDetail
+        | Id::ShowIpCefSummary
+        | Id::ShowIpCefAddress
+        | Id::ShowIpCefAddressDetail
+        | Id::IpDefaultNetwork
+        | Id::NoIpDefaultNetwork => cef::command(&mut c, spec.id, &args),
         Id::PingRepeat => c.ping_extended(arg(0), arg(1)),
         Id::ShowIpTraffic => Ok(render::ip_traffic(c.sim, c.dev)),
         Id::ShowTcpBrief => Ok(render::tcp_brief(c.sim, c.dev)),
@@ -1620,14 +1654,35 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ShowHistory => Ok(c.cli.history.iter().map(|h| format!("  {h}")).collect::<Vec<_>>().join("\n")),
         Id::CopyRunStart | Id::WriteMemory => {
             let cfg = render::running_config(c.d()?);
-            c.dm()?.startup = Some(cfg);
-            Ok("Configuration saved to startup-config.".into())
+            c.dm()?.startup = Some(cfg.clone());
+            // `archive` / `write-memory`: saving also makes a copy.
+            let at = c.sim.clock(c.dev).0;
+            let d = c.dm()?;
+            let copy = if d.archive.write_memory { d.archive.push(&cfg, at) } else { None };
+            Ok(match copy {
+                Some(n) => format!("Configuration saved to startup-config and archived as copy {n}."),
+                None => "Configuration saved to startup-config.".into(),
+            })
         }
         Id::EraseStartup => {
             c.dm()?.startup = None;
             Ok("Startup configuration erased; the next reload starts from factory settings.".into())
         }
         Id::Reload => c.reload(),
+        Id::Archive
+        | Id::NoArchive
+        | Id::ArchivePath
+        | Id::NoArchivePath
+        | Id::ArchiveMaximum
+        | Id::NoArchiveMaximum
+        | Id::ArchiveTimePeriod
+        | Id::NoArchiveTimePeriod
+        | Id::ArchiveWriteMemory
+        | Id::NoArchiveWriteMemory
+        | Id::ArchiveConfig
+        | Id::ShowArchive
+        | Id::ConfigureReplace
+        | Id::ConfigureRevert => archive::command(&mut c, spec.id, &args),
         Id::ReloadIn | Id::ReloadAt => {
             let (now, _) = c.sim.clock(c.dev);
             let secs = if spec.id == Id::ReloadIn { reload_delay(arg(0))? } else { reload_until(arg(0), now)? };
@@ -1990,6 +2045,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let d = c.d()?;
             let idx = d.port_index(arg(1));
             let name = match idx.and_then(|i| d.ports.get(i)) {
+                // A number is a tracked object (`track N …`), not an interface.
+                _ if track::object_word(arg(1)).is_some() => arg(1).trim().to_string(),
                 Some(p) => p.name.clone(),
                 None if arg(1).to_ascii_lowercase().starts_with("vlan") && arg(1).get(4..).is_some_and(|n| n.parse::<u16>().is_ok()) => {
                     format!("Vlan{}", arg(1).get(4..).unwrap_or(""))
@@ -2504,13 +2561,19 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
-        Id::ShowIpCef
-        | Id::ShowIpCefDetail
-        | Id::ShowIpCefSummary
-        | Id::ShowIpCefAddress
-        | Id::ShowIpCefAddressDetail
-        | Id::IpDefaultNetwork
-        | Id::NoIpDefaultNetwork => cef::command(&mut c, spec.id, &args),
+        Id::IgmpSnooping
+        | Id::NoIgmpSnooping
+        | Id::IgmpSnoopingVlan
+        | Id::NoIgmpSnoopingVlan
+        | Id::IgmpQuerier
+        | Id::NoIgmpQuerier
+        | Id::IgmpQuerierAddress
+        | Id::NoIgmpQuerierAddress
+        | Id::ShowIgmpSnooping
+        | Id::ShowIgmpGroups
+        | Id::ShowIgmpMrouter
+        | Id::ShowIgmpQuerier
+        | Id::ClearIgmpSnooping => igmp::command(&mut c, spec.id, &args),
         Id::IpSgOn | Id::IpSgPortSecurity | Id::IpSgOff | Id::IpSgBinding | Id::IpSgNoBinding | Id::IpSgShowVerify | Id::IpSgShowBinding => {
             srcguard::command(&mut c, spec.id, &args)
         }
@@ -3738,8 +3801,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     _ => return Err("% ssh -l <user> <address>".into()),
                 }
             };
+            let (addr, said) = c.name_to_address(&addr)?;
             let dst = parse_ip(&addr).map_err(|e| format!("% {e}"))?;
-            Ok(connect(c.t, c.sim, c.dev, c.cli, proto, dst, user))
+            Ok(format!("{said}{}", connect(c.t, c.sim, c.dev, c.cli, proto, dst, user)))
         }
         Id::TelnetPort => {
             let dst = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
@@ -5831,6 +5895,14 @@ impl Ctx<'_> {
         if n.network() != n {
             return Err(format!("% {n} has host bits set; the network is {}", n.network()));
         }
+        let (target, permanent, track) = match target {
+            Some(t) => {
+                let (rest, permanent, track) = routing::split_route_flags(t)?;
+                (Some(rest), permanent, track)
+            }
+            None => (None, false, None),
+        };
+        let target = target.as_deref();
         let (target, distance, tag) = match target {
             Some(t) => {
                 let (t, tag) = routing::split_tag(t)?;
@@ -5869,6 +5941,10 @@ impl Ctx<'_> {
         if add {
             let Some(via) = via else { return Err("% Give a next-hop address or an exit interface".into()) };
             let route = StaticRoute { net: n, via, distance, tag };
+            let key = netlabcraft_model::track::route_key(&route.net, &route.via);
+            if track.is_some() && d.track.route_track.len() >= netlabcraft_model::track::MAX_BOUND_ROUTES {
+                return Err("% Too many routes follow a tracked object".into());
+            }
             // One route per network and next hop: typing it again changes its distance.
             d.routes.retain(|r| !(r.net == route.net && r.via == route.via));
             if !d.routes.contains(&route) {
@@ -5878,11 +5954,29 @@ impl Ctx<'_> {
                 d.routes.push(route);
                 d.routes.sort();
             }
+            d.track.route_track.remove(&key);
+            d.track.permanent.remove(&key);
+            if let Some(id) = track {
+                d.track.route_track.insert(key.clone(), id);
+            }
+            if permanent {
+                d.track.permanent.insert(key);
+            }
         } else {
+            let gone: Vec<String> = d
+                .routes
+                .iter()
+                .filter(|r| r.net == n && via.as_ref().is_none_or(|v| *v == r.via))
+                .map(|r| netlabcraft_model::track::route_key(&r.net, &r.via))
+                .collect();
             let before = d.routes.len();
             d.routes.retain(|r| !(r.net == n && via.as_ref().is_none_or(|v| *v == r.via)));
             if d.routes.len() == before {
                 return Err("% No such static route".into());
+            }
+            for key in gone {
+                d.track.route_track.remove(&key);
+                d.track.permanent.remove(&key);
             }
         }
         Ok(String::new())

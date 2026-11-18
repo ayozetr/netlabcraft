@@ -1122,6 +1122,10 @@ pub fn fingerprint(t: &Topology) -> u64 {
                 format!("{:?}{:?}", d.key_chains, d.clock_unix).hash(&mut h);
             }
             d.tunnels.hash(&mut h);
+            if !d.track.is_empty() {
+                // A tracked static route is in the table only while its object is up.
+                format!("{:?}", d.track).hash(&mut h);
+            }
             format!("{:?}", d.loopbacks).hash(&mut h);
             for s in &d.svis {
                 (s.vlan, s.ip, s.shutdown).hash(&mut h);

@@ -95,6 +95,8 @@ impl Modes {
     pub const BGP: Modes = Modes(1 << 52);
     /// `route-map NAME [permit|deny] [N]`.
     pub const ROUTE_MAP: Modes = Modes(1 << 53);
+    /// `track N …`, and `ip sla N`: the modes of tracked objects and IP SLA operations share this bit.
+    pub const TRACK: Modes = Modes(1 << 63);
     /// `crypto isakmp client configuration group NAME`.
     pub const CLIENT_GROUP: Modes = Modes(1 << 55);
     /// `bba-group pppoe NAME`.
@@ -107,11 +109,15 @@ impl Modes {
     pub const KEYCHAIN: Modes = Modes(1 << 59);
     /// `key N` inside a key chain.
     pub const KEYCHAIN_KEY: Modes = Modes(1 << 60);
+    /// `archive`.
+    pub const ARCHIVE: Modes = Modes(1 << 62);
     /// `spanning-tree mst configuration`.
     pub const MST: Modes = Modes(1 << 61);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
-        63 | 256
+        (1 << 63)
+            | 63
+            | 256
             | 512
             | 1024
             | 2048
@@ -152,7 +158,8 @@ impl Modes {
             | (1 << 58)
             | (1 << 59)
             | (1 << 60)
-            | (1 << 61),
+            | (1 << 61)
+            | (1 << 62),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -216,6 +223,20 @@ pub enum Id {
     WriteMemory,
     EraseStartup,
     Reload,
+    Archive,
+    NoArchive,
+    ArchivePath,
+    NoArchivePath,
+    ArchiveMaximum,
+    NoArchiveMaximum,
+    ArchiveTimePeriod,
+    NoArchiveTimePeriod,
+    ArchiveWriteMemory,
+    NoArchiveWriteMemory,
+    ArchiveConfig,
+    ShowArchive,
+    ConfigureReplace,
+    ConfigureRevert,
     ClearMac,
     ClearArp,
     Hostname,
@@ -336,6 +357,19 @@ pub enum Id {
     StpRoot,
     Portfast,
     NoPortfast,
+    IgmpSnooping,
+    NoIgmpSnooping,
+    IgmpSnoopingVlan,
+    NoIgmpSnoopingVlan,
+    IgmpQuerier,
+    NoIgmpQuerier,
+    IgmpQuerierAddress,
+    NoIgmpQuerierAddress,
+    ShowIgmpSnooping,
+    ShowIgmpGroups,
+    ShowIgmpMrouter,
+    ShowIgmpQuerier,
+    ClearIgmpSnooping,
     IpSgOn,
     IpSgPortSecurity,
     IpSgOff,
@@ -992,6 +1026,19 @@ pub enum Id {
     ShowIpPrefixList,
     ShowRouteMap,
     RouteMapEnter,
+    // Object tracking (exec/track.rs).
+    TrackInterface,
+    TrackIpRoute,
+    TrackSla,
+    TrackList,
+    TrackEnter,
+    NoTrack,
+    TrackDelay,
+    NoTrackDelay,
+    TrackObject,
+    TrackObjectNot,
+    NoTrackObject,
+    ShowTrack,
     NoRouteMap,
     RmMatchAddress,
     NoRmMatchAddress,
@@ -1447,8 +1494,10 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::EIGRP)
     .or(Modes::BGP)
     .or(Modes::ROUTE_MAP)
+    .or(Modes::TRACK)
     .or(Modes::KEYCHAIN)
     .or(Modes::KEYCHAIN_KEY)
+    .or(Modes::ARCHIVE)
     .or(Modes::MST)
     .or(VPN_MODES)
     .or(QOS_MODES)
@@ -1587,6 +1636,38 @@ pub static SPECS: &[Spec] = &[
     spec!(WriteMemory, Modes::EXEC, BOTH_FW, [K("write")], "Save the configuration"),
     spec!(EraseStartup, Modes::EXEC, BOTH_FW, [K("erase"), K("startup-config")], "Delete the saved configuration"),
     spec!(Reload, Modes::EXEC, BOTH_FW, [K("reload")], "Restart with the saved configuration"),
+    spec!(Archive, Modes::CONFIG, Modes::BOTH, [K("archive")], "Keep copies of the running configuration"),
+    spec!(NoArchive, Modes::CONFIG, Modes::BOTH, [K("no"), K("archive")], "Stop archiving and forget the settings (the copies stay)"),
+    spec!(ArchivePath, Modes::ARCHIVE, Modes::BOTH, [K("path"), Arg("URL")], "Where the copies are named (for example flash:archive)"),
+    spec!(NoArchivePath, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("path")], "No archive path: no copy can be made"),
+    spec!(ArchiveMaximum, Modes::ARCHIVE, Modes::BOTH, [K("maximum"), Arg("<1-14>")], "Most copies kept (the oldest goes first)"),
+    spec!(NoArchiveMaximum, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("maximum")], "Keep 10 copies"),
+    spec!(
+        ArchiveTimePeriod,
+        Modes::ARCHIVE,
+        Modes::BOTH,
+        [K("time-period"), Arg("<1-525600>")],
+        "Make a copy when this many minutes have passed since the last"
+    ),
+    spec!(NoArchiveTimePeriod, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("time-period")], "No periodic copy"),
+    spec!(ArchiveWriteMemory, Modes::ARCHIVE, Modes::BOTH, [K("write-memory")], "Make a copy whenever the startup configuration is saved"),
+    spec!(NoArchiveWriteMemory, Modes::ARCHIVE, Modes::BOTH, [K("no"), K("write-memory")], "Saving the startup configuration makes no copy"),
+    spec!(ArchiveConfig, Modes::EXEC, Modes::BOTH, [K("archive"), K("config")], "Make a copy of the running configuration now"),
+    spec!(ShowArchive, EXECS, Modes::BOTH, [K("show"), K("archive")], "The archive's settings and copies"),
+    spec!(
+        ConfigureReplace,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("configure"), K("replace"), Arg("NAME")],
+        "Replace the running configuration with a copy (startup-config, or a copy's name or number)"
+    ),
+    spec!(
+        ConfigureRevert,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("configure"), K("revert"), K("now")],
+        "Replace the running configuration with the newest copy"
+    ),
     spec!(ReloadIn, Modes::EXEC, Modes::BOTH, [K("reload"), K("in"), Arg("<minutes|hh:mm>")], "Restart after a delay of simulated time"),
     spec!(
         ReloadIn,
@@ -1656,8 +1737,14 @@ pub static SPECS: &[Spec] = &[
         IpRoute,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>]")],
-        "Add a static route (a distance above the protocol's makes it a backup, a tag labels it)"
+        [
+            K("ip"),
+            K("route"),
+            Arg("A.B.C.D"),
+            Arg("MASK"),
+            Rest("<next hop or interface> [distance] [tag <1-4294967295>] [track <1-1000>] [permanent]")
+        ],
+        "Add a static route (a distance above the protocol's makes it a backup, a tag labels it, track ties it to a tracked object)"
     ),
     spec!(
         NoIpRoute,
@@ -3557,6 +3644,63 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowIpPrefixList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("prefix-list"), Arg("NAME")], "One prefix list"),
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map")], "Every route map"),
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map"), Arg("NAME")], "One route map"),
+    spec!(
+        TrackInterface,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("interface"), Rest("<interface> {line-protocol|ip routing}")],
+        "Track whether an interface works (or routes IP)"
+    ),
+    spec!(
+        TrackIpRoute,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("route"), Arg("A.B.C.D/<0-32>"), K("reachability")],
+        "Track whether the routing table has a prefix"
+    ),
+    spec!(
+        TrackIpRoute,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("route"), Arg("A.B.C.D"), Arg("MASK"), K("reachability")],
+        "Track whether the routing table has a prefix"
+    ),
+    spec!(
+        TrackSla,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("sla"), Arg("<1-2147483647>")],
+        "Track an IP SLA operation (up while its last probe succeeded)"
+    ),
+    spec!(
+        TrackSla,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("ip"), K("sla"), Arg("<1-2147483647>"), Arg("{reachability|state}")],
+        "Track an IP SLA operation: its reachability (a slow probe counts) or its state"
+    ),
+    spec!(
+        TrackList,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("track"), Arg("<1-1000>"), K("list"), K("boolean"), Arg("{and|or}")],
+        "Track several objects together"
+    ),
+    spec!(TrackEnter, Modes::CONFIG, Modes::BOTH, [K("track"), Arg("<1-1000>")], "Edit a tracked object"),
+    spec!(NoTrack, Modes::CONFIG, Modes::BOTH, [K("no"), K("track"), Arg("<1-1000>")], "Delete a tracked object"),
+    spec!(
+        TrackDelay,
+        Modes::TRACK,
+        Modes::BOTH,
+        [K("delay"), Rest("{up|down} <0-180> [{up|down} <0-180>]")],
+        "Wait this many seconds before reporting a change of state"
+    ),
+    spec!(NoTrackDelay, Modes::TRACK, Modes::BOTH, [K("no"), K("delay")], "Report changes at once"),
+    spec!(TrackObject, Modes::TRACK, Modes::BOTH, [K("object"), Arg("<1-1000>")], "Add an object to the list"),
+    spec!(TrackObjectNot, Modes::TRACK, Modes::BOTH, [K("object"), Arg("<1-1000>"), K("not")], "Add an object to the list, negated"),
+    spec!(NoTrackObject, Modes::TRACK, Modes::BOTH, [K("no"), K("object"), Arg("<1-1000>")], "Take an object out of the list"),
+    spec!(ShowTrack, EXECS, Modes::BOTH, [K("show"), K("track")], "Every tracked object, its state and what follows it"),
+    spec!(ShowTrack, EXECS, Modes::BOTH, [K("show"), K("track"), Arg("<1-1000>")], "One tracked object"),
     spec!(RouteMapEnter, Modes::CONFIG, Modes::BOTH, [K("route-map"), Arg("NAME")], "Create or edit a route map clause"),
     spec!(
         RouteMapEnter,
@@ -5245,7 +5389,7 @@ pub static SPECS: &[Spec] = &[
     spec!(PortSecMac, Modes::IF, Modes::SWITCH, [K("switchport"), K("port-security"), K("mac-address"), Arg("H.H.H")], "Allow this address"),
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security")], "Secured ports"),
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security"), Rest("{interface X | address}")], "Secured ports"),
-    spec!(Telnet, EXECS, Modes::BOTH, [K("telnet"), Arg("A.B.C.D")], "Log in to another device with Telnet"),
+    spec!(Telnet, EXECS, Modes::BOTH, [K("telnet"), Arg("A.B.C.D|NAME")], "Log in to another device with Telnet, by address or name"),
     spec!(
         TelnetPort,
         EXECS,
@@ -5260,7 +5404,7 @@ pub static SPECS: &[Spec] = &[
         [K("clear"), K("line"), Arg("<1-16>")],
         "End the reverse Telnet session held on a line of an octal card"
     ),
-    spec!(Ssh, EXECS, Modes::BOTH, [K("ssh"), Rest("-l USER A.B.C.D")], "Log in to another device with SSH"),
+    spec!(Ssh, EXECS, Modes::BOTH, [K("ssh"), Rest("-l USER A.B.C.D|NAME")], "Log in to another device with SSH, by address or name"),
     spec!(ShowIpSsh, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ssh")], "SSH status"),
     spec!(ShowSsh, EXECS, Modes::BOTH, [K("show"), K("ssh")], "SSH sessions open to this device"),
     spec!(SshTimeout, Modes::CONFIG, Modes::BOTH, [K("ip"), K("ssh"), K("time-out"), Arg("<1-120>")], "Seconds an SSH login may take"),
@@ -5512,6 +5656,73 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowMstInstance, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("mst"), Arg("<0-15>")], "One instance's tree"),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
+    spec!(
+        IgmpSnooping,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping")],
+        "Listen to IGMP and send multicast only where it is wanted"
+    ),
+    spec!(NoIgmpSnooping, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("igmp"), K("snooping")], "Flood multicast again"),
+    spec!(
+        IgmpSnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Snoop these VLANs (all of them are snooped unless turned off)"
+    ),
+    spec!(
+        NoIgmpSnoopingVlan,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("igmp"), K("snooping"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Do not snoop these VLANs: multicast floods in them"
+    ),
+    spec!(
+        IgmpQuerier,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping"), K("querier")],
+        "Send an IGMP general query every minute in each snooped VLAN"
+    ),
+    spec!(NoIgmpQuerier, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("igmp"), K("snooping"), K("querier")], "Stop sending queries"),
+    spec!(
+        IgmpQuerierAddress,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("igmp"), K("snooping"), K("querier"), K("address"), Arg("A.B.C.D")],
+        "Source address of the queries in a VLAN that has no interface address"
+    ),
+    spec!(
+        NoIgmpQuerierAddress,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("igmp"), K("snooping"), K("querier"), K("address")],
+        "No query source address"
+    ),
+    spec!(ShowIgmpSnooping, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("igmp"), K("snooping")], "IGMP snooping settings and the VLANs it watches"),
+    spec!(
+        ShowIgmpGroups,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("igmp"), K("snooping"), K("groups")],
+        "The groups learned and the ports that joined them"
+    ),
+    spec!(
+        ShowIgmpMrouter,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("igmp"), K("snooping"), K("mrouter")],
+        "Ports that lead to a multicast router"
+    ),
+    spec!(ShowIgmpQuerier, EXECS, Modes::SWITCH, [K("show"), K("ip"), K("igmp"), K("snooping"), K("querier")], "The queries this switch sends"),
+    spec!(
+        ClearIgmpSnooping,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("clear"), K("ip"), K("igmp"), K("snooping")],
+        "Forget the groups and router ports learned"
+    ),
     spec!(
         IpSgOn,
         Modes::IF,
@@ -7309,12 +7520,14 @@ mod tests {
                 Modes::PKI_SERVER,
                 Modes::BGP,
                 Modes::ROUTE_MAP,
+                Modes::TRACK,
                 Modes::CLIENT_GROUP,
                 Modes::BBA_GROUP,
                 Modes::VTEMPLATE,
                 Modes::DIALER,
                 Modes::KEYCHAIN,
                 Modes::KEYCHAIN_KEY,
+                Modes::ARCHIVE,
                 Modes::MST,
             ]
             .into_iter()

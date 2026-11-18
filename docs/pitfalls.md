@@ -59,6 +59,14 @@ new mistake worth not repeating, add it in the same change.
   where a device is or what it is set to must end in `cell_refresh` (`Session::changed` does it), and a test that
   edits a `Topology` directly must call it before it asks for a link.
 
+- **A control packet whose content depends on state is built when it is due, not when the tick is scheduled.** OSPF hellos list
+  the neighbours heard, and `schedule_control` queued a whole window of them up front with the list as of the window's start,
+  so every hello of the window said "no neighbours" and the neighbours fell back to Init as fast as they came up. They are
+  queued as due times (`Sim::ospf_hello_later`) and built by `ospf_fire` when the clock reaches them. A new timer of this kind
+  goes in `Sim::advance`'s list of next expiries, and clears itself so it can never spin.
+- **A state kept by packets needs a value for "no packet yet".** `show ip ospf neighbor` shows an adjacency no packet has gone over
+  as Full (the state the lab converges to), because a console test that configures and looks at once has no simulated time;
+  the record appears with the first hello, so a test of the states runs the clock first and one of the converged view does not.
 - **A BGP session needs simulated time before it carries a route.** A session takes 3 simulated seconds to reach
   Established, and the clock does not move while commands are typed, so a test or a lab that configures BGP and looks
   at the routing table at once finds nothing. Run `sim.advance` (`Sim::run_for` in a test) first. Keepalives follow
@@ -120,6 +128,12 @@ new mistake worth not repeating, add it in the same change.
   space as `+` when the request is built and decode it where the query is read (`iot_report`, `iot_http`).
 - **A raw string ends at the first `"#`.** A command description written as `r#"... "#rrggbb" ..."#` stops inside the
   text and breaks the whole file. Say `hex rrggbb` in a catalog description, or use `r##"…"##`.
+
+- **A route that follows a tracked object cannot ask the routing table about itself.** `track N ip route …` reads the routing
+  table, whose static rows read the object: `netlabcraft_sim::track` sets a thread-local flag while an object reads the
+  table, and tracked routes count as up then. A tracked state that has delays is not a pure function of the lab: it is
+  settled by `track::tick` after every engine command (`Session::apply_track`), and the simulator reads the settled
+  state (`track::is_up`); a test that only runs console lines sees the live state.
 
 ## Device box
 
