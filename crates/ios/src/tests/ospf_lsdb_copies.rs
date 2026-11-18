@@ -122,16 +122,16 @@ fn the_lsa_debugs_report_what_is_originated_flooded_and_heard() {
     lab.run(r1, "conf t\ninterface g0/0\nip ospf cost 7\nend");
     lab.sim.run_for(&lab.t, 12_000_000);
     let own = lab.run(r1, "show logging");
-    assert!(own.contains("OSPF lsa-generation: router LSA 1.1.1.1 advertised by 1.1.1.1 in area 0 originated again, sequence 0x"), "{own}");
+    assert!(own.contains("OSPF LSA debug: router LSA 1.1.1.1 advertised by 1.1.1.1 in area 0 originated again, sequence 0x"), "{own}");
     let far = lab.run(r3, "show logging");
-    assert!(far.contains("OSPF flood: router LSA 1.1.1.1 advertised by 1.1.1.1 in area 0 received, 2 adjacencies from its router"), "{far}");
+    assert!(far.contains("OSPF flood debug: router LSA 1.1.1.1 advertised by 1.1.1.1 in area 0 received, 2 adjacencies from its router"), "{far}");
     let heard = lab.run(r2, "show logging");
-    assert!(heard.contains("OSPF packet: hello from 10.0.0.1 to 224.0.0.5 on GigabitEthernet0/0"), "{heard}");
+    assert!(heard.contains("OSPF packet debug: hello from 10.0.0.1 to 224.0.0.5 on GigabitEthernet0/0"), "{heard}");
     // The flush is reported too.
     lab.run(r1, "conf t\nrouter ospf 1\nno redistribute static\nend");
     lab.sim.run_for(&lab.t, 1_000_000);
-    assert!(lab.run(r1, "show logging").contains("external LSA 192.168.50.0 advertised by 1.1.1.1 withdrawn: flushed with the age MaxAge"));
-    assert!(lab.run(r3, "show logging").contains("OSPF flood: external LSA 192.168.50.0 advertised by 1.1.1.1 received with MaxAge"));
+    assert!(lab.run(r1, "show logging").contains("OSPF LSA debug: external LSA 192.168.50.0 advertised by 1.1.1.1 withdrawn: flushed with the age MaxAge"));
+    assert!(lab.run(r3, "show logging").contains("OSPF flood debug: external LSA 192.168.50.0 advertised by 1.1.1.1 received with MaxAge"));
     lab.run(r1, "undebug all");
     assert!(lab.run(r1, "show debugging").contains("No debugging"));
     assert!(lab.try_run(r1, "debug ip ospf nonsense").starts_with("% "));

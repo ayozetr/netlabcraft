@@ -616,23 +616,21 @@ impl crate::Sim {
         let Some(conf) = t.device(d).and_then(|x| x.ospf.as_ref()) else { return };
         let (start, hold, max) = conf.spf_throttle.unwrap_or((SPF_START_MS, SPF_HOLD_MS, SPF_MAX_MS));
         let now = self.now;
-        let (events, wait) = {
+        let wait = {
             let s = self.st(d);
             let recent = s.spf_last_us.is_some_and(|last| now.saturating_sub(last) < u64::from(s.spf_hold_ms.max(hold)) * 1_000);
             let wait = if recent { s.spf_hold_ms.max(hold) } else { start };
             s.spf_hold_ms = if recent { s.spf_hold_ms.max(hold).saturating_mul(2).min(max.max(hold)) } else { hold };
             s.spf_runs = s.spf_runs.saturating_add(1);
             s.spf_last_us = Some(now);
-            (s.debug_ospf_events, wait)
+            wait
         };
-        if events {
-            let runs = self.state(d).map_or(0, |s| s.spf_runs);
-            self.log(d, &format!("OSPF event: the database changed, SPF run {runs} scheduled in {wait} ms"));
-        }
+        let runs = self.state(d).map_or(0, |s| s.spf_runs);
+        self.debug_raw(d, crate::DebugKind::OspfEvents, &format!("OSPF event: the database changed, SPF run {runs} scheduled in {wait} ms"));
     }
 
     fn ospf_report(&mut self, t: &Topology, st: &OspfState, events: &[StampEvent], holders: &BTreeMap<LsaKey, Vec<DeviceId>>) {
-        if !self.state.values().any(|s| s.debug_ospf_lsa || s.debug_ospf_flood) {
+        if !self.state.values().any(|s| s.debug_on(crate::DebugKind::OspfLsa) || s.debug_on(crate::DebugKind::OspfFlood)) {
             return;
         }
         let by_rid: BTreeMap<Ipv4Addr, DeviceId> = st.router_ids.iter().map(|(d, r)| (*r, *d)).collect();
@@ -646,32 +644,31 @@ impl crate::Sim {
             let title =
                 format!("{} LSA {} advertised by {}{}", kind_name(key.0), key.2, key.3, key.1.map_or(String::new(), |a| format!(" in area {a}")));
             let Some(origin) = by_rid.get(&key.3).copied() else { continue };
-            if self.state(origin).is_some_and(|s| s.debug_ospf_lsa) {
-                self.log(origin, &format!("OSPF lsa-generation: {title} {what}"));
-            }
+            self.debug_log(origin, crate::DebugKind::OspfLsa, &format!("{title} {what}"));
             let reached = holders.get(key).cloned().unwrap_or_default();
             let recipients: Vec<DeviceId> = st.router_ids.keys().copied().filter(|d| *d != origin).collect();
-            if self.state(origin).is_some_and(|s| s.debug_ospf_flood) {
+            if self.debug_on(origin, crate::DebugKind::OspfFlood) {
                 let out = st.neighbors.get(&origin).into_iter().flatten().map(|n| n.iface.clone()).collect::<BTreeSet<_>>().len();
-                self.log(origin, &format!("OSPF flood: {title}: sent in an update out of {out} interface{}", if out == 1 { "" } else { "s" }));
+                self.debug_log(
+                    origin,
+                    crate::DebugKind::OspfFlood,
+                    &format!("{title}: sent in an update out of {out} interface{}", if out == 1 { "" } else { "s" }),
+                );
             }
             for d in recipients {
-                if !self.state(d).is_some_and(|s| s.debug_ospf_flood) {
+                if !self.debug_on(d, crate::DebugKind::OspfFlood) {
                     continue;
                 }
                 let dist = flood_distances(st, d, key.1).get(&origin).copied();
                 let Some(h) = dist else { continue };
                 let msg = match ev {
                     StampEvent::Originated { .. } if reached.contains(&d) => {
-                        format!(
-                            "OSPF flood: {title} received, {h} adjacenc{} from its router; installed and acknowledged",
-                            if h == 1 { "y" } else { "ies" }
-                        )
+                        format!("{title} received, {h} adjacenc{} from its router; installed and acknowledged", if h == 1 { "y" } else { "ies" })
                     }
-                    StampEvent::Withdrawn { .. } => format!("OSPF flood: {title} received with MaxAge; removed from the database once acknowledged"),
+                    StampEvent::Withdrawn { .. } => format!("{title} received with MaxAge; removed from the database once acknowledged"),
                     StampEvent::Originated { .. } => continue,
                 };
-                self.log(d, &msg);
+                self.debug_log(d, crate::DebugKind::OspfFlood, &msg);
             }
         }
         let _ = t;

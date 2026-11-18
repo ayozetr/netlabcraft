@@ -16,6 +16,7 @@ use crate::{host, render};
 pub(crate) mod automation;
 pub(crate) mod bgp;
 pub(crate) mod cellular;
+pub(crate) mod debug;
 pub(crate) mod eigrp6;
 pub(crate) mod families;
 pub(crate) mod fhrp;
@@ -233,6 +234,8 @@ pub struct Cli {
     pub ftp: Option<crate::host::FtpClient>,
     /// `terminal history size N` / `history size N`: commands this session remembers.
     pub history_cap: Option<usize>,
+    /// `terminal monitor` in a remote session: log and debug messages of the device appear in it.
+    pub monitor: bool,
 }
 
 /// The questions a TFTP copy asks when the server isn't on the command line.
@@ -1170,12 +1173,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let hosts =
                 if d.log_hosts.is_empty() { "none".to_string() } else { d.log_hosts.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ") };
             Ok(format!(
-                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, syslog servers {}\nSyslog servers: {hosts}\n{}",
+                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, monitor {}, syslog servers {}\nSyslog servers: {hosts}\n{}",
                 lines.len(),
                 if lines.len() == 1 { "" } else { "s" },
                 netlabcraft_sim::MAX_LOG,
                 lv(m.logging_console, 7),
                 lv(m.logging_buffered, 7),
+                lv(m.logging_monitor, 7),
                 lv(m.logging_trap, 6),
                 lines.join("\n")
             )
@@ -1193,6 +1197,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoLoggingTrap
         | Id::LoggingConsole
         | Id::NoLoggingConsole
+        | Id::LoggingMonitor
+        | Id::NoLoggingMonitor
+        | Id::NoLoggingBuffered
         | Id::NtpMaster
         | Id::NoNtpMaster
         | Id::NtpAuthenticate
@@ -1212,34 +1219,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::CopyStartRun
         | Id::CopyFlashTftp
         | Id::CopyTftpFlash => mgmt::command(&mut c, spec.id, &args),
-        Id::DebugIpIcmp => {
-            c.sim.set_debug(c.dev, DebugKind::Icmp, true);
-            Ok("ICMP debugging is on: echo messages this device receives are reported.".into())
-        }
-        Id::DebugIpOther | Id::NoDebugIpOther => {
-            let on = spec.id == Id::DebugIpOther;
-            let w: Vec<String> = line.split_whitespace().map(str::to_ascii_lowercase).collect();
-            let topic = w.get(if on { 2 } else { 3 }).map(String::as_str).unwrap_or("");
-            let (kind, name) = if "packet".starts_with(topic) {
-                (DebugKind::Packet, "IP packet")
-            } else if "nat".starts_with(topic) {
-                (DebugKind::Nat, "NAT")
-            } else {
-                (DebugKind::Dhcp, "DHCP server")
-            };
-            c.sim.set_debug(c.dev, kind, on);
-            Ok(if on { format!("{name} debugging is on.") } else { format!("{name} debugging is off.") })
-        }
-        Id::DebugIpRip | Id::NoDebugIpRip => {
-            let on = spec.id == Id::DebugIpRip;
-            c.sim.set_debug(c.dev, DebugKind::Rip, on);
-            Ok(if on { "RIP debugging is on: the updates this router hears are reported." } else { "RIP debugging is off." }.into())
-        }
-        Id::DebugEigrpPackets | Id::NoDebugEigrpPackets => {
-            let on = spec.id == Id::DebugEigrpPackets;
-            c.sim.set_debug(c.dev, DebugKind::Eigrp, on);
-            Ok(if on { "EIGRP debugging is on: the hellos this router hears are reported." } else { "EIGRP debugging is off." }.into())
-        }
+        Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
             let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet"]
@@ -1277,16 +1257,6 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood and packet"))
             })
         }
-        Id::UndebugAll => {
-            for k in DebugKind::ALL {
-                c.sim.set_debug(c.dev, k, false);
-            }
-            Ok("All debugging is off.".into())
-        }
-        Id::ShowDebugging => {
-            let on = c.sim.debugs(c.dev);
-            Ok(if on.is_empty() { "No debugging is on.".into() } else { format!("Debugging is on for: {}.", on.join(", ")) })
-        }
         Id::ShowClock => {
             let (now, set) = c.sim.clock(c.dev);
             Ok(crate::clock::show(now, set))
@@ -1308,9 +1278,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     c.cli.history_cap = Some(n);
                     Ok(String::new())
                 }
-                ["monitor"] | ["no", "monitor"] => Ok(String::new()),
+                ["monitor"] => {
+                    c.cli.monitor = true;
+                    Ok(String::new())
+                }
+                ["no", "monitor"] => {
+                    c.cli.monitor = false;
+                    Ok(String::new())
+                }
                 _ => Err("% terminal length N, terminal width N or terminal monitor".into()),
             }
+        }
+        Id::NoTerminalMonitor => {
+            c.cli.monitor = false;
+            Ok(String::new())
         }
         Id::CdpRun | Id::NoCdpRun => {
             c.dm()?.cdp_off = spec.id == Id::NoCdpRun;

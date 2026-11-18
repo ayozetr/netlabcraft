@@ -12,11 +12,13 @@ pub struct LogCfg {
     pub console: u8,
     pub buffered: u8,
     pub trap: u8,
+    /// `logging monitor`: what terminal-monitor sessions see.
+    pub monitor: u8,
 }
 
 impl Default for LogCfg {
     fn default() -> LogCfg {
-        LogCfg { ts_log: None, ts_debug: None, console: 7, buffered: 7, trap: 6 }
+        LogCfg { ts_log: None, ts_debug: None, console: 7, buffered: 7, trap: 6, monitor: 7 }
     }
 }
 
@@ -29,6 +31,7 @@ impl LogCfg {
             console: m.logging_console.unwrap_or(7),
             buffered: m.logging_buffered.unwrap_or(7),
             trap: m.logging_trap.unwrap_or(6),
+            monitor: m.logging_monitor.unwrap_or(7),
         }
     }
 }
