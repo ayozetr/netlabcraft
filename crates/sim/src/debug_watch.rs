@@ -66,7 +66,8 @@ impl Sim {
                 let due =
                     self.state.get(&id).and_then(|s| s.debug_tick.get(&kind).copied()).is_none_or(|at| self.now.saturating_sub(at) >= CDP_EVERY_US);
                 if due {
-                    self.st(id).debug_tick.insert(kind, self.now);
+                    let at = self.now;
+                    self.st(id).debug_tick.insert(kind, at);
                     for (k, v) in now.iter().take(MAX_REPORT) {
                         self.debug_log(id, kind, &format!("advertisement received from {k} ({v})"));
                     }
