@@ -122,7 +122,7 @@ impl MstBpdu {
         }
         let base = Bpdu::decode(b)?;
         let declared = usize::from(be16(b, 3 + 36).ok_or_else(t)?);
-        if declared < V3_FIXED || (declared - V3_FIXED) % RECORD != 0 {
+        if declared < V3_FIXED || !(declared - V3_FIXED).is_multiple_of(RECORD) {
             return Err(WireError::Unsupported("mst bpdu", format!("version 3 length {declared}")));
         }
         let records = (declared - V3_FIXED) / RECORD;
