@@ -130,7 +130,8 @@ fn the_lsa_debugs_report_what_is_originated_flooded_and_heard() {
     assert!(heard.contains("OSPF packet debug: hello from 10.0.0.1 to 224.0.0.5 on GigabitEthernet0/0"), "{heard}");
     // The flush is reported too.
     lab.run(r1, "conf t\nrouter ospf 1\nno redistribute static\nend");
-    lab.sim.run_for(&lab.t, 1_000_000);
+    // The change is noticed when OSPF's state is next looked at: at the next hello at the latest.
+    lab.sim.run_for(&lab.t, 12_000_000);
     let own = lab.run(r1, "show logging");
     assert!(own.contains("OSPF LSA debug: external LSA 192.168.50.0 advertised by 1.1.1.1 withdrawn: flushed with the age MaxAge"), "{own}");
     let far = lab.run(r3, "show logging");
