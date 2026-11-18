@@ -1496,12 +1496,19 @@ impl Sim {
                 continue;
             }
             let Some(view) = st.routers.get(&d.id) else { continue };
+            // Every external path the neighbours advertise, and the ones among them dampening watches.
+            let mut advertised: BTreeSet<(Ipv4Addr, Ipv4Net)> = BTreeSet::new();
             let mut seen: BTreeMap<(Ipv4Addr, Ipv4Net), (u64, conf::DampParams)> = BTreeMap::new();
             for p in view.paths.iter().filter(|p| p.ebgp && !p.confed) {
-                if let (Some(from), Some(params)) = (p.from, damp_params(d, p)) {
+                let Some(from) = p.from else { continue };
+                advertised.insert((from, p.net));
+                if let Some(params) = damp_params(d, p) {
                     seen.insert((from, p.net), (path_signature(p), params));
                 }
             }
+            // A route the route map no longer permits is not dampened any more: its record goes, and
+            // its disappearance is not a flap.
+            self.bgp.damp.retain(|k, _| k.0 != d.id || seen.contains_key(&(k.1, k.2)) || !advertised.contains(&(k.1, k.2)));
             for ((from, net), (sig, params)) in &seen {
                 let key = (d.id, *from, *net);
                 if let Some(f) = self.bgp.damp.get_mut(&key) {
@@ -1519,7 +1526,7 @@ impl Sim {
                 }
             }
             for (key, f) in self.bgp.damp.iter_mut().filter(|(k, _)| k.0 == d.id) {
-                if f.present && !seen.contains_key(&(key.1, key.2)) {
+                if f.present && !advertised.contains(&(key.1, key.2)) {
                     f.present = false;
                     f.add(conf::FLAP_PENALTY, now);
                     if f.flaps == 0 {

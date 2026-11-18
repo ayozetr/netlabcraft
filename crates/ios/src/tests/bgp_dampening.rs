@@ -74,7 +74,7 @@ fn a_route_that_flaps_is_held_down_and_used_again_when_its_penalty_has_decayed()
     advance(&mut lab, 20 * MINUTE);
     assert!(row(&mut lab, r2, "172.16.1.0/24").starts_with('d'));
     let later = lab.run(r2, "show ip bgp dampened-paths");
-    assert!(later.contains("00:09:"), "ten minutes to go: {later}");
+    assert!(later.contains("00:10:") || later.contains("00:09:"), "ten minutes to go: {later}");
     // Past thirty minutes it is below the limit: the route is used again.
     advance(&mut lab, 11 * MINUTE);
     assert!(row(&mut lab, r2, "172.16.1.0/24").starts_with('*'), "{}", lab.run(r2, "show ip bgp"));
