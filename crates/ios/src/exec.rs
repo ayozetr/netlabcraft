@@ -722,7 +722,10 @@ fn account(t: &Topology, sim: &mut Sim, dev: DeviceId, key: &str, user: &str, st
 fn command_hooks(t: &Topology, sim: &mut Sim, dev: DeviceId, cli: &Cli, spec: &grammar::Spec, args: &[String]) -> Result<(), String> {
     let Some(d) = t.device(dev) else { return Ok(()) };
     // The console is not authorized or accounted (as `aaa authorization console` is off by default).
-    if !cli.vty || !d.access.aaa || !d.knobs.global.keys().any(|k| k.starts_with("aaa authorization commands") || k.starts_with("aaa accounting commands")) {
+    if !cli.vty
+        || !d.access.aaa
+        || !d.knobs.global.keys().any(|k| k.starts_with("aaa authorization commands") || k.starts_with("aaa accounting commands"))
+    {
         return Ok(());
     }
     let need = aaa::command_level(d, aaa::scope_of(&cli.mode), spec);
