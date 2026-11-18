@@ -281,6 +281,15 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `write` | privileged | router, switch, firewall | Save the configuration |
 | `erase startup-config` | privileged | router, switch, firewall | Delete the saved configuration |
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
+| `reload in <minutes\|hh:mm>` | privileged | router, switch | Restart after a delay of simulated time |
+| `reload in <minutes\|hh:mm> <reason>` | privileged | router, switch | Restart after a delay, with a reason |
+| `reload at <hh:mm>` | privileged | router, switch | Restart at the next time the device clock shows this |
+| `reload at <hh:mm> <reason>` | privileged | router, switch | Restart at a time of day, with a reason |
+| `reload cancel` | privileged | router, switch | Cancel a scheduled restart |
+| `show reload` | user, privileged | router, switch | When the device restarts, if a restart is scheduled |
+| `show aliases` | user, privileged | router, switch | The command aliases |
+| `alias {exec\|configure\|interface} NAME <command text>` | config | router, switch | Give a command another name in one mode |
+| `no alias {exec\|configure\|interface} NAME` | config | router, switch | Remove a command alias |
 | `clear mac address-table` | privileged | switch | Forget learned MAC addresses |
 | `clear arp-cache` | privileged | router | Forget ARP entries |
 | `show mac-address-table` | user, privileged | switch | Learned MAC addresses |
