@@ -14,6 +14,7 @@ mod bgp_password;
 mod bgp_peer_groups;
 mod bgp_reflection;
 mod console_depth;
+mod debug_framework;
 mod error_counters;
 mod families;
 mod inspections;
@@ -2444,7 +2445,7 @@ fn log_timestamps_and_severity_filters_by_typing() {
     );
     let log = lab.run(r, "show logging");
     assert!(log.contains("[Oct 30 2026 10:20:3") && log.contains("] Configuration changed from the console"), "{log}");
-    assert!(log.contains("Levels: console debugging, buffer debugging, syslog servers warnings"), "{log}");
+    assert!(log.contains("Levels: console debugging, buffer debugging, monitor debugging, syslog servers warnings"), "{log}");
     // The debug stamp has no milliseconds.
     lab.run(r, "debug ip icmp");
     lab.run(srv, "ping 10.0.0.1");

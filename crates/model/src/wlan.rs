@@ -534,6 +534,21 @@ impl Topology {
         if !self.implicit_layout() {
             let building = |d: &Device| self.home_of(d.id).and_then(|h| self.building_of(h.place)).map(|b| b.id);
             if let (Some(a), Some(b)) = (building(host), building(ap)) {
+                // Two radios in one place whose map has a scale of its own (its size was set): the
+                // coverage range, in metres, is measured on that map.
+                if let (Some(ha), Some(hb)) = (self.home_of(host.id), self.home_of(ap.id))
+                    && ha.place == hb.place
+                    && self.map_scale_is_custom(ha.place)
+                {
+                    let metres = ((ha.x - hb.x).powi(2) + (ha.y - hb.y).powi(2)).sqrt() * self.map_scale(ha.place);
+                    let range_m = ap
+                        .ports
+                        .iter()
+                        .find(|p| ifname::is_wireless(&p.name))
+                        .and_then(|p| p.wifi.as_ref())
+                        .map_or(DEFAULT_COVERAGE_M, Wifi::coverage_m);
+                    return a == b && metres <= range_m;
+                }
                 return a == b;
             }
         }
