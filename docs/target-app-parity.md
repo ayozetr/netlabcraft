@@ -14,7 +14,7 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **232** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **2002** across 50 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **2004** across 50 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **63** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 24 CCNA 2, 32 CCNA 3 with the BGP, redistribution, PPPoE, OSPF-area, VPN and debug labs, one wireless-security follow-up and two board-programming labs; labs 21 to 29, 34, 35, 61 to 64 and 68 to 71 are troubleshooting labs, 30, 31, 65 to 67 and 72 labs on reading output), all run by `crates/engine/tests/lab_book.rs`, 19 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
