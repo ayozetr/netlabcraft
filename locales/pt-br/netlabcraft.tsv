@@ -2424,3 +2424,5 @@ furniture	Table	Mesa
 	no clock rate on the DCE end	sem clock rate na ponta DCE
 	the two ends use different encapsulations	as duas pontas usam encapsulamentos diferentes
 	PPP authentication failed (check the usernames and passwords)	falha na autenticação PPP (confira os usuários e as senhas)
+	Each place has its own physics	Cada local tem sua própria física
+	Parts change the place they stand in by rates, and the place settles back when they stop	As peças mudam o local onde estão com uma taxa, e o local volta ao valor quando elas param

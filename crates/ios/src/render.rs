@@ -2094,6 +2094,12 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     if c.nd_other {
         let _ = writeln!(s, " ipv6 nd other-config-flag");
     }
+    if c.nd_suppress {
+        let _ = writeln!(s, " ipv6 nd ra suppress all");
+    }
+    if let Some(n) = c.nd_ra_lifetime {
+        let _ = writeln!(s, " ipv6 nd ra lifetime {n}");
+    }
     if let Some(f) = &c.filter_in {
         let _ = writeln!(s, " ipv6 traffic-filter {f} in");
     }
