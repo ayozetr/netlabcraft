@@ -30,11 +30,13 @@ mod families;
 mod hardware;
 pub mod home;
 mod hostapps;
+pub mod images;
 pub mod instructor;
 mod iot;
 mod netconf;
 mod netflow;
 mod pdu;
+mod pictures;
 mod pppoe;
 pub mod settings;
 mod traffic;
@@ -67,6 +69,8 @@ mod tests_instructor;
 mod tests_netflow;
 #[cfg(test)]
 mod tests_parts;
+#[cfg(test)]
+mod tests_pictures;
 #[cfg(test)]
 mod tests_pppoe;
 #[cfg(test)]
