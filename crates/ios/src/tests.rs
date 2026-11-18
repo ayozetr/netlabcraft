@@ -56,6 +56,7 @@ mod route_tags;
 mod routing;
 mod security;
 mod shallow_settings;
+mod sla;
 mod span;
 mod srcguard;
 mod stp_views;
@@ -449,6 +450,7 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\nvlan 5",
                     "en\nconf t\nrouter eigrp 1",
                     "en\nconf t\ntrack 1 list boolean and",
+                    "en\nconf t\nip sla 1\nicmp-echo 10.0.0.1",
                     "en\nconf t\nrouter bgp 65001",
                     "en\nconf t\nroute-map RM permit 10",
                     "en\nconf t\nint lo0",
