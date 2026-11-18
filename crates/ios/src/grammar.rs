@@ -2517,14 +2517,14 @@ pub static SPECS: &[Spec] = &[
         DebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
-        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet"
+        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet|retransmission")],
+        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
+        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet|retransmission")],
         "Stop one kind of OSPF report"
     ),
     spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),
