@@ -61,12 +61,12 @@ cabling and wireless row (~95%); **host hardware: ~80% ready, 8–14 h** (estima
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-18 | minor | Reverse Telnet through an octal line: `telnet ADDRESS 2000+N` reaches the console behind line N, with `show line`, `show users`, `clear line N` and `line` configuration. |
-| 2026-11-18 | minor | Cable reach: serial (1200 m), console and octal (15 m) and USB (5 m) cables join copper, fiber, coaxial and phone lines, each with its standard. |
 | 2026-11-18 | minor | Power distribution devices: nominal watts per model, a rating, the load and a breaker that trips and resets. |
 | 2026-11-18 | minor | Fiber loss budgets: length, two end connectors and splices against the transceivers' power budget decide whether a link is up, degraded or over (down), shown in the Cable Properties window, `link.info` and `show interfaces transceiver`; the transceiver mode is an interface command (`transceiver type`). New command `link.splices`; the lab file gets an optional `splices` list. |
 | 2026-11-18 | minor | Programmable boards: the Python and JavaScript subsets and the language list; the row no longer says the boards are BoardScript only. |
 | 2026-11-18 | minor | IoT devices: with `environment.physics` the heaters, coolers, fans, furnaces, humidifiers, sprinklers, windows and lamps change the place they stand in by rates. |
 | 2026-11-18 | minor | IoT devices: Bluetooth pairing codes and profiles, RFID ids typed in, a trip sensor's wire, a beacon's log, a smart LED's brightness in the room's light, and pitches for speakers and tuned sound detectors. |
+| 2026-11-18 | minor | Cable reach: serial (1200 m), console and octal (15 m) and USB (5 m) cables join copper, fiber, coaxial and phone lines, each with its standard. |
 | 2026-11-17 | minor | Consistency pass: the Printing row describes File ▸ Save as PDF… and the Print window (save, viewer, `lp`) as ui-parity.md does; a misplaced revision row moved into order. |
 | 2026-11-18 | minor | Power distribution devices: nominal watts per model, a rating, the load and a breaker that trips and resets. |
 | 2026-11-17 | minor | Smart City things: pressure, wind, carbon dioxide and fire monitors, a fire sprinkler, an old car, a beacon, an RFID card and reader, a trip sensor and a smart LED; an industrial signal generator. |
