@@ -521,8 +521,8 @@ impl Sim {
 
     /// OSPFv3 hellos from every interface of every OSPFv3 router (passive ones excepted).
     fn send_ospf6_hellos(&mut self, t: &Topology, at: u64) {
-        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, Ipv6, multicast_mac};
-        use netlabcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6, PROTO_OSPF};
+        use netlabcraft_wire::ipv6::{ETHERTYPE_IPV6, multicast_mac};
+        use netlabcraft_wire::ospf6::{ALL_SPF_ROUTERS6, Hello6};
         if !t.devices.iter().any(|d| d.ospf6.is_some()) {
             return;
         }
@@ -542,13 +542,10 @@ impl Sim {
                     bdr: Ipv4Addr::UNSPECIFIED,
                     neighbors: heard,
                 };
-                let ip = Ipv6 {
-                    hop_limit: 1,
-                    next_header: PROTO_OSPF,
-                    src: ifc.link_local,
-                    dst: ALL_SPF_ROUTERS6,
-                    payload: hello.encode(ifc.link_local, ALL_SPF_ROUTERS6),
-                };
+                // An interface with `ospfv3 authentication ipsec` puts an AH header on every packet.
+                let seq = u32::try_from(at / 1_000_000).unwrap_or(u32::MAX).max(1);
+                let payload = hello.encode(ifc.link_local, ALL_SPF_ROUTERS6);
+                let ip = crate::ospf6::wrap(ifc.link_local, payload, crate::ospf6::auth_of(d, ifc, *area), seq);
                 let frame =
                     Frame { dst: multicast_mac(ALL_SPF_ROUTERS6), src: ifc.mac, vlan: ifc.vlan, ethertype: ETHERTYPE_IPV6, payload: ip.encode() };
                 self.queue_frame(t, d, ifc.port, frame, at);
