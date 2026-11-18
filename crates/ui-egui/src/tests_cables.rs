@@ -6,6 +6,7 @@ mod t {
     use egui_kittest::kittest::Queryable as _;
     use netlabcraft_engine::Session;
     use netlabcraft_model::End;
+    use netlabcraft_model::cable_ref::CableRef;
     use serde_json::json;
 
     use crate::{PacketApp, Tool};
@@ -78,9 +79,9 @@ mod t {
         let (end, at) = on_a_cable(&h);
         h.input_mut().events.push(egui::Event::PointerMoved(at));
         h.run_steps(3);
-        assert_eq!(h.state().ui.hover_cable, Some(end));
+        assert_eq!(h.state().ui.hover_cable, Some(CableRef::Link(end)));
         left_click(&mut h, at);
-        assert_eq!(h.state().ui.selected_cable, Some(end));
+        assert_eq!(h.state().ui.selected_cable, Some(CableRef::Link(end)));
         assert_eq!(h.state().ui.selected, None);
         assert!(h.state().ui.cable_window.is_none(), "a click picks the cable; Properties opens its window");
     }
@@ -91,14 +92,14 @@ mod t {
         let (end, at) = on_a_cable(&h);
         let before = h.state().session.topology.links.len();
         right_click(&mut h, at);
-        assert_eq!(h.state().ui.canvas.context_cable_for_tests(), Some(end));
+        assert_eq!(h.state().ui.canvas.context_cable_for_tests(), Some(CableRef::Link(end)));
         for label in ["Properties…", "Open First Device", "Open Second Device", "Cable Length…", "Delete"] {
             assert!(h.query_all_by_label(label).next().is_some(), "the menu lacks {label}");
         }
         assert!(h.query_all_by_label("Show Info").next().is_none(), "Show Info is for the physical workspace");
         h.get_by_label("Properties…").click();
         h.run_steps(3);
-        assert_eq!(h.state().ui.cable_window, Some(end));
+        assert_eq!(h.state().ui.cable_window, Some(CableRef::Link(end)));
         assert!(h.query_by_label("Delete Cable").is_some());
         h.get_by_label("Delete Cable").click();
         h.run_steps(3);
@@ -123,7 +124,7 @@ mod t {
         let (end, _) = on_a_cable(&h);
         let before = h.state().session.topology.links.len();
         h.state_mut().ui.selected = None;
-        h.state_mut().ui.selected_cable = Some(end);
+        h.state_mut().ui.selected_cable = Some(CableRef::Link(end));
         h.input_mut().events.push(egui::Event::Key {
             key: egui::Key::Delete,
             physical_key: None,
@@ -143,7 +144,7 @@ mod t {
         if let Some(p) = h.state_mut().session.topology.device_mut(l.a.device).and_then(|d| d.ports.get_mut(l.a.port)) {
             p.shutdown = true;
         }
-        h.state_mut().ui.cable_window = Some(l.a);
+        h.state_mut().ui.cable_window = Some(CableRef::Link(l.a));
         h.run_steps(3);
         assert!(h.query_all_by_label("Down").next().is_some());
         assert!(h.query_all_by_label_contains("is shut down").next().is_some());
@@ -159,7 +160,7 @@ mod t {
         s.execute("link.length", json!({"device": "F1", "port": "g0/1", "meters": 550})).unwrap();
         let end = s.topology.links[0].a;
         let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
-        h.state_mut().ui.cable_window = Some(end);
+        h.state_mut().ui.cable_window = Some(CableRef::Link(end));
         h.run_steps(3);
         assert!(h.query_all_by_label("Loss budget").next().is_some());
         assert!(h.query_all_by_label_contains("degraded").next().is_some(), "550 m of multi-mode leaves under a decibel");

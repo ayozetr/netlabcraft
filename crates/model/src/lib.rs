@@ -19,6 +19,7 @@ pub mod backdrop;
 pub mod bgp;
 pub mod board;
 pub mod cable;
+pub mod cable_ref;
 pub mod cellular;
 pub mod cloud;
 pub mod drawing;

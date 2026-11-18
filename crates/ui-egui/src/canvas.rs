@@ -4,6 +4,7 @@ use crate::prefs_look::HintExt;
 use egui::{Align2, FontId, Id, Pos2, Rect, Sense, Stroke, StrokeKind, Ui, Vec2, pos2, vec2};
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::cable::Cable;
+use netlabcraft_model::cable_ref::CableRef;
 use netlabcraft_model::{Cluster, Device, End, Shape, Shown, ifname};
 use netlabcraft_sim::port_up;
 use serde_json::{Value, json};
@@ -49,7 +50,7 @@ pub struct CanvasState {
     context_cluster: Option<u32>,
     context_note: Option<u32>,
     /// A cable right-clicked (its menu is open), named by its first end.
-    context_cable: Option<End>,
+    context_cable: Option<netlabcraft_model::cable_ref::CableRef>,
     drag_cluster: Option<u32>,
     /// Dragging every picked device together.
     drag_group: bool,
@@ -67,7 +68,7 @@ pub struct CanvasState {
 impl CanvasState {
     /// The cable whose right-click menu is open (for the tests).
     #[cfg(test)]
-    pub(crate) fn context_cable_for_tests(&self) -> Option<End> {
+    pub(crate) fn context_cable_for_tests(&self) -> Option<netlabcraft_model::cable_ref::CableRef> {
         self.context_cable
     }
 
@@ -1381,7 +1382,7 @@ fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
             };
             if let Some((to, ..)) = target {
                 ui.memory_mut(|m| m.request_focus(cable_node_id(*to)));
-                focused = Some(*to);
+                focused = Some(CableRef::Link(*to));
             }
         }
     }
@@ -1398,7 +1399,7 @@ fn draw_cable_focus(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &
     let t = &app.session.topology;
     // The cable under the pointer is lit lightly, the picked one and the focused one strongly.
     for (end, strength) in [(app.ui.hover_cable, 0.25), (app.ui.selected_cable, 0.45), (app.ui.cable_focus, 0.45)] {
-        let Some(end) = end else { continue };
+        let Some(CableRef::Link(end)) = end else { continue };
         if let Some(l) = t.links.iter().find(|l| l.a == end)
             && let Some((pa, pb)) = cable_ends(t, view, l)
         {
@@ -1410,7 +1411,7 @@ fn draw_cable_focus(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     // The cable under the pointer (not when a device is there), for the hover highlight.
     app.ui.hover_cable = if matches!(app.ui.tool, Tool::Select | Tool::Delete) {
-        resp.hover_pos().filter(|p| hit_device(app, view, *p).is_none()).and_then(|p| hit_link(app, view, p))
+        resp.hover_pos().filter(|p| hit_device(app, view, *p).is_none()).and_then(|p| hit_link(app, view, p)).map(CableRef::Link)
     } else {
         None
     };
@@ -1665,7 +1666,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             } else if let Some(n) = hit_note(app, view, p) {
                 app.ui.canvas.context_note = Some(n);
             } else if let Some(end) = hit_link(app, view, p) {
-                app.ui.canvas.context_cable = Some(end);
+                app.ui.canvas.context_cable = Some(CableRef::Link(end));
                 crate::cable_window::select(app, end);
             }
         }
@@ -1676,7 +1677,7 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         resp.context_menu(|ui| cluster_menu(app, ui, c));
     } else if let Some(n) = app.ui.canvas.context_note {
         resp.context_menu(|ui| note_menu(app, ui, n));
-    } else if let Some(e) = app.ui.canvas.context_cable {
+    } else if let Some(CableRef::Link(e)) = app.ui.canvas.context_cable {
         resp.context_menu(|ui| cable_menu(app, ui, e));
     }
 

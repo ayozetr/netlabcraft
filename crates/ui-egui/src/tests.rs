@@ -2191,11 +2191,11 @@ fn cables_are_accessible_nodes_found_by_label_and_open_their_window() {
     // Focus on a cable node highlights it, and Enter opens the cable's window.
     h.get_by_label(&label).focus();
     h.run_steps(2);
-    assert_eq!(h.state().ui.cable_focus.map(|e| e.device), Some(first));
+    assert_eq!(h.state().ui.cable_focus.and_then(|c| c.link()).map(|e| e.device), Some(first));
     key(&mut h, egui::Key::Enter, egui::Modifiers::NONE);
     assert_eq!(h.state().ui.selected, None);
-    assert_eq!(h.state().ui.cable_window.map(|e| e.device), Some(first));
-    assert_eq!(h.state().ui.selected_cable.map(|e| e.device), Some(first));
+    assert_eq!(h.state().ui.cable_window.and_then(|c| c.link()).map(|e| e.device), Some(first));
+    assert_eq!(h.state().ui.selected_cable.and_then(|c| c.link()).map(|e| e.device), Some(first));
     // Mouse use is unchanged: clicking empty workspace still deselects.
     let at = canvas_origin(&h) + egui::vec2(30.0, 30.0);
     click_at(&mut h, at);
