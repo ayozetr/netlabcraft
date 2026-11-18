@@ -1585,45 +1585,49 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             }
         }
         Target::Port(pole) => {
-            if t.patch_wires_at(pole).is_empty() {
+            let wired = !t.patch_wires_at(pole).is_empty();
+            let unwire = json!({"a": pole_json(t, pole)});
+            let has_backbone = t.backbone_at(pole).is_some();
+            // The panels and wall mounts of other places that have a port left for a backbone.
+            let mut far: Vec<(u32, String)> = Vec::new();
+            if let Pole::Panel { fitting, .. } = pole
+                && let Some(f) = t.fitting(fitting)
+            {
+                far = t
+                    .physical
+                    .fittings
+                    .iter()
+                    .filter(|x| {
+                        x.kind.is_cabling() && x.kind.is_fiber() == f.kind.is_fiber() && x.place != f.place && t.first_free_cord_port(x.id).is_some()
+                    })
+                    .map(|x| (x.id, format!("{} ({})", x.name, t.place(x.place).map(|q| tr(&q.name).to_string()).unwrap_or_default())))
+                    .collect();
+            }
+            let is_panel = matches!(pole, Pole::Panel { .. });
+            if !wired {
                 ui.label(tl("Drag from this port to another to wire them."));
             } else if ui.button(tl("Remove Patch Wires")).clicked() {
-                let params = json!({"a": pole_json(t, pole)});
-                app.run("patch.unwire", params);
+                app.run("patch.unwire", unwire.clone());
                 ui.close();
             }
-            if let Pole::Panel { fitting, .. } = pole {
-                let here = t.fitting(fitting).map(|f| (f.place, f.kind.is_fiber()));
-                if t.backbone_at(pole).is_some() {
-                    if ui.button(tl("Remove Backbone")).clicked() {
-                        let params = json!({"a": pole_json(t, pole)});
-                        app.run("backbone.remove", params);
-                        ui.close();
-                    }
-                } else if let Some((here, fiber)) = here {
-                    // The panels and wall mounts of other places that have a port left for it.
-                    let far: Vec<(u32, String)> = t
-                        .physical
-                        .fittings
-                        .iter()
-                        .filter(|f| f.kind.is_cabling() && f.kind.is_fiber() == fiber && f.place != here && t.first_free_cord_port(f.id).is_some())
-                        .map(|f| (f.id, format!("{} ({})", f.name, t.place(f.place).map(|q| tr(&q.name).to_string()).unwrap_or_default())))
-                        .collect();
-                    let near = pole_json(t, pole);
-                    ui.menu_button(tl("Backbone to"), |ui| {
-                        if far.is_empty() {
-                            ui.label(tl("No panel or wall mount with a free port in another place."));
-                        }
-                        for (id, label) in &far {
-                            if ui.button(label).clicked() {
-                                let port = app.session.topology.first_free_cord_port(*id).map_or(1, |n| n.saturating_add(1));
-                                let to = json!({"panel": id, "port": port});
-                                app.run("backbone.add", json!({"a": near.clone(), "b": to}));
-                                ui.close();
-                            }
-                        }
-                    });
+            if is_panel && has_backbone {
+                if ui.button(tl("Remove Backbone")).clicked() {
+                    app.run("backbone.remove", unwire);
+                    ui.close();
                 }
+            } else if is_panel {
+                ui.menu_button(tl("Backbone to"), |ui| {
+                    if far.is_empty() {
+                        ui.label(tl("No panel or wall mount with a free port in another place."));
+                    }
+                    for (id, label) in &far {
+                        if ui.button(label).clicked() {
+                            let port = app.session.topology.first_free_cord_port(*id).map_or(1, |n| n.saturating_add(1));
+                            app.run("backbone.add", json!({"a": unwire.clone(), "b": {"panel": id, "port": port}}));
+                            ui.close();
+                        }
+                    }
+                });
             }
         }
         Target::Outlet(strip, outlet) => {

@@ -571,7 +571,8 @@ mod t {
             let pole = netlabcraft_model::furniture::Pole::Panel { fitting: f, port: n };
             h.state().ui.physical.closet.seen_ports.iter().find(|(p, _)| *p == pole).map(|(_, r)| r.center()).expect("the socket is drawn")
         };
-        right_click(&mut h, port(&h, pp1, 2));
+        let at = port(&h, pp1, 2);
+        right_click(&mut h, at);
         h.query_all_by_label("Backbone to").next().unwrap().click();
         h.run_steps(2);
         h.query_all_by_label("PP2 (Annex)").next().unwrap().click();
@@ -580,7 +581,8 @@ mod t {
         assert_eq!(t.backbones().len(), 1, "the command made the backbone");
         assert_eq!(t.links.len(), 0, "no drop on those ports: no cable yet");
         // The same port now offers to take the backbone away.
-        right_click(&mut h, port(&h, pp1, 2));
+        let at = port(&h, pp1, 2);
+        right_click(&mut h, at);
         assert!(h.query_all_by_label("Remove Backbone").next().is_some());
         h.query_all_by_label("Remove Backbone").next().unwrap().click();
         h.run_steps(3);

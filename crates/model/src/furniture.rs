@@ -2322,7 +2322,6 @@ mod tests {
         let again = file::from_json(&file::to_json(&t).unwrap()).unwrap();
         assert_eq!(again, t, "the wall mount in the building survives a save");
         // A building that goes takes its wall mounts and their backbones along.
-        let mut t = t;
         t.remove_place(DEFAULT_BUILDING).unwrap();
         assert!(t.physical.fittings.is_empty() && t.backbones().is_empty());
     }
