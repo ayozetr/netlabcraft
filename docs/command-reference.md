@@ -2391,6 +2391,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip pim rp mapping` | user, privileged | router, switch | Which rendezvous point serves which groups |
 | `show ip igmp groups` | user, privileged | router, switch | Groups with a member on each interface |
 | `show ip igmp interface` | user, privileged | router, switch | IGMP on each interface that runs PIM |
+| `ip multicast ttl-threshold <0-255>` | interface, subinterface | router, switch | Send out of this interface only multicast packets whose TTL is above this |
+| `no ip multicast ttl-threshold` | interface, subinterface | router, switch | No TTL limit on multicast sent out of this interface |
+| `show ip rpf A.B.C.D` | user, privileged | router, switch | The interface and neighbour multicast from an address has to come in by |
 
 ## Host shell (PCs and servers)
 

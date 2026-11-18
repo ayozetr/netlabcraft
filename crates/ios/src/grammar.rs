@@ -1630,6 +1630,9 @@ pub enum Id {
     ShowDot1xAll,
     ShowDot1xInterface,
     Dot1xReauth,
+    McTtlThreshold,
+    NoMcTtlThreshold,
+    ShowRpf,
 }
 
 use Tok::{Arg, K, Rest};
@@ -8217,6 +8220,27 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowPimRp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("pim"), K("rp"), K("mapping")], "Which rendezvous point serves which groups"),
     spec!(ShowRouterIgmpGroups, EXECS, Modes::BOTH, [K("show"), K("ip"), K("igmp"), K("groups")], "Groups with a member on each interface"),
     spec!(ShowRouterIgmpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("igmp"), K("interface")], "IGMP on each interface that runs PIM"),
+    spec!(
+        McTtlThreshold,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("multicast"), K("ttl-threshold"), Arg("<0-255>")],
+        "Send out of this interface only multicast packets whose TTL is above this"
+    ),
+    spec!(
+        NoMcTtlThreshold,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("multicast"), K("ttl-threshold")],
+        "No TTL limit on multicast sent out of this interface"
+    ),
+    spec!(
+        ShowRpf,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("rpf"), Arg("A.B.C.D")],
+        "The interface and neighbour multicast from an address has to come in by"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
