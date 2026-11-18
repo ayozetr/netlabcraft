@@ -480,6 +480,10 @@ pub enum Id {
     NoIpOspfHello,
     IpOspfDead,
     NoIpOspfDead,
+    IpOspfRetransmit,
+    NoIpOspfRetransmit,
+    IpOspfTransmitDelay,
+    NoIpOspfTransmitDelay,
     IpOspfNetwork,
     NoIpOspfNetwork,
     IpOspfAuth,
@@ -797,6 +801,9 @@ pub enum Id {
     LoginAuthentication,
     TransportInput,
     Telnet,
+    TelnetPort,
+    LineAsync,
+    ClearLine,
     Ssh,
     ShowIpSsh,
     IpAddressDhcp,
@@ -1746,6 +1753,22 @@ pub static SPECS: &[Spec] = &[
     spec!(IpOspfDead, OSPF_IFS, Modes::BOTH, [K("ip"), K("ospf"), K("dead-interval"), Arg("<1-65535>")], "Silence before a neighbour is dropped"),
     spec!(NoIpOspfDead, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("dead-interval")], "Four hello intervals again"),
     spec!(
+        IpOspfRetransmit,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("retransmit-interval"), Arg("<1-65535>")],
+        "Seconds before an unacknowledged update is sent again (5)"
+    ),
+    spec!(NoIpOspfRetransmit, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("retransmit-interval")], "Five seconds again"),
+    spec!(
+        IpOspfTransmitDelay,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("transmit-delay"), Arg("<1-65535>")],
+        "Seconds added to the age of every LSA sent (1)"
+    ),
+    spec!(NoIpOspfTransmitDelay, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("transmit-delay")], "One second again"),
+    spec!(
         IpOspfNetwork,
         OSPF_IFS,
         Modes::BOTH,
@@ -1863,7 +1886,7 @@ pub static SPECS: &[Spec] = &[
         [
             K("redistribute"),
             Rest(
-                "{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [tag <0-4294967295>] [subnets] [route-map NAME]"
+                "{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [tag <0-4294967295>] [subnets] [nssa-only] [route-map NAME]"
             )
         ],
         "Advertise the routes another source gave as external routes"
@@ -2531,14 +2554,14 @@ pub static SPECS: &[Spec] = &[
         DebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
-        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet"
+        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet|retransmission")],
+        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
+        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet|retransmission")],
         "Stop one kind of OSPF report"
     ),
     spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),
@@ -2694,7 +2717,7 @@ pub static SPECS: &[Spec] = &[
             K("area"),
             Arg("<1-4294967295>"),
             K("nssa"),
-            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+            Rest("[no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]")
         ],
         "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
@@ -2708,7 +2731,7 @@ pub static SPECS: &[Spec] = &[
             K("area"),
             Arg("<1-4294967295>"),
             K("nssa"),
-            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+            Rest("[no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]")
         ],
         "Undo only those options of the NSSA"
     ),
@@ -4343,6 +4366,14 @@ pub static SPECS: &[Spec] = &[
     spec!(NoEnablePassword, Modes::CONFIG, BOTH_FW, [K("no"), K("enable"), K("password")], "Remove the enable password"),
     spec!(LineConsole, Modes::CONFIG, Modes::BOTH, [K("line"), K("console"), Arg("0")], "Configure the console line"),
     spec!(LineVty, Modes::CONFIG, Modes::BOTH, [K("line"), K("vty"), Rest("<first> [<last>]")], "Configure the remote-access lines"),
+    spec!(LineAsync, Modes::CONFIG, Modes::ROUTER, [K("line"), Arg("<1-16>")], "Configure one asynchronous line of an octal card"),
+    spec!(
+        LineAsync,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("line"), Arg("<first>"), Arg("<last>")],
+        "Configure a range of asynchronous lines of an octal card"
+    ),
     spec!(LinePassword, Modes::LINE, Modes::BOTH, [K("password"), Rest("[0|7] PASSWORD")], "Set the line password"),
     spec!(NoLinePassword, Modes::LINE, Modes::BOTH, [K("no"), K("password")], "Remove the line password"),
     spec!(Login, Modes::LINE, Modes::BOTH, [K("login")], "Ask for the line password"),
@@ -4683,6 +4714,8 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("nrzi-encoding")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::ROUTER, [K("loopback")], "Loop the serial line back on itself"),
     spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("loopback")], "Return this setting to its default"),
+    spec!(Knob, Modes::LINE, Modes::BOTH, [K("modem"), Arg("{inout|in|out}")], "Let a modem or a reverse Telnet use this line (kept, not simulated)"),
+    spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("modem"), Arg("{inout|in|out}")], "Return this setting to its default"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("exec")], "Start an EXEC session on this line (on)"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("exec")], "Turn this off (it is on by default)"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("session-timeout"), Arg("<0-35791>")], "Minutes an outgoing session may sit idle"),
@@ -5098,6 +5131,20 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security")], "Secured ports"),
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security"), Rest("{interface X | address}")], "Secured ports"),
     spec!(Telnet, EXECS, Modes::BOTH, [K("telnet"), Arg("A.B.C.D")], "Log in to another device with Telnet"),
+    spec!(
+        TelnetPort,
+        EXECS,
+        Modes::ROUTER,
+        [K("telnet"), Arg("A.B.C.D"), Arg("<port>")],
+        "Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it)"
+    ),
+    spec!(
+        ClearLine,
+        Modes::EXEC,
+        Modes::ROUTER,
+        [K("clear"), K("line"), Arg("<1-16>")],
+        "End the reverse Telnet session held on a line of an octal card"
+    ),
     spec!(Ssh, EXECS, Modes::BOTH, [K("ssh"), Rest("-l USER A.B.C.D")], "Log in to another device with SSH"),
     spec!(ShowIpSsh, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ssh")], "SSH status"),
     spec!(ShowSsh, EXECS, Modes::BOTH, [K("show"), K("ssh")], "SSH sessions open to this device"),
