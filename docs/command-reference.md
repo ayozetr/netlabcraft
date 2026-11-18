@@ -962,6 +962,21 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip prefix-list NAME` | user, privileged | router, switch | One prefix list |
 | `show route-map` | user, privileged | router, switch | Every route map |
 | `show route-map NAME` | user, privileged | router, switch | One route map |
+| `track <1-1000> interface <interface> {line-protocol\|ip routing}` | config | router, switch | Track whether an interface works (or routes IP) |
+| `track <1-1000> ip route A.B.C.D/<0-32> reachability` | config | router, switch | Track whether the routing table has a prefix |
+| `track <1-1000> ip route A.B.C.D MASK reachability` | config | router, switch | Track whether the routing table has a prefix |
+| `track <1-1000> ip sla <1-2147483647>` | config | router, switch | Track an IP SLA operation (up while its last probe succeeded) |
+| `track <1-1000> ip sla <1-2147483647> {reachability\|state}` | config | router, switch | Track an IP SLA operation: its reachability (a slow probe counts) or its state |
+| `track <1-1000> list boolean {and\|or}` | config | router, switch | Track several objects together |
+| `track <1-1000>` | config | router, switch | Edit a tracked object |
+| `no track <1-1000>` | config | router, switch | Delete a tracked object |
+| `delay {up\|down} <0-180> [{up\|down} <0-180>]` |  | router, switch | Wait this many seconds before reporting a change of state |
+| `no delay` |  | router, switch | Report changes at once |
+| `object <1-1000>` |  | router, switch | Add an object to the list |
+| `object <1-1000> not` |  | router, switch | Add an object to the list, negated |
+| `no object <1-1000>` |  | router, switch | Take an object out of the list |
+| `show track` | user, privileged | router, switch | Every tracked object, its state and what follows it |
+| `show track <1-1000>` | user, privileged | router, switch | One tracked object |
 | `route-map NAME` | config | router, switch | Create or edit a route map clause |
 | `route-map NAME {permit\|deny} [<1-4294967294>]` | config | router, switch | Create or edit a route map clause that permits or denies |
 | `no route-map NAME` | config | router, switch | Delete a route map |
@@ -2116,21 +2131,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no vtp pruning` | config | switch | Flood every VLAN on every trunk again |
 | `switchport trunk pruning vlan {VLANS\|add VLANS\|remove VLANS\|except VLANS\|none}` | interface | switch | The VLANs VTP pruning may stop on this trunk |
 | `no switchport trunk pruning vlan` | interface | switch | VLANs 2-1001 eligible again |
-| `track <1-1000> interface <interface> {line-protocol\|ip routing}` | config | router, switch | Track whether an interface works (or routes IP) |
-| `track <1-1000> ip route A.B.C.D/<0-32> reachability` | config | router, switch | Track whether the routing table has a prefix |
-| `track <1-1000> ip route A.B.C.D MASK reachability` | config | router, switch | Track whether the routing table has a prefix |
-| `track <1-1000> ip sla <1-2147483647>` | config | router, switch | Track an IP SLA operation (up while its last probe succeeded) |
-| `track <1-1000> ip sla <1-2147483647> {reachability\|state}` | config | router, switch | Track an IP SLA operation: its reachability (a slow probe counts) or its state |
-| `track <1-1000> list boolean {and\|or}` | config | router, switch | Track several objects together |
-| `track <1-1000>` | config | router, switch | Edit a tracked object |
-| `no track <1-1000>` | config | router, switch | Delete a tracked object |
-| `delay {up\|down} <0-180> [{up\|down} <0-180>]` |  | router, switch | Wait this many seconds before reporting a change of state |
-| `no delay` |  | router, switch | Report changes at once |
-| `object <1-1000>` |  | router, switch | Add an object to the list |
-| `object <1-1000> not` |  | router, switch | Add an object to the list, negated |
-| `no object <1-1000>` |  | router, switch | Take an object out of the list |
-| `show track` | user, privileged | router, switch | Every tracked object, its state and what follows it |
-| `show track <1-1000>` | user, privileged | router, switch | One tracked object |
 | `bba-group pppoe NAME` | config | router | Define or edit a group of PPPoE concentrator settings |
 | `no bba-group pppoe NAME` | config | router | Delete a PPPoE group |
 | `virtual-template <0-255>` |  | router | The virtual template this group builds its sessions from |
