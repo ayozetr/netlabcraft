@@ -1711,8 +1711,9 @@ mod tests {
         // Control panel: industrial devices only.
         let icp = t.add_furniture(FurnitureKind::ControlPanel, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
         assert!(t.mount_item(Item::Device(c), icp, None, None).is_err(), "a plain switch is not industrial");
-        t.device_mut(c).unwrap().model = "PLC".into();
-        t.mount_item(Item::Device(c), icp, None, Some(2)).unwrap();
+        let plc = t.add_model(crate::models::find("PLC").unwrap(), None, 0.0, 0.0).unwrap();
+        t.set_home(plc, DEFAULT_CLOSET, 0.0, 0.0).unwrap();
+        t.mount_item(Item::Device(plc), icp, None, Some(2)).unwrap();
         assert!(t.add_furniture(FurnitureKind::ControlPanel, None, DEFAULT_CLOSET, 0.0, 0.0, Some(5)).is_err());
         assert!(t.add_furniture(FurnitureKind::CablePegboard, None, DEFAULT_CLOSET, 0.0, 0.0, Some(9)).is_err());
         // Save, load, and a hostile file.

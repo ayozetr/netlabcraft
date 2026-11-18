@@ -1998,6 +1998,88 @@ fn a_selected_drawing_is_resized_with_its_handles_and_undone() {
 }
 
 #[test]
+fn the_resize_shape_tool_picks_a_drawing_and_drags_its_handles() {
+    let mut h = harness(None);
+    h.run_steps(2);
+    h.state_mut().run("device.add", json!({"kind": "pc", "x": 500, "y": 300}));
+    h.state_mut().run("note.add", json!({"shape": "rectangle", "x": 200, "y": 150, "w": 100, "h": 80}));
+    h.run_steps(2);
+    let n = h.state().session.topology.annotations.len() - 1;
+    let id = h.state().session.topology.annotations[n].id;
+    let geo = |h: &Harness<'static, PacketApp>| {
+        let a = &h.state().session.topology.annotations[n];
+        (a.x, a.y, a.w, a.h)
+    };
+    // The button is enabled and Alt+R picks the same tool.
+    h.get_by_label("Resize Shape (Alt+R)").click();
+    h.run_steps(2);
+    assert_eq!(h.state().ui.tool, Tool::Resize);
+    key(&mut h, egui::Key::Escape, egui::Modifiers::NONE);
+    assert_eq!(h.state().ui.tool, Tool::Select, "Esc returns to Select");
+    key(&mut h, egui::Key::R, egui::Modifiers::ALT);
+    assert_eq!(h.state().ui.tool, Tool::Resize);
+    // Clicking the drawing selects it; no device is picked.
+    let at = on_screen(&h, 250.0, 190.0);
+    click(&mut h, at);
+    assert_eq!(h.state().ui.selected_note, Some(id));
+    assert_eq!(h.state().ui.selected, None);
+    // Dragging the south-east handle resizes it, in one undo step.
+    let from = on_screen(&h, 300.0, 230.0);
+    press(&mut h, from, true, egui::Modifiers::NONE);
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.input_mut().events.push(egui::Event::PointerMoved(from + egui::vec2(8.0 * i as f32, 4.0 * i as f32)));
+        h.run_steps(1);
+    }
+    press(&mut h, from + egui::vec2(40.0, 20.0), false, egui::Modifiers::NONE);
+    h.run_steps(2);
+    let zoom = h.state().ui.zoom;
+    let (x, y, w, hh) = geo(&h);
+    assert_eq!((x, y), (200.0, 150.0));
+    assert!((w - (100.0 + 40.0 / zoom)).abs() < 0.5 && (hh - (80.0 + 20.0 / zoom)).abs() < 0.5, "{w} {hh}");
+    assert_eq!(h.state().ui.tool, Tool::Resize);
+    h.state_mut().run("edit.undo", json!({}));
+    assert_eq!(geo(&h), (200.0, 150.0, 100.0, 80.0));
+    // A device is neither picked nor moved with this tool.
+    let d = h.state().session.topology.devices[0].clone();
+    let before = (d.x, d.y);
+    let at = on_screen(&h, d.x + 10.0, d.y + 10.0);
+    press(&mut h, at, true, egui::Modifiers::NONE);
+    h.run_steps(1);
+    for i in 1..=5 {
+        h.input_mut().events.push(egui::Event::PointerMoved(at + egui::vec2(6.0 * i as f32, 6.0 * i as f32)));
+        h.run_steps(1);
+    }
+    press(&mut h, at + egui::vec2(30.0, 30.0), false, egui::Modifiers::NONE);
+    h.run_steps(2);
+    let now = h.state().session.topology.device(d.id).unwrap();
+    assert_eq!((now.x, now.y), before);
+    let at = on_screen(&h, d.x + 10.0, d.y + 10.0);
+    click(&mut h, at);
+    assert_eq!(h.state().ui.selected, None);
+    // Clicking empty ground selects nothing.
+    let empty = on_screen(&h, 600.0, 500.0);
+    click(&mut h, empty);
+    assert_eq!(h.state().ui.selected_note, None);
+    // Resizing through the Select tool still works: Select picks the drawing.
+    h.state_mut().set_tool(Tool::Select);
+    let at = on_screen(&h, 250.0, 190.0);
+    click(&mut h, at);
+    assert_eq!(h.state().ui.selected_note, Some(id));
+}
+
+#[test]
+fn the_resize_shape_tool_is_off_in_the_physical_view() {
+    let mut h = harness(None);
+    h.run_steps(2);
+    h.state_mut().set_physical(true);
+    h.run_steps(2);
+    key(&mut h, egui::Key::R, egui::Modifiers::ALT);
+    assert_ne!(h.state().ui.tool, Tool::Resize);
+    assert!(h.query_by_label("Resize Shape (Alt+R): drawings are in the logical view").is_some());
+}
+
+#[test]
 fn handle_geometry_follows_the_dragged_handle() {
     use netlabcraft_model::Shape;
     let from = (10.0, 20.0, 100.0, 50.0);
