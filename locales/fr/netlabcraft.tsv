@@ -144,7 +144,6 @@
 	address or device name	adresse ou nom d'équipement
 	Address pool (network/prefix)	Plage d'adresses (réseau/préfixe)
 	Address {} · gateway {}	Adresse {} · passerelle {}
-	Adds a place to the map shown; drag it into position	Ajoute un lieu à la carte affichée ; faites-le glisser en place
 	After a delay	Après un délai
 	Agent address	Adresse de l'agent
 	Agents and scripts drive NetLabCraft through	Les agents et les scripts pilotent NetLabCraft via
@@ -691,6 +690,29 @@
 	New File	Nouveau fichier
 	New from sample	Nouveau depuis un exemple
 	New Wiring Closet	Nouvelle armoire de câblage
+	Create New…	Créer…
+	Create New City	Créer une ville
+	Create New Building	Créer un bâtiment
+	Create New Closet	Créer une armoire
+	Create New Generic Container	Créer un conteneur générique
+	Create New Rack	Créer une baie
+	Create New Table	Créer une table
+	Create New Shelf	Créer une étagère
+	Create New Inventory Shelf	Créer une étagère d'inventaire
+	Create New Cable Pegboard	Créer un panneau perforé pour câbles
+	Create New Industrial Control Panel (ICP)	Créer un panneau de commande industriel (ICP)
+	Switch to the Physical view first.	Passez d'abord à la vue physique.
+	Go to the Intercity map to create a city.	Allez à la carte Intercity pour créer une ville.
+	Open a city first.	Ouvrez d'abord une ville.
+	Open a building first.	Ouvrez d'abord un bâtiment.
+	Open a city or a building first.	Ouvrez d'abord une ville ou un bâtiment.
+	Open a wiring closet or a container first.	Ouvrez d'abord une armoire de brassage ou un conteneur.
+	No wiring closet yet: create one with +	Pas encore d'armoire de brassage : créez-en une avec +
+	Go to Working Closet	Aller à l'armoire de travail
+	Go to Working Closet ({})	Aller à l'armoire de travail ({})
+	Added {}.	{} ajouté.
+	Set as Working Closet	Définir comme armoire de travail
+	New Generic Container	Nouveau conteneur générique
 	Container	Conteneur
 	New Container	Nouveau conteneur
 	Inventory Shelf	Étagère d'inventaire
@@ -1840,7 +1862,6 @@ event	write request for	demande d'écriture de
 	Selection	Sélection
 	Show Event List	Afficher la liste des événements
 	Simulation Back	Simulation en arrière
-	{} is not available at this level of the Physical view.	{} n'est pas disponible à ce niveau de la vue physique.
 	Automatically Choose Connection Type	Choisir automatiquement le type de connexion
 	Single Mode Fiber	Fibre monomode
 	Multi Mode Fiber	Fibre multimode
@@ -2478,3 +2499,23 @@ furniture	Table	Table
 	Card id (hex):	Id de la carte (hex) :
 	Report crossings of the wire	Signaler les franchissements du fil
 	Wire angle (degrees):	Angle du fil (degrés) :
+	Custom environment:	Environnement personnalisé :
+	Create Custom Environment	Créer un environnement personnalisé
+	Defaults:	Modèles :
+	Replace what this place sets with this environment	Remplace ce que ce lieu définit par cet environnement
+	Keyframes joined by:	Images clés reliées par :
+	Straight line	Ligne droite
+	Step	Palier
+	Smooth curve	Courbe lisse
+	Variables defined by a formula	Variables définies par une formule
+	Formula:	Formule :
+	Add Variable	Ajouter la variable
+	Copy Shows from Parent	Copier l'affichage du lieu parent
+	Leave out what the place above leaves out	Masque ce que masque le lieu parent
+	Show Only Actives	Afficher seulement les actives
+	Leave out every variable no place sets	Masque toute variable qu'aucun lieu ne définit
+	Desert	Désert
+	Tropical	Tropical
+	Arctic	Arctique
+	Indoor office	Bureau intérieur
+	Greenhouse	Serre

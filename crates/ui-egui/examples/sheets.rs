@@ -20,6 +20,10 @@
 //! * `grid-window-*.png`: the Intercity map with the Grid Preferences window open (the four-squares button on the
 //!   bar), every level's grid ticked; `grid-intercity-*.png`, `grid-city-*.png`, `grid-building-*.png`: the grid of each
 //!   level with its spacing at the corner; `grid-colour-*.png`: the window with the colour palette open;
+//! * `create-menu-<LEVEL>-light.png`, `create-menu-<LEVEL>-dark.png`: the physical bar with the `+` menu open at the
+//!   Intercity map, a city, a building, a wiring closet and a container, the Home button at the right end;
+//! * `create-kinds-light.png`, `create-kinds-dark.png`: a closet with every kind of furniture (a rack, a shelf, a
+//!   table, an inventory shelf with devices in storage, a cable pegboard with hung cables and a control panel);
 //! * `logical-light.png`, `logical-dark.png`: the logical workspace with a few devices.
 //!
 //! The `snapshots` workflow runs it and uploads the PNGs; nothing here is committed.
@@ -440,6 +444,77 @@ fn grid_sheets(dir: &str, dark: bool) {
     }
 }
 
+/// A small lab with a container in the city, for the menu sheets; the container's number.
+fn create_lab() -> (Session, u32) {
+    let mut s = Session::new();
+    add(&mut s, "Switch-24", "SW1", 0.0, 0.0);
+    add(&mut s, "Router-4", "R1", 0.0, 0.0);
+    let city = 1;
+    let made = cmd(&mut s, "place.add", json!({"kind": "container", "name": "Storage", "parent": city}));
+    let container = made["id"].as_u64().and_then(|i| u32::try_from(i).ok()).unwrap_or(4);
+    (s, container)
+}
+
+/// The physical bar with the `+` menu open at each level.
+fn create_menu_sheets(dir: &str, dark: bool) {
+    let suffix = if dark { "dark" } else { "light" };
+    for (name, level) in [("intercity", None), ("city", Some(1)), ("building", Some(2)), ("closet", Some(3)), ("container", Some(0))] {
+        let (s, container) = create_lab();
+        app_sheet(dir, &format!("create-menu-{name}-{suffix}"), s, (1200.0, 520.0), dark, move |app| {
+            app.set_physical(true);
+            if let Some(id) = level {
+                app.enter_place(if id == 0 { container } else { id });
+            }
+            app.open_create_menu();
+        });
+    }
+}
+
+/// A closet with one of every kind of furniture, devices in storage, cables on pegs and a control panel in use.
+fn create_kinds_sheet(dir: &str, dark: bool) {
+    let suffix = if dark { "dark" } else { "light" };
+    let mut s = Session::new();
+    for (model, name) in [
+        ("Switch-24", "SW1"),
+        ("Router-4", "R1"),
+        ("Switch-24", "SW2"),
+        ("PC", "PC1"),
+        ("PLC", "PLC1"),
+        ("HMI-Panel", "HMI1"),
+        ("Switch-IND-8", "IND1"),
+    ] {
+        add(&mut s, model, name, 0.0, 0.0);
+    }
+    let closet = 3;
+    cmd(&mut s, "furniture.add", json!({"kind": "rack", "size": 6, "place": closet, "x": 40.0, "y": 30.0}));
+    cmd(&mut s, "furniture.add", json!({"kind": "shelf", "size": 2, "place": closet, "x": 400.0, "y": 30.0}));
+    cmd(&mut s, "furniture.add", json!({"kind": "table", "place": closet, "x": 400.0, "y": 360.0}));
+    cmd(&mut s, "furniture.add", json!({"kind": "inventory-shelf", "size": 2, "place": closet, "x": 40.0, "y": 700.0}));
+    cmd(&mut s, "furniture.add", json!({"kind": "pegboard", "size": 2, "place": closet, "x": 900.0, "y": 700.0}));
+    cmd(&mut s, "furniture.add", json!({"kind": "icp", "size": 8, "place": closet, "x": 1250.0, "y": 30.0}));
+    cmd(&mut s, "furniture.mount", json!({"device": "SW1", "furniture": "Rack0", "slot": 1}));
+    cmd(&mut s, "furniture.mount", json!({"device": "R1", "furniture": "Rack0", "slot": 2}));
+    cmd(&mut s, "furniture.mount", json!({"device": "PC1", "furniture": "Table0"}));
+    cmd(&mut s, "furniture.mount", json!({"device": "SW2", "furniture": "Inventory Shelf0", "slot": 1}));
+    cmd(&mut s, "furniture.mount", json!({"device": "PLC1", "furniture": "Industrial Control Panel0", "slot": 1, "units": 2}));
+    cmd(&mut s, "furniture.mount", json!({"device": "HMI1", "furniture": "Industrial Control Panel0", "slot": 3, "units": 2}));
+    cmd(&mut s, "furniture.mount", json!({"device": "IND1", "furniture": "Industrial Control Panel0", "slot": 5, "units": 2}));
+    link(&mut s, "SW1", 0, "R1", 0, "straight-through");
+    link(&mut s, "PLC1", 0, "IND1", 0, "straight-through");
+    let (p_sw, p_plc) = (port(&s, "SW1", 0), port(&s, "PLC1", 0));
+    cmd(&mut s, "furniture.hang", json!({"furniture": "Cable Pegboard0", "device": "SW1", "port": p_sw}));
+    cmd(&mut s, "furniture.hang", json!({"furniture": "Cable Pegboard0", "device": "PLC1", "port": p_plc, "peg": 4}));
+    app_sheet(dir, &format!("create-kinds-{suffix}"), s, (1500.0, 1000.0), dark, move |app| {
+        app.set_physical(true);
+        app.enter_place(closet);
+        // Everything in view: the furniture is 1560 by 970 closet units.
+        let frame = app.session.topology.closet_layout(closet).frames.first().map(|(_, c)| (c.x, c.y));
+        let (x, y) = frame.unwrap_or((0.0, 0.0));
+        app.ui.zoom = 0.62;
+        app.ui.pan = vec2(20.0, 50.0) - vec2(x, y) * 0.62;
+    });
+}
+
 fn main() {
     let dir = std::env::args().nth(1).unwrap_or_else(|| "sheets".to_string());
     std::fs::create_dir_all(&dir).expect("output directory");
@@ -452,5 +527,7 @@ fn main() {
         logical_sheet(&dir, dark);
         background_sheets(&dir, dark);
         grid_sheets(&dir, dark);
+        create_menu_sheets(&dir, dark);
+        create_kinds_sheet(&dir, dark);
     }
 }

@@ -6,7 +6,7 @@
 //! seeded by the device, the label and a counter, and serial numbers are a hash of the request.
 
 use netlabcraft_model::Device;
-use netlabcraft_model::pki::{CaServer, KeyPair};
+use netlabcraft_model::pki::{CaServer, KeyPair, Trustpoint};
 use netlabcraft_wire::rsa::{RsaKey, SigHash};
 use netlabcraft_wire::sha256::sha256;
 use netlabcraft_wire::tls::{Drbg, Identity};
@@ -222,4 +222,73 @@ pub fn trust_anchors(d: &Device) -> Vec<Certificate> {
 pub fn ssh_host_key(d: &Device) -> Option<RsaKey> {
     d.access.rsa_bits?;
     load_key(d, &format!("{}.{}", d.name, d.access.domain_name.as_ref()?))
+}
+
+/// A certificate and the key that goes with it: what IKE signs with.
+pub struct IkeIdentity {
+    /// The trustpoint the certificate comes from.
+    pub trustpoint: String,
+    pub cert: Certificate,
+    key: RsaKey,
+}
+
+impl IkeIdentity {
+    /// An RSA signature (PKCS #1 v1.5 over SHA-256) of `data`; `None` when the key is too small.
+    pub fn sign(&self, data: &[u8]) -> Option<Vec<u8>> {
+        self.key.sign(SigHash::Sha256, data)
+    }
+}
+
+/// The certificate IKE authenticates this router with (`authentication rsa-sig`): the one of the
+/// named trustpoint, or of the first trustpoint whose certificate and key pair are both there
+/// and match.
+pub fn ike_identity(d: &Device, trustpoint: Option<&str>) -> Option<IkeIdentity> {
+    let usable = |t: &Trustpoint| -> Option<IkeIdentity> {
+        let cert = Certificate::from_pem(&t.certificate).ok()?;
+        let key = load_key(d, &t.rsakeypair)?;
+        if &cert.key != key.public() {
+            return None;
+        }
+        Some(IkeIdentity { trustpoint: t.name.clone(), cert, key })
+    };
+    match trustpoint {
+        Some(n) => d.pki.trustpoint(n).and_then(usable),
+        None => d.pki.trustpoints.iter().find_map(usable),
+    }
+}
+
+/// Checks what a peer proved itself with: its certificate (and any CA certificates it sent after
+/// it) must chain to a certificate this device trusts, inside its validity window at this
+/// device's clock `now`, and `sig` must be the peer's signature of `data` under the certificate's
+/// key. The peer's certificate on success.
+pub fn verify_peer(d: &Device, now: i64, certs: &[&[u8]], data: &[u8], sig: &[u8]) -> Result<Certificate, String> {
+    if certs.is_empty() {
+        return Err("the peer sent no certificate".into());
+    }
+    let mut chain = Vec::new();
+    for c in certs.iter().take(x509::MAX_CHAIN) {
+        chain.push(Certificate::parse(c).map_err(|e| format!("the peer's certificate is not usable ({e})"))?);
+    }
+    let anchors = trust_anchors(d);
+    if anchors.is_empty() {
+        return Err("this router trusts no certificate authority (`crypto pki authenticate`)".into());
+    }
+    x509::verify_chain(&chain, &anchors, u64::try_from(now).unwrap_or(0)).map_err(|e| format!("the peer's certificate is refused: {e}"))?;
+    let leaf = chain.first().ok_or("the peer sent no certificate")?;
+    if !leaf.key.verify(SigHash::Sha256, data, sig) {
+        return Err("the peer's signature does not verify with the key in its certificate".into());
+    }
+    Ok(leaf.clone())
+}
+
+/// Whether a certificate is, or was signed by, one of the authorities a device trusts (names and
+/// signatures only: dates are checked when a peer presents it).
+pub fn trusts(d: &Device, cert: &Certificate) -> bool {
+    trust_anchors(d).iter().any(|a| a.der() == cert.der() || (a.ca && cert.issuer == a.subject && cert.signed_by(&a.key)))
+}
+
+/// The certificate [`ike_identity`] would sign with, found without loading the key (for checks
+/// of the configuration made on every packet).
+pub fn ike_certificate(d: &Device) -> Option<Certificate> {
+    d.pki.trustpoints.iter().filter(|t| d.pki.key(&t.rsakeypair).is_some()).find_map(|t| Certificate::from_pem(&t.certificate).ok())
 }

@@ -472,7 +472,7 @@ fn ikev2_mismatches_are_refused_on_the_wire() {
     assert!(lab.try_run(r1, "encryption rot13").contains("not a cipher"));
     assert!(lab.try_run(r1, "group 99").contains("not a group"));
     lab.run(r1, "exit\ncrypto ikev2 profile P2");
-    assert!(lab.try_run(r1, "authentication local rsa-sig").contains("pre-share"));
+    assert!(lab.try_run(r1, "authentication local eap").contains("rsa-sig"));
     lab.run(r1, "end");
     assert_eq!(lab.prompt(r1), "R1#");
 }

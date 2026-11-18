@@ -144,7 +144,6 @@
 	address or device name	endereço ou nome do dispositivo
 	Address pool (network/prefix)	Pool de endereços (rede/prefixo)
 	Address {} · gateway {}	Endereço {} · gateway {}
-	Adds a place to the map shown; drag it into position	Adiciona um local ao mapa exibido; arraste para posicioná-lo
 	After a delay	Após um atraso
 	Agent address	Endereço do agente
 	Agents and scripts drive NetLabCraft through	Agentes e scripts controlam o NetLabCraft por meio de
@@ -691,6 +690,29 @@
 	New File	Novo arquivo
 	New from sample	Novo a partir de exemplo
 	New Wiring Closet	Novo armário de fiação
+	Create New…	Criar novo…
+	Create New City	Criar nova cidade
+	Create New Building	Criar novo prédio
+	Create New Closet	Criar novo armário
+	Create New Generic Container	Criar novo contêiner genérico
+	Create New Rack	Criar novo rack
+	Create New Table	Criar nova mesa
+	Create New Shelf	Criar nova prateleira
+	Create New Inventory Shelf	Criar nova prateleira de estoque
+	Create New Cable Pegboard	Criar novo painel de ganchos para cabos
+	Create New Industrial Control Panel (ICP)	Criar novo painel de controle industrial (ICP)
+	Switch to the Physical view first.	Mude primeiro para a visão física.
+	Go to the Intercity map to create a city.	Vá para o mapa Intercity para criar uma cidade.
+	Open a city first.	Abra primeiro uma cidade.
+	Open a building first.	Abra primeiro um prédio.
+	Open a city or a building first.	Abra primeiro uma cidade ou um prédio.
+	Open a wiring closet or a container first.	Abra primeiro um armário de cabeamento ou um contêiner.
+	No wiring closet yet: create one with +	Ainda não há armário de cabeamento: crie um com +
+	Go to Working Closet	Ir para o armário de trabalho
+	Go to Working Closet ({})	Ir para o armário de trabalho ({})
+	Added {}.	{} adicionado.
+	Set as Working Closet	Definir como armário de trabalho
+	New Generic Container	Novo contêiner genérico
 	Container	Contêiner
 	New Container	Novo contêiner
 	Inventory Shelf	Prateleira de estoque
@@ -1840,7 +1862,6 @@ event	write request for	requisição de escrita de
 	Selection	Seleção
 	Show Event List	Mostrar lista de eventos
 	Simulation Back	Voltar na simulação
-	{} is not available at this level of the Physical view.	{} não está disponível neste nível da visão física.
 	Automatically Choose Connection Type	Escolher automaticamente o tipo de conexão
 	Single Mode Fiber	Fibra monomodo
 	Multi Mode Fiber	Fibra multimodo
@@ -2478,3 +2499,23 @@ furniture	Table	Mesa
 	Card id (hex):	Id do cartão (hex):
 	Report crossings of the wire	Informar travessias do fio
 	Wire angle (degrees):	Ângulo do fio (graus):
+	Custom environment:	Ambiente personalizado:
+	Create Custom Environment	Criar ambiente personalizado
+	Defaults:	Predefinidos:
+	Replace what this place sets with this environment	Substitui o que este local define por este ambiente
+	Keyframes joined by:	Quadros-chave unidos por:
+	Straight line	Linha reta
+	Step	Degrau
+	Smooth curve	Curva suave
+	Variables defined by a formula	Variáveis definidas por uma fórmula
+	Formula:	Fórmula:
+	Add Variable	Adicionar variável
+	Copy Shows from Parent	Copiar a exibição do local pai
+	Leave out what the place above leaves out	Omite o que o local pai omite
+	Show Only Actives	Mostrar só as ativas
+	Leave out every variable no place sets	Omite toda variável que nenhum local define
+	Desert	Deserto
+	Tropical	Tropical
+	Arctic	Ártico
+	Indoor office	Escritório interno
+	Greenhouse	Estufa
