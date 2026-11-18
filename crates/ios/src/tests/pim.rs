@@ -54,6 +54,10 @@ fn net(mode: &str) -> Net {
         );
     }
     lab.run(r1, "conf t\ninterface loopback0\nip pim sparse-mode\nend");
+    // The first packet of a conversation is lost waiting for ARP, so the routers learn each other's
+    // addresses with unicast pings before the multicast tests.
+    lab.run(src, "ping -n 3 10.2.2.10");
+    lab.run(rcv, "ping -n 3 10.1.1.10");
     Net { lab, r1, r2, src, rcv }
 }
 
