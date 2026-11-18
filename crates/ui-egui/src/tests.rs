@@ -650,7 +650,9 @@ fn the_physical_view_opens_places_and_goes_back() {
         }
         assert!(h.query_by_label("Main Building").is_some());
         // A new closet from the bar, renamed through the dialog.
-        h.get_by_label("New Wiring Closet").click();
+        h.get_by_label("Create New…").click();
+        h.run_steps(2);
+        h.get_by_label("Create New Closet").click();
         h.run_steps(2);
         let closet = h.state().session.topology.places().iter().map(|p| p.id).max().unwrap();
         assert_eq!(h.state().session.topology.place(closet).unwrap().parent, Some(2));

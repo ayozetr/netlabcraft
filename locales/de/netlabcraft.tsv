@@ -2406,3 +2406,26 @@ furniture	Table	Tisch
 	no clock rate on the DCE end	keine Taktrate am DCE-Ende
 	the two ends use different encapsulations	die beiden Enden verwenden unterschiedliche Kapselungen
 	PPP authentication failed (check the usernames and passwords)	PPP-Authentifizierung fehlgeschlagen (Benutzernamen und Kennwörter prüfen)
+	Create New…	Neu erstellen…
+	Create New City	Neue Stadt erstellen
+	Create New Building	Neues Gebäude erstellen
+	Create New Closet	Neuen Schrank erstellen
+	Create New Generic Container	Neuen allgemeinen Container erstellen
+	Create New Rack	Neues Rack erstellen
+	Create New Table	Neuen Tisch erstellen
+	Create New Shelf	Neues Regal erstellen
+	Create New Inventory Shelf	Neues Lagerregal erstellen
+	Create New Cable Pegboard	Neue Kabel-Lochwand erstellen
+	Create New Industrial Control Panel (ICP)	Neuen Industrie-Schaltschrank (ICP) erstellen
+	Switch to the Physical view first.	Wechsle zuerst in die physische Ansicht.
+	Go to the Intercity map to create a city.	Gehe zur Intercity-Karte, um eine Stadt zu erstellen.
+	Open a city first.	Öffne zuerst eine Stadt.
+	Open a building first.	Öffne zuerst ein Gebäude.
+	Open a city or a building first.	Öffne zuerst eine Stadt oder ein Gebäude.
+	Open a wiring closet or a container first.	Öffne zuerst einen Verteilerschrank oder einen Container.
+	No wiring closet yet: create one with +	Noch kein Verteilerschrank: erstelle einen mit +
+	Go to Working Closet	Zum Arbeitsschrank gehen
+	Go to Working Closet ({})	Zum Arbeitsschrank gehen ({})
+	Added {}.	{} hinzugefügt.
+	Set as Working Closet	Als Arbeitsschrank festlegen
+	New Generic Container	Neuer allgemeiner Container
