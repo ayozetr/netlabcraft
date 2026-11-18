@@ -103,6 +103,7 @@ labs! {
     lab_72_debug_nat => "72-debug-nat.md",
     lab_73_python_on_a_board => "73-python-on-a-board.md",
     lab_74_javascript_on_a_microcontroller => "74-javascript-on-a-microcontroller.md",
+    lab_81_mst_regions => "81-mst-regions.md",
 }
 
 /// The cellular lab is not part of a CCNA course, so it has no number (the numbered labs 21 and up

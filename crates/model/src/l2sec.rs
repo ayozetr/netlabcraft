@@ -300,6 +300,12 @@ pub struct PortL2 {
     /// `spanning-tree [vlan N] port-priority P`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub stp_priority: PerVlan,
+    /// `spanning-tree mst N cost C`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub mst_cost: BTreeMap<u16, u32>,
+    /// `spanning-tree mst N port-priority P`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub mst_priority: BTreeMap<u16, u32>,
     /// `lacp port-priority N`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lacp_priority: Option<u16>,

@@ -107,6 +107,8 @@ impl Modes {
     pub const KEYCHAIN: Modes = Modes(1 << 59);
     /// `key N` inside a key chain.
     pub const KEYCHAIN_KEY: Modes = Modes(1 << 60);
+    /// `spanning-tree mst configuration`.
+    pub const MST: Modes = Modes(1 << 61);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -149,7 +151,8 @@ impl Modes {
             | (1 << 57)
             | (1 << 58)
             | (1 << 59)
-            | (1 << 60),
+            | (1 << 60)
+            | (1 << 61),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -1177,6 +1180,22 @@ pub enum Id {
     IpFtpPassword,
     NoIpFtpLogin,
     StpMode,
+    MstConfiguration,
+    NoMstConfiguration,
+    MstName,
+    MstRevision,
+    MstInstanceVlan,
+    NoMstInstance,
+    MstPriority,
+    NoMstPriority,
+    MstRoot,
+    MstCost,
+    NoMstCost,
+    MstPortPriority,
+    NoMstPortPriority,
+    ShowMst,
+    ShowMstConfig,
+    ShowMstInstance,
     VoiceTelephonyService,
     VoiceNoTelephonyService,
     VoiceMaxEphones,
@@ -1382,6 +1401,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::ROUTE_MAP)
     .or(Modes::KEYCHAIN)
     .or(Modes::KEYCHAIN_KEY)
+    .or(Modes::MST)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -5229,9 +5249,91 @@ pub static SPECS: &[Spec] = &[
         StpMode,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst}")],
-        "Classic (30 s to forward) or rapid spanning tree"
+        [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst|mst}")],
+        "Classic (30 s to forward), rapid, or multiple spanning tree"
     ),
+    spec!(
+        MstConfiguration,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), K("configuration")],
+        "Edit the multiple spanning tree region: name, revision and which VLANs each instance holds"
+    ),
+    spec!(
+        NoMstConfiguration,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), K("configuration")],
+        "Empty the region's name, revision and instance table"
+    ),
+    spec!(MstName, Modes::MST, Modes::SWITCH, [K("name"), Arg("NAME")], "Name the region (switches share a region only with the same name)"),
+    spec!(MstRevision, Modes::MST, Modes::SWITCH, [K("revision"), Arg("<0-65535>")], "The region's revision number"),
+    spec!(
+        MstInstanceVlan,
+        Modes::MST,
+        Modes::SWITCH,
+        [K("instance"), Arg("<1-15>"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Map VLANs to an instance (each VLAN is in one instance)"
+    ),
+    spec!(NoMstInstance, Modes::MST, Modes::SWITCH, [K("no"), K("instance"), Arg("<1-15>")], "Delete an instance; its VLANs go back to the common tree"),
+    spec!(
+        MstPriority,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("priority"), Arg("<0-61440>")],
+        "Bridge priority in an instance (multiples of 4096)"
+    ),
+    spec!(
+        NoMstPriority,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), Arg("<0-15>"), K("priority")],
+        "Back to priority 32768 in an instance"
+    ),
+    spec!(
+        MstRoot,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("root"), Arg("{primary|secondary}")],
+        "Make this switch the root (or the backup root) of an instance"
+    ),
+    spec!(
+        MstCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("cost"), Arg("<1-200000000>")],
+        "Path cost of this port in an instance"
+    ),
+    spec!(
+        NoMstCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), Arg("<0-15>"), K("cost")],
+        "Path cost of this port in an instance from its speed again"
+    ),
+    spec!(
+        MstPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("port-priority"), Arg("<0-240>")],
+        "Port priority in an instance (multiples of 16)"
+    ),
+    spec!(
+        NoMstPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), Arg("<0-15>"), K("port-priority")],
+        "Port priority back to 128 in an instance"
+    ),
+    spec!(ShowMst, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("mst")], "Every instance's tree on this switch"),
+    spec!(
+        ShowMstConfig,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("mst"), K("configuration")],
+        "The region's name, revision, digest and instance table"
+    ),
+    spec!(ShowMstInstance, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("mst"), Arg("<0-15>")], "One instance's tree"),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
     // ---- switch edge protection and tuning (exec/l2sec.rs) ----
@@ -6907,6 +7009,7 @@ mod tests {
                 Modes::DIALER,
                 Modes::KEYCHAIN,
                 Modes::KEYCHAIN_KEY,
+                Modes::MST,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))
