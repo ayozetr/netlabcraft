@@ -51,7 +51,7 @@ use netlabcraft_wire::wlan::{
 };
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{Queued, Sim, default_ttl, is_ap_radio};
+use crate::{DebugKind, Queued, Sim, default_ttl, is_ap_radio};
 
 /// Most frames a host's association keeps waiting.
 const MAX_HELD: usize = 64;
@@ -961,7 +961,10 @@ impl Sim {
             }
         }
         let (user, state) = self.assoc.get(&client).map(|a| (a.identity.clone(), a.radius_state.clone())).unwrap_or_default();
+        let host = t.device(client.device).map_or_else(String::new, |h| h.name.clone());
+        self.debug_log(me.id, DebugKind::Dot1x, &format!("EAP packet from {host} (identity `{user}`) goes to the authentication server"));
         let Some((server, secret)) = server else {
+            self.debug_log(me.id, DebugKind::Dot1x, &format!("no authentication server is configured: the login of {host} is refused"));
             return self.dot1x_result(t, me.id, lap, client, r.id, false);
         };
         let (_, src) = mgmt_addr(me).ok_or("the authenticator has no management address")?;
@@ -1030,6 +1033,9 @@ impl Sim {
 
     /// The controller tells the host (through its AP) how its login went.
     fn dot1x_result(&mut self, t: &Topology, wlc: DeviceId, lap: DeviceId, client: End, id: u8, ok: bool) -> Result<(), String> {
+        let host = t.device(client.device).map_or_else(String::new, |h| h.name.clone());
+        let verdict = if ok { "accepted: the key handshake follows" } else { "refused: the host is deauthenticated" };
+        self.debug_log(wlc, DebugKind::Dot1x, &format!("the server's answer for {host} is {verdict}"));
         let (Some(wd), Some(ld)) = (t.device(wlc), t.device(lap)) else { return Err("controller or AP removed".into()) };
         let radio = ld.ports.iter().position(|p| ifname::is_wireless(&p.name)).ok_or("no radio")?;
         let bssid = port_mac(t, End { device: lap, port: radio });

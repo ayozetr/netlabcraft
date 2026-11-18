@@ -262,9 +262,14 @@ impl Sim {
                     neighbors: heard.clone(),
                     options: crate::ospf::hello_options(d, &ifc),
                 };
-                let payload = control::ospf_authenticate(hello.encode(), &crate::ospf::auth_send(d, &ifc, at));
-                let ip = Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload };
-                self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at);
+                // One copy per key while several message-digest keys are held (a key rollover).
+                let now = self.clock(d.id).0;
+                let encoded = hello.encode();
+                for (n, sign) in (0u64..).zip(crate::ospf::auth_sends(d, &ifc, at, now)) {
+                    let payload = control::ospf_authenticate(encoded.clone(), &sign);
+                    let ip = Ipv4 { id: 0, ttl: 1, protocol: control::PROTO_OSPF, src: ifc.net.addr, dst: control::OSPF_ALL_ROUTERS, payload };
+                    self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + n * 100);
+                }
             }
         }
         self.ospf_exchanges(t, &st, at);
@@ -387,6 +392,8 @@ impl Sim {
             if let Some(l) = theirs {
                 packets.push(OspfDb::Ack(vec![l.header()]));
             }
+            let clock = self.clock(id).0;
+            let sign = crate::ospf::auth_sends(d, &ifc, at, clock).into_iter().next().unwrap_or(netlabcraft_wire::control::OspfAuthSend::Null);
             for (k, p) in (1u64..).zip(packets) {
                 let ip = Ipv4 {
                     id: 0,
@@ -394,7 +401,7 @@ impl Sim {
                     protocol: control::PROTO_OSPF,
                     src: ifc.net.addr,
                     dst: control::OSPF_ALL_ROUTERS,
-                    payload: control::ospf_authenticate(p.encode(rid, area), &crate::ospf::auth_send(d, &ifc, at)),
+                    payload: control::ospf_authenticate(p.encode(rid, area), &sign),
                 };
                 // A millisecond apart, so the event list shows them in order.
                 self.queue_l3(t, d, &ifc, ifc.mac, control::ipv4_multicast_mac(control::OSPF_ALL_ROUTERS), ip.encode(), at + k * 1_000);

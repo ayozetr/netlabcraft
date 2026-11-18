@@ -103,6 +103,10 @@ impl Modes {
     pub const VTEMPLATE: Modes = Modes(1 << 57);
     /// `interface Dialer N`.
     pub const DIALER: Modes = Modes(1 << 58);
+    /// `key chain NAME`.
+    pub const KEYCHAIN: Modes = Modes(1 << 59);
+    /// `key N` inside a key chain.
+    pub const KEYCHAIN_KEY: Modes = Modes(1 << 60);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -143,7 +147,9 @@ impl Modes {
             | (1 << 55)
             | (1 << 56)
             | (1 << 57)
-            | (1 << 58),
+            | (1 << 58)
+            | (1 << 59)
+            | (1 << 60),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -464,6 +470,19 @@ pub enum Id {
     NoIpOspfAuthKey,
     IpOspfMd5Key,
     NoIpOspfMd5Key,
+    IpOspfKeyChain,
+    NoIpOspfKeyChain,
+    KeyChain,
+    NoKeyChain,
+    KeyChainKey,
+    NoKeyChainKey,
+    KeyString,
+    NoKeyString,
+    AcceptLifetime,
+    SendLifetime,
+    NoAcceptLifetime,
+    NoSendLifetime,
+    ShowKeyChain,
     AreaAuth,
     NoAreaAuth,
     OspfRedistribute,
@@ -1326,6 +1345,8 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::EIGRP)
     .or(Modes::BGP)
     .or(Modes::ROUTE_MAP)
+    .or(Modes::KEYCHAIN)
+    .or(Modes::KEYCHAIN_KEY)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1681,6 +1702,50 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>")],
         "Remove a message-digest key"
     ),
+    spec!(
+        IpOspfKeyChain,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("authentication"), K("key-chain"), Arg("NAME")],
+        "Sign OSPF packets with the keys of a key chain"
+    ),
+    spec!(
+        NoIpOspfKeyChain,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("ospf"), K("authentication"), K("key-chain")],
+        "Stop reading the keys from a key chain"
+    ),
+    spec!(KeyChain, Modes::CONFIG, Modes::BOTH, [K("key"), K("chain"), Arg("NAME")], "Create or edit a chain of keys with lifetimes"),
+    spec!(NoKeyChain, Modes::CONFIG, Modes::BOTH, [K("no"), K("key"), K("chain"), Arg("NAME")], "Delete a key chain"),
+    spec!(KeyChainKey, Modes::KEYCHAIN.or(Modes::KEYCHAIN_KEY), Modes::BOTH, [K("key"), Arg("<0-2147483647>")], "Create or edit a key of the chain"),
+    spec!(
+        NoKeyChainKey,
+        Modes::KEYCHAIN.or(Modes::KEYCHAIN_KEY),
+        Modes::BOTH,
+        [K("no"), K("key"), Arg("<0-2147483647>")],
+        "Delete a key of the chain"
+    ),
+    spec!(KeyString, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("key-string"), Arg("TEXT")], "The secret the key signs with"),
+    spec!(NoKeyString, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("no"), K("key-string")], "Forget the key's secret"),
+    spec!(
+        AcceptLifetime,
+        Modes::KEYCHAIN_KEY,
+        Modes::BOTH,
+        [K("accept-lifetime"), Rest("hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>|infinite|duration <seconds>}")],
+        "When packets signed with this key are accepted"
+    ),
+    spec!(
+        SendLifetime,
+        Modes::KEYCHAIN_KEY,
+        Modes::BOTH,
+        [K("send-lifetime"), Rest("hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>|infinite|duration <seconds>}")],
+        "When this key signs packets"
+    ),
+    spec!(NoAcceptLifetime, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("no"), K("accept-lifetime")], "Accept the key at any time again"),
+    spec!(NoSendLifetime, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("no"), K("send-lifetime")], "Sign with the key at any time again"),
+    spec!(ShowKeyChain, EXECS, Modes::BOTH, [K("show"), K("key"), K("chain")], "Every key chain, its keys and when they are valid"),
+    spec!(ShowKeyChain, EXECS, Modes::BOTH, [K("show"), K("key"), K("chain"), Arg("NAME")], "One key chain"),
     spec!(
         OspfRedistribute,
         Modes::OSPF,
@@ -5900,6 +5965,8 @@ mod tests {
                 Modes::BBA_GROUP,
                 Modes::VTEMPLATE,
                 Modes::DIALER,
+                Modes::KEYCHAIN,
+                Modes::KEYCHAIN_KEY,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))
