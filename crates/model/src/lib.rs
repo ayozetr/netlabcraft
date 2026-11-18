@@ -31,6 +31,7 @@ pub mod hardware;
 pub mod hostfw;
 pub mod ifname;
 pub mod iot;
+pub mod keychain;
 pub mod knobs;
 pub mod l2sec;
 pub mod mgmt;
@@ -823,6 +824,10 @@ pub struct Ipv6Conf {
     /// `ipv6 ospf PROCESS area N`: (process, area).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ospf: Option<(u16, u32)>,
+    /// `ospfv3 authentication ipsec spi …` or `ospfv3 authentication null`: this interface's own
+    /// protection of OSPFv3 packets, which wins over its area's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ospf_auth: Option<Ospf6Auth>,
     /// `ipv6 eigrp AS`: the interface runs EIGRP for IPv6 in that autonomous system.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub eigrp: Option<u16>,
@@ -1077,6 +1082,15 @@ pub struct Device {
     /// client (dialer interfaces), with the sessions of the dialers (see [`pppoe`]).
     #[serde(default, skip_serializing_if = "pppoe::RouterPppoe::is_default")]
     pub pppoe_router: pppoe::RouterPppoe,
+    /// Routers: key chains (`key chain NAME`), read by `ip ospf authentication key-chain`.
+    #[serde(default, skip_serializing_if = "keychain::KeyChains::is_default")]
+    pub key_chains: keychain::KeyChains,
+    /// The time `clock set` last gave the device (Unix seconds). The OSPF state is worked out
+    /// from the configuration alone, so it reads key-chain lifetimes against this time (the
+    /// simulator's default clock when none was set); the packets the simulator sends use the
+    /// device's running clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clock_unix: Option<i64>,
     /// End devices: the VPN Client app's settings (see [`vpnclient`]).
     #[serde(default, skip_serializing_if = "vpnclient::VpnClientSettings::is_default")]
     pub vpn_client: vpnclient::VpnClientSettings,
@@ -1449,6 +1463,28 @@ pub struct Ospf6 {
     /// `default-information originate`: advertise this router's IPv6 default route.
     #[serde(default)]
     pub default_originate: bool,
+    /// `area N authentication ipsec spi …`: the protection every interface of the area uses
+    /// unless it sets its own.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub area_auth: BTreeMap<u32, Ospf6Auth>,
+}
+
+/// The integrity algorithm of an OSPFv3 authentication header.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Ospf6AuthAlg {
+    /// HMAC-MD5-96: a key of 32 hexadecimal digits.
+    Md5,
+    /// HMAC-SHA1-96: a key of 40 hexadecimal digits.
+    Sha1,
+}
+
+/// How OSPFv3 packets are protected (RFC 4552: an IPsec Authentication Header on every packet).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum Ospf6Auth {
+    /// `null`: no header, whatever the area says.
+    Null,
+    /// `ipsec spi N md5|sha1 KEY`: a header with that security parameter index and key.
+    Ipsec { spi: u32, alg: Ospf6AuthAlg, key: String },
 }
 
 /// Most `area range` lines per area.
@@ -1601,6 +1637,9 @@ pub struct OspfIf {
     /// `ip ospf message-digest-key N md5 KEY`, by key id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub md5_keys: BTreeMap<u8, String>,
+    /// `ip ospf authentication key-chain NAME`: the keys come from a key chain instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub key_chain: Option<String>,
 }
 
 /// How OSPF packets are authenticated (RFC 2328 Appendix D).
@@ -2211,6 +2250,8 @@ impl Device {
             host_fw: hostfw::HostFw::default(),
             pppoe: pppoe::PppoeClient::default(),
             pppoe_router: pppoe::RouterPppoe::default(),
+            key_chains: keychain::KeyChains::default(),
+            clock_unix: None,
             vpn_client: vpnclient::VpnClientSettings::default(),
             netflow: netflow::Netflow::default(),
             modules: BTreeMap::new(),
@@ -2298,6 +2339,7 @@ impl Device {
         self.bgp_community_new_format = false;
         self.acls6.clear();
         self.ospf_if.clear();
+        self.key_chains = keychain::KeyChains::default();
         self.eigrp_if.clear();
         self.eigrp_summary.clear();
         self.rip6 = None;
@@ -2919,6 +2961,7 @@ impl Topology {
                 d.host_fw.sanitize();
                 d.pppoe.sanitize();
                 d.pppoe_router.sanitize();
+                d.key_chains.sanitize();
                 d.vpn_client.sanitize();
                 d.netflow.sanitize();
                 d.services.pppoe.sanitize();
