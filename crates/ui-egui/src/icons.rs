@@ -519,6 +519,7 @@ pub enum Glyph {
     Polygon,
     Cluster,
     Wireless,
+    Picture,
     /// A two-by-two grid of squares (the physical workspace's Grid Preferences).
     Grid,
 }
@@ -654,6 +655,15 @@ pub fn glyph(p: &Painter, rect: Rect, g: Glyph, c: Color32) {
                 let y = r.top() + h * 0.25 * i as f32;
                 p.line_segment([pos2(r.left(), y), pos2(r.right(), y)], Stroke::new(1.0, c));
             }
+        }
+        Glyph::Picture => {
+            // A picture frame: a rounded square with a mountain range and a sun.
+            p.rect_stroke(r, w * 0.14, s, StrokeKind::Inside);
+            let inner = r.shrink(w * 0.2);
+            p.circle_filled(inner.left_top() + vec2(inner.width() * 0.68, inner.height() * 0.26), w * 0.09, c);
+            let at = |fx: f32, fy: f32| pos2(inner.left() + inner.width() * fx, inner.top() + inner.height() * fy);
+            p.add(Shape::convex_polygon(vec![at(0.0, 1.0), at(0.3, 0.4), at(0.62, 1.0)], c, Stroke::NONE));
+            p.add(Shape::convex_polygon(vec![at(0.4, 1.0), at(0.7, 0.55), at(1.0, 1.0)], c, Stroke::NONE));
         }
         Glyph::Clock => {
             p.circle_stroke(r.center(), w * 0.5, s);
