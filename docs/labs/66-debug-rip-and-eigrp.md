@@ -113,6 +113,7 @@ RIP version 2 runs on all three routers. R3's configuration forgets one `network
 the one for its LAN. Watch from R1 first, with the debugging on before the fault is repaired.
 
 ```console R1
+configure terminal
 router rip
 version 2
 network 192.168.1.0
@@ -121,6 +122,13 @@ no auto-summary
 end
 debug ip rip events
 debug ip routing
+```
+
+The first look at the debugging says what is true now, so let it run once before the other
+routers are configured; everything after that is reported as it changes.
+
+```lab
+sim.advance {"seconds": 1}
 ```
 
 ```console R2
@@ -142,7 +150,6 @@ end
 ```
 
 ```lab
-sim.advance {"seconds": 1}
 sim.advance {"seconds": 90}
 sim.advance {"seconds": 1}
 ```
