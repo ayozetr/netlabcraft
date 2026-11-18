@@ -361,11 +361,7 @@ fn background_lab() -> (Session, u64) {
     cmd(&mut s, "place.add", json!({"kind": "closet", "name": "Server room", "parent": a, "x": 300, "y": 200}));
     let map = base64_encode(&netlabcraft_engine::images::pattern_png(800, 560));
     let icon = base64_encode(&netlabcraft_engine::images::pattern_png(96, 96));
-    cmd(
-        &mut s,
-        "place.scene.set",
-        json!({"place": city, "background": {"data": map, "mode": "original"}, "size": {"width": 4000, "height": 100}}),
-    );
+    cmd(&mut s, "place.scene.set", json!({"place": city, "background": {"data": map, "mode": "original"}, "size": {"width": 4000, "height": 100}}));
     cmd(&mut s, "place.icon.set", json!({"place": a, "data": icon}));
     cmd(&mut s, "workspace.background.set", json!({"data": base64_encode(&netlabcraft_engine::images::pattern_png(120, 90)), "mode": "tiled"}));
     (s, city)
