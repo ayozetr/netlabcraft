@@ -189,3 +189,19 @@ fn the_commands_check_their_arguments_and_say_when_routing_is_off() {
     // The interface lines stay for when routing comes back.
     assert!(n.lab.run(n.r1, "show running-config").contains(" ip pim sparse-mode"));
 }
+
+#[test]
+fn debug_ip_pim_and_mpacket_report_what_the_router_does() {
+    let mut n = net("sparse-mode");
+    n.lab.run(n.rcv, "igmp join 239.1.1.1");
+    n.lab.run(n.r1, "debug ip pim\ndebug ip mpacket");
+    n.lab.run(n.src, "ping -n 1 239.1.1.1");
+    n.lab.sim.run_for(&n.lab.t, 61_000_000);
+    let log = n.lab.run(n.r1, "show logging");
+    assert!(log.contains("10.1.1.10 to 239.1.1.1 arrived on GigabitEthernet0/0, forwarded out GigabitEthernet0/1"), "{log}");
+    assert!(log.contains("PIM hello") && log.contains("from 10.0.12.2"), "{log}");
+    assert!(n.lab.run(n.r1, "show debugging").contains("PIM"));
+    n.lab.run(n.r1, "no debug ip pim\nno debug ip mpacket\nclear logging");
+    n.lab.run(n.src, "ping -n 1 239.1.1.1");
+    assert!(!n.lab.run(n.r1, "show logging").contains("Multicast packet debug"));
+}
