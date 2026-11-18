@@ -54,7 +54,7 @@ use netlabcraft_wire::vpn::{Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
 use netlabcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_UDP, Udp};
 
 use crate::ikev1::{P1Suite, V1State};
-use crate::{L3If, SVI_PORT, Sim};
+use crate::{DebugKind, L3If, SVI_PORT, Sim};
 
 /// Tunnel `n` is reported as port `TUNNEL_BASE + n`: far beyond any real port index, and below
 /// [`SVI_PORT`] even on 32-bit targets (tunnel numbers stop at 2^31 − 1).
@@ -815,7 +815,7 @@ impl Sim {
         // The outer header copies the inner packet's "don't fragment" (so `ip mtu` on the way can
         // fragment GRE carrying packets that may be fragmented).
         netlabcraft_wire::ipfrag::set_dont_fragment(&mut outer, netlabcraft_wire::ipfrag::dont_fragment(&gre.payload));
-        if self.state.get(&d.id).is_some_and(|s| s.debug_packet) {
+        if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Packet)) {
             self.log(d.id, &format!("IP debug: {} encapsulated in GRE {src} → {dst}, out {}", tun.name(), out.name));
         }
         self.transmit(t, d, &out, nh, outer)
@@ -987,7 +987,7 @@ impl Sim {
         sa.started_us = now;
         sa.v1 = Some(Box::new(V1State::new(None, sa_payload.body())));
         let m = Isakmp::clear(icookie, [0; 8], ike::EXCH_MAIN, 0, vec![sa_payload]);
-        if self.state.get(&d.id).is_some_and(|s| s.debug_packet) {
+        if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Packet)) {
             self.log(d.id, &format!("IKE: starting main mode with {peer} for traffic a crypto map protects"));
         }
         self.ike_send(t, d, local, peer, &m);
