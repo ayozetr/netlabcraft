@@ -1171,11 +1171,12 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 }
                 None => 0,
             };
-            let theirs =
-                peering.and_then(|p| routers.iter().find(|x| x.id == p.peer).and_then(|x| x.bgp.as_ref()).and_then(|bb| bb.neighbor(p.local)));
+            let theirs = peering.and_then(|p| {
+                routers.iter().find(|x| x.id == p.peer).and_then(|x| x.bgp.as_ref()).and_then(|bb| bb.neighbor(p.local).map(|m| bb.timers_for(m)))
+            });
             let (keepalive_secs, hold_secs) = match theirs {
-                Some(m) => conf::negotiate(conf::timers_of(n), conf::timers_of(m)),
-                None => conf::timers_of(n),
+                Some(m) => conf::negotiate(ab.timers_for(n), m),
+                None => ab.timers_for(n),
             };
             let state = if n.shutdown || n.remote_as.is_none() {
                 SessionState::Idle
@@ -1259,6 +1260,11 @@ pub fn standalone_all(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>) 
 
 /// One end of a session as the lab configures it now: the neighbour statement, when it is still
 /// there, not shut down and has a remote AS.
+/// The timers a neighbour of the router in `key` runs with: its own, else the process's.
+fn timers_at(t: &Topology, key: SessKey, n: &conf::Neighbor) -> (u16, u16) {
+    t.device(key.0).and_then(|d| d.bgp.as_ref()).map_or_else(|| conf::timers_of(n), |b| b.timers_for(n))
+}
+
 fn end_config(t: &Topology, key: SessKey) -> Option<conf::Neighbor> {
     let n = t.device(key.0)?.bgp.as_ref()?.neighbor(key.1)?;
     (!n.shutdown && n.remote_as.is_some()).then(|| n.clone())
@@ -1347,7 +1353,7 @@ impl Sim {
             let peer_key = (old.peer, old.local);
             let Some(old_peer) = self.bgp.analysis.peerings.get(&peer_key).cloned() else { continue };
             let (Some(n), Some(m)) = (end_config(t, k), end_config(t, peer_key)) else { continue };
-            let hold = conf::negotiate(conf::timers_of(&n), conf::timers_of(&m)).1;
+            let hold = conf::negotiate(timers_at(t, k, &n), timers_at(t, peer_key, &m)).1;
             let fast = |side: &conf::Neighbor, key: SessKey, p: &Peering| {
                 let down = t.device(key.0).is_none_or(|d| !up_ifaces(t, d).iter().any(|i| i.name == p.out_iface));
                 // `no bgp fast-external-fallover` leaves the session to the hold timer.
@@ -1379,7 +1385,7 @@ impl Sim {
     /// How often keepalives are due: every second when some neighbour has its own timers, else
     /// every minute.
     pub(crate) fn bgp_tick_us(&self, t: &Topology) -> u64 {
-        let custom = t.devices.iter().filter_map(|d| d.bgp.as_ref()).any(|b| b.neighbors.iter().any(|n| n.timers.is_some()));
+        let custom = t.devices.iter().filter_map(|d| d.bgp.as_ref()).any(|b| b.timers.is_some() || b.neighbors.iter().any(|n| n.timers.is_some()));
         if custom { KEEPALIVE_TICK_US } else { KEEPALIVE_EVERY_US }
     }
 
@@ -1389,7 +1395,7 @@ impl Sim {
         let mine = t.device(key.0).and_then(|d| d.bgp.as_ref()).and_then(|b| b.neighbor(key.1));
         let theirs = t.device(p.peer).and_then(|d| d.bgp.as_ref()).and_then(|b| b.neighbor(p.local));
         match (mine, theirs) {
-            (Some(a), Some(b)) => conf::negotiate(conf::timers_of(a), conf::timers_of(b)).0,
+            (Some(a), Some(b)) => conf::negotiate(timers_at(t, key, a), timers_at(t, (p.peer, p.local), b)).0,
             _ => conf::KEEPALIVE_SECS,
         }
     }
@@ -1401,7 +1407,7 @@ impl Sim {
             return;
         }
         let Some(d) = t.device(key.0) else { return };
-        let hold_secs = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).map_or(conf::HOLD_SECS, |n| conf::timers_of(n).1);
+        let hold_secs = d.bgp.as_ref().and_then(|b| b.neighbor(key.1)).map_or(conf::HOLD_SECS, |n| timers_at(t, key, n).1);
         let open = msg::Message::Open(msg::Open { asn: d.bgp.as_ref().map_or(0, |x| x.asn), hold_secs, bgp_id: router_id(d) });
         let now = self.now;
         self.bgp_send(t, key, &open, now.saturating_add(1_000_000));
