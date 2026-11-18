@@ -38,6 +38,7 @@ pub(crate) mod netflow;
 pub(crate) mod pbr;
 pub(crate) mod pki;
 pub(crate) mod policy;
+mod policy6;
 pub(crate) mod pppoe;
 pub(crate) mod qos;
 pub(crate) mod redist;
@@ -4805,6 +4806,14 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::ShowIpFlowExport
         | Id::ShowIpCacheFlow
         | Id::ClearIpFlowStats => netflow::command(&mut c, spec.id, &args),
+        Id::Prefix6ListLine
+        | Id::NoPrefix6List
+        | Id::NoPrefix6ListLine
+        | Id::ShowIpv6PrefixList
+        | Id::RmMatchAddress6
+        | Id::NoRmMatchAddress6
+        | Id::RmSetNextHop6
+        | Id::NoRmSetNextHop6 => policy6::command(&mut c, spec.id, &args),
         Id::PrefixListLine
         | Id::NoPrefixList
         | Id::NoPrefixListLine

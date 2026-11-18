@@ -14,11 +14,13 @@ use std::fmt;
 use std::net::{Ipv4Addr, Ipv6Addr};
 
 use netlabcraft_core::{DeviceId, Ipv6Net};
-use netlabcraft_model::bgp as conf;
+use netlabcraft_model::bgp::{self as conf, Source};
+use netlabcraft_model::policy::{self, Sets};
+use netlabcraft_model::policy6::{Subject6, apply_with6};
 use netlabcraft_model::{Device, Topology};
 use netlabcraft_wire::bgp as msg;
 
-use crate::bgp::SessionState;
+use crate::bgp::{DISTANCE_EBGP, DISTANCE_IBGP, SessionState, WEIGHT_LOCAL};
 use crate::v6::{L3If6, Route6Entry, routes6, up_ifaces6};
 
 /// How a router names a neighbour: by its IPv4 address or by its IPv6 address.
@@ -487,19 +489,458 @@ pub fn fingerprint(t: &Topology) -> u64 {
     h.finish()
 }
 
-/// The IPv6 unicast view of every router: its neighbours that are activated in the family, with the
-/// state of the session they run over (an IPv4 session's state comes from the IPv4 tables `st4`).
-pub fn compute6(t: &Topology, st4: &crate::bgp::BgpState, an6: &Analysis6, settled6: &BTreeSet<Sess6>) -> Bgp6State {
+/// Rounds of advertisements at most.
+const MAX_ROUNDS: usize = 64;
+/// Most paths a router keeps from its neighbours, and most it originates.
+const MAX_PATHS: usize = 4_096;
+const MAX_LOCAL: usize = 1_024;
+/// Most AS numbers in the AS set of an aggregate.
+const MAX_AS_SET: usize = 32;
+
+/// One end of an IPv6 unicast exchange: a session that is up and that both ends activated for the
+/// family, whichever transport it runs over.
+#[derive(Debug, Clone)]
+struct Link6 {
+    /// How this router names the neighbour.
+    key: Peer,
+    peer: DeviceId,
+    /// How the neighbour names this router.
+    peer_key: Peer,
+    ebgp: bool,
+    /// The global next hop this router puts in what it sends.
+    next_hop: Ipv6Addr,
+    /// The link-local next hop that goes with it (external sessions on a shared link).
+    link_local: Option<Ipv6Addr>,
+    /// This router's settings for the neighbour.
+    n: conf::Neighbor,
+}
+
+fn global_of(i: &L3If6) -> Option<Ipv6Addr> {
+    i.addresses.iter().map(|a| a.addr).find(|a| !Ipv6Net::is_link_local(*a))
+}
+
+/// The sessions of every router that exchange IPv6 prefixes now.
+fn links(
+    t: &Topology,
+    an: &crate::bgp::Analysis,
+    settled: &BTreeSet<crate::bgp::SessKey>,
+    an6: &Analysis6,
+    settled6: &BTreeSet<Sess6>,
+) -> BTreeMap<DeviceId, Vec<Link6>> {
+    let mut out: BTreeMap<DeviceId, Vec<Link6>> = BTreeMap::new();
+    for a in t.devices.iter().filter(|d| d.bgp.is_some() && routes6(d)) {
+        let Some(ab) = &a.bgp else { continue };
+        let ifs = up_ifaces6(t, a);
+        for n in ab.neighbors.iter().filter(|n| n.af6.activated && !n.shutdown) {
+            let key = (a.id, n.addr);
+            let Some(p) = an.peerings.get(&key) else { continue };
+            if p.confed || !settled.contains(&key) || !settled.contains(&(p.peer, p.local)) {
+                continue;
+            }
+            let Some(b) = t.device(p.peer).filter(|b| routes6(b)) else { continue };
+            if !b.bgp.as_ref().and_then(|bb| bb.neighbor(p.local)).is_some_and(|m| m.af6.activated && !m.shutdown) {
+                continue;
+            }
+            // Over an IPv4 session the IPv6 next hop is this router's address on the interface the
+            // session leaves by; without one it is the IPv4-mapped form, which no table resolves.
+            let (next_hop, link_local) = match ifs.iter().find(|i| i.name == p.out_iface) {
+                Some(i) => (global_of(i).unwrap_or_else(|| p.local.to_ipv6_mapped()), p.ebgp.then_some(i.link_local)),
+                None => (p.local.to_ipv6_mapped(), None),
+            };
+            out.entry(a.id).or_default().push(Link6 {
+                key: Peer::V4(n.addr),
+                peer: p.peer,
+                peer_key: Peer::V4(p.local),
+                ebgp: p.ebgp,
+                next_hop,
+                link_local,
+                n: n.clone(),
+            });
+        }
+        for n in ab.neighbors6.iter().filter(|n| n.af6.activated && !n.shutdown) {
+            let Some(addr) = n.addr6 else { continue };
+            let key = (a.id, Peer::V6(addr));
+            let Some(p) = an6.peerings.get(&key) else { continue };
+            if !settled6.contains(&key) || !settled6.contains(&(p.peer, p.peer_key)) {
+                continue;
+            }
+            let Some(b) = t.device(p.peer).filter(|b| routes6(b)) else { continue };
+            if !b.bgp.as_ref().and_then(|bb| bb.neighbor6(p.local)).is_some_and(|m| m.af6.activated && !m.shutdown) {
+                continue;
+            }
+            out.entry(a.id).or_default().push(Link6 {
+                key: Peer::V6(addr),
+                peer: p.peer,
+                peer_key: p.peer_key,
+                ebgp: p.ebgp,
+                next_hop: p.local,
+                link_local: p.ebgp.then_some(p.local_link),
+                n: n.clone(),
+            });
+        }
+    }
+    out
+}
+
+fn neighbor_of(ab: &conf::Bgp, key: Peer) -> Option<&conf::Neighbor> {
+    match key {
+        Peer::V4(a) => ab.neighbor(a),
+        Peer::V6(a) => ab.neighbor6(a),
+    }
+}
+
+/// The paths a router starts from: its `network` prefixes that are in its IPv6 routing table, and
+/// what it redistributes.
+fn originate6(d: &Device, table: &[Route6Entry]) -> Vec<Path6> {
+    let Some(b) = &d.bgp else { return Vec::new() };
+    let usable = |r: &&Route6Entry| r.code != 'L' && r.iface.as_deref() != Some(crate::eigrp::NULL0);
+    let mut nets: Vec<(Ipv6Net, u8, Sets)> = Vec::new();
+    for n in &b.networks6 {
+        if table.iter().filter(usable).any(|r| r.net == *n) && !nets.iter().any(|(x, ..)| x == n) {
+            nets.push((*n, msg::ORIGIN_IGP, Sets::default()));
+        }
+    }
+    for s in &b.redistribute6 {
+        let codes: &[char] = match s {
+            Source::Connected => &['C'],
+            Source::Static => &['S'],
+            Source::Ospf => &['O', 'I', 'E'],
+        };
+        let map = b.redistribute_maps6.get(s.word()).map(String::as_str);
+        for r in table.iter().filter(usable).filter(|r| codes.contains(&r.code)) {
+            if nets.iter().any(|(x, ..)| *x == r.net) {
+                continue;
+            }
+            if let Some(sets) = apply_with6(d, None, map, &Subject6 { net: r.net, metric: 0 }, &policy::Attrs::default()) {
+                nets.push((r.net, msg::ORIGIN_INCOMPLETE, sets));
+            }
+        }
+    }
+    nets.truncate(MAX_LOCAL);
+    nets.into_iter()
+        .map(|(net, origin, sets)| {
+            let mut p = Path6::new(net);
+            p.next_hop = sets.next_hop6.unwrap_or(Ipv6Addr::UNSPECIFIED);
+            p.as_path = sets.prepend.clone();
+            p.origin = sets.origin.unwrap_or(origin);
+            p.med = sets.metric.unwrap_or(0);
+            p.local_pref = sets.local_pref.unwrap_or_else(|| b.local_pref());
+            p.weight = sets.weight.unwrap_or(WEIGHT_LOCAL);
+            p.valid = true;
+            p.communities = policy::merge_communities(&sets, &[]);
+            p.ext_communities = policy::merge_ext_communities(&sets, &[]);
+            p
+        })
+        .collect()
+}
+
+/// The paths an `aggregate-address` makes: one per statement that has a more specific usable path
+/// under it (and no path of its own for the same prefix from a `network` statement).
+fn aggregate_paths6(ab: &conf::Bgp, paths: &[Path6]) -> Vec<Path6> {
+    let mut out = Vec::new();
+    for g in &ab.aggregates6 {
+        let under = |p: &&Path6| p.valid && p.net.prefix > g.net.prefix && g.net.contains(p.net.addr);
+        if !paths.iter().any(|p| under(&p)) || paths.iter().any(|p| p.net == g.net && p.from.is_none()) {
+            continue;
+        }
+        let mut set: Vec<u32> = Vec::new();
+        if g.as_set {
+            for p in paths.iter().filter(under) {
+                set.extend(p.as_path.iter().chain(p.as_set.iter()).copied());
+            }
+            set.sort_unstable();
+            set.dedup();
+            set.truncate(MAX_AS_SET);
+        }
+        let mut p = Path6::new(g.net);
+        p.local_pref = ab.local_pref();
+        p.weight = WEIGHT_LOCAL;
+        p.valid = true;
+        p.as_set = set;
+        p.aggregate = true;
+        out.push(p);
+    }
+    out
+}
+
+/// A `summary-only` aggregate covers this prefix with a shorter one.
+fn summarised6(ab: &conf::Bgp, net: Ipv6Net) -> bool {
+    ab.aggregates6.iter().any(|g| g.summary_only && g.net.prefix < net.prefix && g.net.contains(net.addr))
+}
+
+fn attrs_of(p: &Path6) -> policy::Attrs<'_> {
+    policy::Attrs { communities: &p.communities, as_path: &p.as_path, as_set: &p.as_set, tag: 0, ext_communities: &p.ext_communities }
+}
+
+/// What a router tells a neighbour about one of its best paths, if it tells it at all: the
+/// neighbour's outbound prefix list and route map decide, and the map's `set` lines change what is
+/// told. The prefix and the next hop travel in MP_REACH_NLRI.
+fn export6(a: &Device, ab: &conf::Bgp, l: &Link6, path: &Path6) -> Option<msg::PathAttrs> {
+    let n = &l.n;
+    if path.from == Some(l.key) {
+        return None;
+    }
+    if l.ebgp && n.remote_as.is_some_and(|r| path.as_path.contains(&r) || path.as_set.contains(&r)) {
+        return None;
+    }
+    if path.communities.contains(&policy::NO_ADVERTISE) {
+        return None;
+    }
+    if l.ebgp && (path.communities.contains(&policy::NO_EXPORT) || path.communities.contains(&policy::LOCAL_AS)) {
+        return None;
+    }
+    if summarised6(ab, path.net) {
+        return None;
+    }
+    if let Some(list) = n.af6.filter_list_out.as_deref().and_then(|x| a.as_path_list(x))
+        && !list.permits(&path.as_path, &path.as_set)
+    {
+        return None;
+    }
+    // A path learned from an internal neighbour is not passed to another one, unless this router is
+    // a route reflector (RFC 4456): a client's path goes to everybody, a non-client's to clients.
+    let reflect = !l.ebgp && path.internal();
+    if reflect {
+        let from_client = path.from.and_then(|f| neighbor_of(ab, f)).is_some_and(|s| s.af6.route_reflector_client);
+        if !from_client && !n.af6.route_reflector_client {
+            return None;
+        }
+    }
+    let sets = apply_with6(
+        a,
+        n.af6.prefix_list_out.as_deref(),
+        n.af6.route_map_out.as_deref(),
+        &Subject6 { net: path.net, metric: path.med },
+        &attrs_of(path),
+    )?;
+    let communities = if n.af6.send_community { policy::merge_communities(&sets, &path.communities) } else { Vec::new() };
+    let mut ext_communities = if n.af6.send_extended { policy::merge_ext_communities(&sets, &path.ext_communities) } else { Vec::new() };
+    if l.ebgp {
+        ext_communities.retain(|c| msg::ext_transitive(*c));
+    }
+    let mut tail = sets.prepend.clone();
+    tail.extend(path.as_path.iter().copied());
+    let origin = sets.origin.unwrap_or(path.origin);
+    // A path this router originates names its own address, unless a map named another next hop.
+    let own = if path.from.is_none() && !path.next_hop.is_unspecified() { path.next_hop } else { l.next_hop };
+    let mp = |next_hop: Ipv6Addr, link_local: Option<Ipv6Addr>| msg::MpReach6 { next_hop, link_local, nlri: vec![path.net] };
+    if l.ebgp {
+        let mut as_path = vec![ab.outer_as()];
+        as_path.extend(tail);
+        return Some(msg::PathAttrs {
+            origin,
+            as_path,
+            med: sets.metric.or_else(|| path.from.is_none().then_some(path.med)),
+            as_set: path.as_set.clone(),
+            communities,
+            ext_communities,
+            mp_reach6: Some(mp(sets.next_hop6.unwrap_or(own), if sets.next_hop6.is_some() { None } else { l.link_local })),
+            ..msg::PathAttrs::default()
+        });
+    }
+    let (originator_id, cluster_list) = if reflect {
+        let mut clusters = vec![ab.cluster_id.unwrap_or_else(|| crate::bgp::router_id(a))];
+        clusters.extend(path.cluster_list.iter().copied());
+        clusters.truncate(msg::MAX_CLUSTERS);
+        (Some(path.originator_id.unwrap_or(path.from_id)), clusters)
+    } else {
+        (None, Vec::new())
+    };
+    // A reflected path keeps its next hop, `next-hop-self` or not.
+    let next_hop = if !reflect && (n.af6.next_hop_self || path.from.is_none()) { own } else { path.next_hop };
+    Some(msg::PathAttrs {
+        origin,
+        as_path: tail,
+        med: Some(sets.metric.unwrap_or(path.med)),
+        local_pref: Some(sets.local_pref.unwrap_or(path.local_pref)),
+        as_set: path.as_set.clone(),
+        communities,
+        originator_id,
+        cluster_list,
+        ext_communities,
+        mp_reach6: Some(mp(sets.next_hop6.unwrap_or(next_hop), None)),
+        ..msg::PathAttrs::default()
+    })
+}
+
+/// Everything a router tells one neighbour: its best paths that [`export6`] lets through, and the
+/// default route when the neighbour has `default-originate`.
+fn export_all6(a: &Device, ab: &conf::Bgp, l: &Link6, best: &[&Path6]) -> Vec<(Ipv6Net, msg::PathAttrs)> {
+    let mut out: Vec<(Ipv6Net, msg::PathAttrs)> = best.iter().filter_map(|x| export6(a, ab, l, x).map(|at| (x.net, at))).take(MAX_PATHS).collect();
+    let default = Ipv6Net::new(Ipv6Addr::UNSPECIFIED, 0);
+    if l.n.af6.default_originate && !out.iter().any(|(net, _)| net.prefix == 0) {
+        let attrs = msg::PathAttrs {
+            as_path: if l.ebgp { vec![ab.outer_as()] } else { Vec::new() },
+            med: if l.ebgp { None } else { Some(0) },
+            local_pref: if l.ebgp { None } else { Some(ab.local_pref()) },
+            mp_reach6: Some(msg::MpReach6 { next_hop: l.next_hop, link_local: l.link_local, nlri: vec![default] }),
+            ..msg::PathAttrs::default()
+        };
+        out.push((default, attrs));
+    }
+    out
+}
+
+/// What a router makes of what a neighbour told it: `None` when it drops it, by the loop checks or
+/// by the neighbour's inbound prefix list, filter list and route map.
+fn import6(b: &Device, rx: &Link6, attrs: &msg::PathAttrs, from_id: Ipv4Addr, net: Ipv6Net, own: &[L3If6]) -> Option<Path6> {
+    let bb = b.bgp.as_ref()?;
+    let (m, mp) = (&rx.n, attrs.mp_reach6.as_ref()?);
+    let outer = bb.outer_as();
+    if !bb.exchanges6(m) || attrs.as_path.contains(&outer) || attrs.as_set.contains(&outer) || own.iter().any(|i| i.owns(mp.next_hop)) {
+        return None;
+    }
+    let cluster = bb.cluster_id.unwrap_or_else(|| crate::bgp::router_id(b));
+    if !rx.ebgp && (attrs.originator_id == Some(crate::bgp::router_id(b)) || attrs.cluster_list.contains(&cluster)) {
+        return None;
+    }
+    if let Some(list) = m.af6.filter_list_in.as_deref().and_then(|x| b.as_path_list(x))
+        && !list.permits(&attrs.as_path, &attrs.as_set)
+    {
+        return None;
+    }
+    let med = attrs.med.unwrap_or(0);
+    let seen = policy::Attrs {
+        communities: &attrs.communities,
+        as_path: &attrs.as_path,
+        as_set: &attrs.as_set,
+        tag: 0,
+        ext_communities: &attrs.ext_communities,
+    };
+    let sets = apply_with6(b, m.af6.prefix_list_in.as_deref(), m.af6.route_map_in.as_deref(), &Subject6 { net, metric: med }, &seen)?;
+    let local_pref = sets.local_pref.unwrap_or_else(|| if rx.ebgp { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
+    let mut as_path = sets.prepend.clone();
+    as_path.extend(attrs.as_path.iter().copied());
+    let mut p = Path6::new(net);
+    p.next_hop = sets.next_hop6.unwrap_or(mp.next_hop);
+    p.link_local = mp.link_local;
+    p.as_path = as_path;
+    p.origin = sets.origin.unwrap_or(attrs.origin);
+    p.med = sets.metric.unwrap_or(med);
+    p.local_pref = local_pref;
+    p.weight = sets.weight.unwrap_or_else(|| u32::from(m.af6.weight.unwrap_or(0)));
+    p.from = Some(rx.key);
+    p.from_id = from_id;
+    p.ebgp = rx.ebgp;
+    p.communities = policy::merge_communities(&sets, &attrs.communities);
+    p.ext_communities = policy::merge_ext_communities(&sets, &attrs.ext_communities);
+    p.as_set = attrs.as_set.clone();
+    p.originator_id = if rx.ebgp { None } else { attrs.originator_id };
+    p.cluster_list = if rx.ebgp { Vec::new() } else { attrs.cluster_list.clone() };
+    Some(p)
+}
+
+type Rib6 = BTreeMap<DeviceId, BTreeMap<(Peer, Ipv6Net), Path6>>;
+
+fn rank_of(ab: &conf::Bgp) -> Rank6 {
+    Rank6 { multi: ab.multipath6(), always_med: ab.always_compare_med, ignore_len: ab.as_path_ignore }
+}
+
+/// Every router's IPv6 paths and routes, once the sessions in `settled` and `settled6` are
+/// Established, and the state of every neighbour activated for the family (an IPv4 session's state
+/// comes from the IPv4 tables `st4`).
+pub fn compute6(
+    t: &Topology,
+    base6: &BTreeMap<DeviceId, Vec<Route6Entry>>,
+    st4: &crate::bgp::BgpState,
+    an: &crate::bgp::Analysis,
+    settled: &BTreeSet<crate::bgp::SessKey>,
+    an6: &Analysis6,
+    settled6: &BTreeSet<Sess6>,
+) -> Bgp6State {
+    let routers: Vec<&Device> = t.devices.iter().filter(|d| d.bgp.is_some() && routes6(d)).collect();
+    let lk = links(t, an, settled, an6, settled6);
+    let ifs: BTreeMap<DeviceId, Vec<L3If6>> = routers.iter().map(|d| (d.id, up_ifaces6(t, d))).collect();
+    let table_of = |id: DeviceId| base6.get(&id).map_or(&[][..], Vec::as_slice);
+    let local: BTreeMap<DeviceId, Vec<Path6>> = routers.iter().map(|d| (d.id, originate6(d, table_of(d.id)))).collect();
+    let candidates = |d: &Device, rib: &Rib6| -> Vec<Path6> {
+        let table = table_of(d.id);
+        let mut v: Vec<Path6> = local.get(&d.id).cloned().unwrap_or_default();
+        for p in rib.get(&d.id).into_iter().flat_map(|m| m.values()) {
+            let mut p = p.clone();
+            let hop = if p.next_hop.is_unspecified() { None } else { resolve6(table, p.next_hop) };
+            p.valid = hop.is_some();
+            p.igp = hop.as_ref().map_or(0, |h| h.2);
+            p.resolved = hop.map(|h| (h.0, h.1));
+            v.push(p);
+        }
+        let Some(ab) = &d.bgp else { return rank6(v, &Rank6::default()) };
+        let made = aggregate_paths6(ab, &v);
+        v.extend(made);
+        for p in &mut v {
+            p.suppressed = summarised6(ab, p.net);
+        }
+        rank6(v, &rank_of(ab))
+    };
+    let mut rib: Rib6 = BTreeMap::new();
+    for _ in 0..MAX_ROUNDS {
+        let mut next: Rib6 = BTreeMap::new();
+        for a in &routers {
+            let Some(ab) = &a.bgp else { continue };
+            let best: Vec<Path6> = candidates(a, &rib).into_iter().filter(|p| p.best).collect();
+            let best_refs: Vec<&Path6> = best.iter().collect();
+            let from_id = crate::bgp::router_id(a);
+            for l in lk.get(&a.id).into_iter().flatten() {
+                let Some(b) = routers.iter().find(|d| d.id == l.peer) else { continue };
+                // The receiving end of this session is the link the peer holds towards this router.
+                let Some(rx) = lk.get(&b.id).and_then(|v| v.iter().find(|r| r.peer == a.id && r.key == l.peer_key)) else { continue };
+                let own = ifs.get(&b.id).map_or(&[][..], Vec::as_slice);
+                for (net, attrs) in export_all6(a, ab, l, &best_refs) {
+                    let Some(got) = import6(b, rx, &attrs, from_id, net, own) else { continue };
+                    let slot = next.entry(b.id).or_default();
+                    if slot.len() < MAX_PATHS {
+                        slot.insert((l.peer_key, net), got);
+                    }
+                }
+            }
+        }
+        if next == rib {
+            break;
+        }
+        rib = next;
+    }
     let mut st = Bgp6State::default();
-    for d in t.devices.iter().filter(|d| d.bgp.is_some() && routes6(d)) {
+    for d in &routers {
         let Some(ab) = &d.bgp else { continue };
         let Some(v4) = st4.routers.get(&d.id) else { continue };
+        let paths = candidates(d, &rib);
+        let mut routes: Vec<Route6> = paths
+            .iter()
+            .filter(|p| (p.best || p.multi) && p.from.is_some())
+            .filter_map(|p| {
+                let (iface, via) = p.resolved.clone()?;
+                Some(Route6 {
+                    net: p.net,
+                    next_hop: p.next_hop,
+                    via,
+                    iface,
+                    distance: if p.ebgp { DISTANCE_EBGP } else { DISTANCE_IBGP },
+                    metric: p.med,
+                })
+            })
+            .collect();
+        // An aggregate leaves a discard route behind, so what no more specific route covers is dropped.
+        routes.extend(paths.iter().filter(|p| p.aggregate && p.best).map(|p| Route6 {
+            net: p.net,
+            next_hop: Ipv6Addr::UNSPECIFIED,
+            via: Ipv6Addr::UNSPECIFIED,
+            iface: crate::eigrp::NULL0.to_string(),
+            distance: DISTANCE_IBGP,
+            metric: 0,
+        }));
+        let best_paths: Vec<&Path6> = paths.iter().filter(|x| x.best).collect();
+        let received = |key: Peer| rib.get(&d.id).map_or(0, |m| m.keys().filter(|(k, _)| *k == key).count());
+        let mut adv: BTreeMap<Peer, Vec<(Ipv6Net, msg::PathAttrs)>> = BTreeMap::new();
         let mut neighbors = Vec::new();
+        for l in lk.get(&d.id).into_iter().flatten() {
+            adv.insert(l.key, export_all6(d, ab, l, &best_paths));
+        }
         for n in ab.neighbors.iter().filter(|n| n.af6.activated) {
             let Some(v) = v4.neighbors.iter().find(|v| v.addr == n.addr) else { continue };
-            let theirs = v.peer.and_then(|pd| t.device(pd)).and_then(|pd| pd.bgp.as_ref()).and_then(|pb| v.local.and_then(|l| pb.neighbor(l)));
+            let key = Peer::V4(n.addr);
+            let theirs = v.peer.and_then(|pd| t.device(pd)).and_then(|pd| pd.bgp.as_ref()).and_then(|pb| v.local.and_then(|x| pb.neighbor(x)));
             neighbors.push(NeighborView6 {
-                peer: Peer::V4(n.addr),
+                peer: key,
                 remote_as: n.remote_as,
                 state: v.state,
                 admin_down: v.admin_down,
@@ -509,8 +950,8 @@ pub fn compute6(t: &Topology, st4: &crate::bgp::BgpState, an6: &Analysis6, settl
                 carries6: theirs.is_some_and(|m| m.af6.activated),
                 ebgp: v.ebgp,
                 error: v.error.clone(),
-                received: 0,
-                sent: 0,
+                received: received(key),
+                sent: adv.get(&key).map_or(0, Vec::len),
             });
         }
         for n in ab.neighbors6.iter().filter(|n| n.af6.activated) {
@@ -542,7 +983,7 @@ pub fn compute6(t: &Topology, st4: &crate::bgp::BgpState, an6: &Analysis6, settl
             };
             let their = peering.and_then(|p| t.device(p.peer).and_then(|pd| pd.bgp.as_ref()).and_then(|pb| pb.neighbor6(p.local)));
             neighbors.push(NeighborView6 {
-                peer: Peer::V6(addr),
+                peer: key.1,
                 remote_as: n.remote_as,
                 state,
                 admin_down: n.shutdown,
@@ -552,12 +993,11 @@ pub fn compute6(t: &Topology, st4: &crate::bgp::BgpState, an6: &Analysis6, settl
                 carries6: their.is_some_and(|m| m.af6.activated),
                 ebgp: peering.is_some_and(|p| p.ebgp),
                 error,
-                received: 0,
-                sent: 0,
+                received: received(key.1),
+                sent: adv.get(&key.1).map_or(0, Vec::len),
             });
         }
-        let router_id = crate::bgp::router_id(d);
-        st.routers.insert(d.id, RouterView6 { asn: ab.asn, router_id, neighbors, paths: Vec::new(), routes: Vec::new(), adv: BTreeMap::new() });
+        st.routers.insert(d.id, RouterView6 { asn: ab.asn, router_id: crate::bgp::router_id(d), neighbors, paths, routes, adv });
     }
     st
 }
