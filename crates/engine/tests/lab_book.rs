@@ -92,6 +92,7 @@ labs! {
     lab_50_ospf_adjacency_states_and_dr_bdr => "50-ospf-adjacency-states-and-dr-bdr.md",
     lab_51_ospf_flooding_retransmission_and_lsa_ageing => "51-ospf-flooding-retransmission-and-lsa-ageing.md",
     lab_52_ospf_nssa_only_type_7_lsas => "52-ospf-nssa-only-type-7-lsas.md",
+    lab_57_bgp_prefix_limits_and_timers => "57-bgp-prefix-limits-and-timers.md",
     lab_61_troubleshoot_site_to_site_vpn => "61-troubleshoot-site-to-site-vpn.md",
     lab_62_troubleshoot_remote_access_vpn => "62-troubleshoot-remote-access-vpn.md",
     lab_63_troubleshoot_wireless_clients => "63-troubleshoot-wireless-clients.md",
@@ -107,6 +108,7 @@ labs! {
     lab_73_python_on_a_board => "73-python-on-a-board.md",
     lab_74_javascript_on_a_microcontroller => "74-javascript-on-a-microcontroller.md",
     lab_75_reverse_telnet_through_an_octal_card => "75-reverse-telnet-through-an-octal-card.md",
+    lab_81_mst_regions => "81-mst-regions.md",
     lab_82_igmp_snooping => "82-igmp-snooping.md",
 }
 

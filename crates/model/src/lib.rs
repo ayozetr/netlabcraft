@@ -39,6 +39,7 @@ pub mod knobs;
 pub mod l2sec;
 pub mod mgmt;
 pub mod models;
+pub mod mst;
 pub mod netflow;
 pub mod physical;
 pub mod pki;
@@ -954,6 +955,9 @@ pub struct Device {
     /// IGMP snooping on switches, joined groups on hosts.
     #[serde(default, skip_serializing_if = "is_default")]
     pub igmp: igmp::Igmp,
+    /// Switches: multiple spanning tree (`spanning-tree mode mst`, which also sets `rapid_stp`).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub mst: mst::Mst,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -2249,6 +2253,7 @@ impl Device {
             vtp: Vtp::default(),
             rapid_stp: false,
             igmp: igmp::Igmp::default(),
+            mst: mst::Mst::default(),
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
@@ -2373,6 +2378,7 @@ impl Device {
         self.access = Access::default();
         self.stp_priority.clear();
         self.igmp = igmp::Igmp::default();
+        self.mst = mst::Mst::default();
         self.svis.clear();
         self.ospf = None;
         self.rip = None;
