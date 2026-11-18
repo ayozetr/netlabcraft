@@ -262,7 +262,11 @@ pub fn fit(app: &mut PacketApp) {
         return;
     }
     let view = View::new(app, Vec2::ZERO);
-    let pts: Vec<(f32, f32)> = view.places.iter().map(|p| (p.x, p.y)).chain(view.devices.iter().map(|d| (d.1, d.2))).collect();
+    let mut pts: Vec<(f32, f32)> = view.places.iter().map(|p| (p.x, p.y)).chain(view.devices.iter().map(|d| (d.1, d.2))).collect();
+    // A background picture is part of what the map shows.
+    if let Some((w, h)) = crate::pictures::extent(app, view.level) {
+        pts.extend([(0.0, 0.0), (w, h)]);
+    }
     if pts.is_empty() || app.ui.canvas.size.x < 1.0 {
         return;
     }
@@ -307,12 +311,14 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     // A wiring closet is drawn by its own view: furniture, front panels and cables from port to port.
     if let Some(place) = crate::closet::current(app) {
         crate::closet::keep_in_view(app, place);
+        crate::pictures::draw_place(app, ui.ctx(), &painter, rect.min.to_vec2() + app.ui.pan, app.ui.zoom, Some(place));
         crate::closet::show(app, ui, &resp, &painter, rect, place);
         crate::closet::title_plate(&painter, rect.min + vec2(12.0, 8.0), caption(app), &tk);
         return;
     }
     let view = View::new(app, rect.min.to_vec2() + app.ui.pan);
     app.ui.pointer = resp.hover_pos().map(|p| view.world(p));
+    crate::pictures::draw_place(app, ui.ctx(), &painter, view.origin, view.zoom, view.level);
 
     // The grid of this level, when its box is ticked (Grid Preferences).
     crate::physical_grid::draw(app, &painter, rect, view.origin, view.zoom, &tk);
@@ -322,7 +328,7 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     }
     let runs = runs(app, &view);
     draw_runs(&painter, &view, &runs, app.ui.prefs.metric, &tk);
-    draw_places(app, &painter, &view, &tk);
+    draw_places(app, ui.ctx(), &painter, &view, &tk);
     draw_devices(app, &painter, &view, &tk);
     painter.text(rect.min + vec2(12.0, 10.0), Align2::LEFT_TOP, caption(app), FontId::proportional(17.0), tk.muted);
     cable_popup(app, &resp, &runs);
@@ -402,7 +408,7 @@ fn draw_wireless(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tok
     let radios = crate::wireless::radios(t);
     for r in &radios {
         let Some(c) = at(r.device) else { continue };
-        let reach = if t.implicit_layout() { r.units } else { r.metres / netlabcraft_model::physical::CITY_UNIT_M };
+        let reach = if t.implicit_layout() { r.units } else { r.metres / t.map_scale(view.level.unwrap_or(netlabcraft_model::backdrop::INTERCITY)) };
         crate::wireless::draw_area(
             painter,
             c,
@@ -420,18 +426,21 @@ fn draw_wireless(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tok
     }
 }
 
-fn draw_places(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
+fn draw_places(app: &mut PacketApp, ctx: &egui::Context, painter: &egui::Painter, view: &View, tk: &Tokens) {
     let edge = theme::shade(tk.place, if app.ui.dark { 0.45 } else { 0.5 });
     for p in &view.places {
         let r = view.place_rect(p);
         if app.ui.physical.drag_place == Some(p.id) {
             painter.rect_stroke(r.expand(6.0), 8.0, Stroke::new(1.5, tk.selection), StrokeKind::Outside);
         }
-        match p.kind {
-            PlaceKind::City => icons::city(painter, r, tk.place, edge),
-            PlaceKind::Building => icons::building(painter, r, tk.place, edge),
-            PlaceKind::Closet => icons::closet(painter, r, tk.place, edge),
-            PlaceKind::Container => icons::container(painter, r, tk.place, edge),
+        // A picture chosen for the place (Set Background Image ▸ Place Icon) replaces the drawn icon.
+        if !crate::pictures::draw_icon(app, ctx, painter, r, p.id, edge) {
+            match p.kind {
+                PlaceKind::City => icons::city(painter, r, tk.place, edge),
+                PlaceKind::Building => icons::building(painter, r, tk.place, edge),
+                PlaceKind::Closet => icons::closet(painter, r, tk.place, edge),
+                PlaceKind::Container => icons::container(painter, r, tk.place, edge),
+            }
         }
         let inside = view.shown.values().filter(|n| **n == Node::Place(p.id)).count();
         let font = FontId::proportional((16.0 * view.zoom).clamp(9.0, 24.0));
@@ -441,6 +450,8 @@ fn draw_places(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Token
             let galley = painter.layout_no_wrap(line, font.clone(), color);
             let at = Align2::CENTER_TOP.anchor_size(pos2(r.center().x, y), galley.size());
             y = at.bottom();
+            // On a soft plate of the ground colour, so a background picture does not hide the letters.
+            painter.rect_filled(at.expand2(vec2(3.0, 0.0)), 4.0, tk.ground.gamma_multiply(0.82));
             painter.galley(at.min, galley, color);
         }
     }
@@ -449,7 +460,11 @@ fn draw_places(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Token
 fn draw_devices(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Tokens) {
     let t = &app.session.topology;
     // Cell towers: the coverage circle, in metres on a city map (workspace units on the implicit layout).
-    let range = if t.implicit_layout() { netlabcraft_model::cellular::CELL_RANGE } else { netlabcraft_model::cellular::CELL_RANGE_M as f32 };
+    let range = if t.implicit_layout() {
+        netlabcraft_model::cellular::CELL_RANGE
+    } else {
+        netlabcraft_model::cellular::CELL_RANGE_M as f32 / t.map_scale(view.level.unwrap_or(netlabcraft_model::backdrop::INTERCITY))
+    };
     for (id, x, y) in &view.devices {
         if t.device(*id).is_some_and(|d| d.is_tower()) {
             let c = view.screen(*x, *y);
@@ -620,6 +635,10 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
                 app.run("place.working.set", json!({"id": id}));
                 ui.close();
             }
+            if ui.button(tl("Set Background Image…")).clicked() {
+                app.open_pictures(false, id);
+                ui.close();
+            }
             if ui.button(tl("Remove Place")).clicked() {
                 app.run("place.remove", json!({"id": id}));
                 ui.close();
@@ -666,6 +685,10 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             crate::cable_window::menu_items(app, ui, l.a, true);
         }
         Target::Empty(x, y) => {
+            if ui.button(tl("Set Background Image…")).clicked() {
+                app.open_pictures(false, app.session.place_view.unwrap_or(netlabcraft_model::backdrop::INTERCITY));
+                ui.close();
+            }
             if let Some(kind) = child_kind(app) {
                 if ui.button(tl(new_label(kind))).clicked() {
                     add_place(app, Some((x, y)));
