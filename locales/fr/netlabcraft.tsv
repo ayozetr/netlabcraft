@@ -2556,3 +2556,18 @@ furniture	Table	Table
 	Arctic	Arctique
 	Indoor office	Bureau intérieur
 	Greenhouse	Serre
+	802.1X certificate	Certificat 802.1X
+	802.1X login	Connexion 802.1X
+	Generate self-signed	Générer un certificat autosigné
+	Issue from {}	Émettre depuis {}
+	No certificate: PEAP uses an anonymous tunnel	Pas de certificat : PEAP utilise un tunnel anonyme
+	No trusted CA	Aucune CA de confiance
+	Presented in PEAP: {} (issued by {})	Présenté dans PEAP : {} (émis par {})
+	Remove certificate	Supprimer le certificat
+	Server certificate: {} (issued by {}), {}	Certificat du serveur : {} (émis par {}), {}
+	Server name	Nom du serveur
+	Trust the CA of	Faire confiance à la CA de
+	Trusted CAs: {}	CA de confiance : {}
+	Validate server certificate	Valider le certificat du serveur
+	not checked	non vérifié
+	trusted	de confiance

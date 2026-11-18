@@ -52,7 +52,7 @@
 	802.1Q tag: VLAN {}.	802.1Q 标记：VLAN {}。
 	802.1X login refused	802.1X 登录被拒绝
 	`end` without an `if` or `while`	`end` 前没有 `if` 或 `while`
-	`let NAME = value`	`let NAME = value`
+	`let NAME = value`	`let NAME = 值`
 	`{}` (device name or id) is required	需要 `{}`（设备名称或 ID）
 	`{}` (text) is required	需要 `{}`（文本）
 	`{}` after the `else`	`else` 之后的 `{}`
@@ -403,7 +403,7 @@
 	Edit the initial network	编辑初始网络
 	Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.	八个智能设备每隔几秒向家庭网关的 IoT 服务报告，其规则是：有人移动时点亮大厅灯，有烟雾时鸣响警报器，有烟雾或高温时解锁门。
 	Ellipse	椭圆
-	EMAIL	EMAIL
+	EMAIL	电子邮件
 	Email	电子邮件
 	Email address	电子邮件地址
 	empty	空
@@ -1000,7 +1000,7 @@
 	RIP is not running here	此处未运行 RIP
 	RIP version 2 on three routers	三台路由器上的 RIP 版本 2
 	Room: {} degrees, {} % humidity, {} % soil, smoke {} %, CO {} ppm, light {} %	房间：{} 度，湿度 {} %，土壤 {} %，烟雾 {} %，CO {} ppm，光照 {} %
-	Root	Root
+	Root	根
 	Router (port 830)	路由器（830 端口）
 	Router address	路由器地址
 	Router with 2 Gigabit Ethernet ports	带 2 个千兆以太网口的路由器
@@ -2556,3 +2556,18 @@ furniture	Table	桌子
 	Arctic	北极
 	Indoor office	室内办公室
 	Greenhouse	温室
+	802.1X certificate	802.1X 证书
+	802.1X login	802.1X 登录
+	Generate self-signed	生成自签名证书
+	Issue from {}	由 {} 签发
+	No certificate: PEAP uses an anonymous tunnel	无证书：PEAP 使用匿名隧道
+	No trusted CA	无受信任的 CA
+	Presented in PEAP: {} (issued by {})	PEAP 中出示：{}（由 {} 签发）
+	Remove certificate	删除证书
+	Server certificate: {} (issued by {}), {}	服务器证书：{}（由 {} 签发），{}
+	Server name	服务器名称
+	Trust the CA of	信任以下设备的 CA
+	Trusted CAs: {}	受信任的 CA：{}
+	Validate server certificate	验证服务器证书
+	not checked	未检查
+	trusted	受信任
