@@ -34,6 +34,7 @@ pub(crate) mod qos;
 pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
+pub(crate) mod sla;
 pub(crate) mod span;
 pub(crate) mod sweep;
 pub(crate) mod swroute;
@@ -167,6 +168,8 @@ pub enum Mode {
     KeyChainKey(String, u32),
     /// `R1(config-track)#`: the tracked object's number.
     Track(u32),
+    /// `R1(config-ip-sla)#`: the operation's number.
+    IpSla(u32),
 }
 
 impl Mode {
@@ -220,6 +223,7 @@ impl Mode {
             Mode::KeyChain(_) => Modes::KEYCHAIN,
             Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
             Mode::Track(_) => Modes::TRACK,
+            Mode::IpSla(_) => Modes::IP_SLA,
         }
     }
 }
@@ -631,6 +635,18 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
         Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
         Mode::Track(_) => format!("{n}(config-track)#"),
+        Mode::IpSla(op) => {
+            use netlabcraft_model::sla::Probe;
+            let kind = match d.sla.ops.get(op).and_then(|o| o.probe.as_ref()) {
+                None => "",
+                Some(Probe::IcmpEcho { .. }) => "-echo",
+                Some(Probe::TcpConnect { .. }) => "-tcp-conn",
+                Some(Probe::UdpEcho { .. }) => "-udp-echo",
+                Some(Probe::UdpJitter { .. }) => "-jitter",
+                Some(Probe::HttpGet { .. }) => "-http",
+            };
+            format!("{n}(config-ip-sla{kind})#")
+        }
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -965,6 +981,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::KeyChain(_)
                 | Mode::KeyChainKey(..)
                 | Mode::Track(_)
+                | Mode::IpSla(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -1046,6 +1063,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
                 | Mode::Track(_)
+                | Mode::IpSla(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
@@ -2283,6 +2301,31 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoAcceptLifetime
         | Id::NoSendLifetime
         | Id::ShowKeyChain => keychain::command(&mut c, spec.id, &args),
+        Id::IpSla
+        | Id::NoIpSla
+        | Id::IpSlaSchedule
+        | Id::NoIpSlaSchedule
+        | Id::IpSlaResponder
+        | Id::NoIpSlaResponder
+        | Id::IpSlaReaction
+        | Id::NoIpSlaReaction
+        | Id::SlaIcmpEcho
+        | Id::SlaIcmpEchoSource
+        | Id::SlaTcpConnect
+        | Id::SlaUdpEcho
+        | Id::SlaUdpJitter
+        | Id::SlaHttpGet
+        | Id::SlaFrequency
+        | Id::NoSlaFrequency
+        | Id::SlaTimeout
+        | Id::NoSlaTimeout
+        | Id::SlaThreshold
+        | Id::NoSlaThreshold
+        | Id::SlaTag
+        | Id::NoSlaTag
+        | Id::ShowIpSlaStatistics
+        | Id::ShowIpSlaConfiguration
+        | Id::ShowIpSlaSummary => sla::command(&mut c, spec.id, &args),
         Id::TrackInterface
         | Id::TrackIpRoute
         | Id::TrackSla
