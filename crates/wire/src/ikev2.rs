@@ -201,6 +201,16 @@ fn len16(n: usize) -> [u8; 2] {
 }
 
 impl Payload {
+    /// A CERTREQ payload (RFC 7296 §3.7, encoding 4) naming the authorities it accepts by the
+    /// SHA-1 of their public keys, at most [`MAX_CERTREQ_HASHES`].
+    pub fn cert_request(authorities: &[[u8; 20]]) -> Payload {
+        let mut body = vec![CERT_X509_SIGNATURE];
+        for h in authorities.iter().take(MAX_CERTREQ_HASHES) {
+            body.extend_from_slice(h);
+        }
+        Payload::Other { kind: PT_CERTREQ, body }
+    }
+
     /// A CERT payload carrying one DER certificate (encoding 4).
     pub fn cert(der: &[u8]) -> Payload {
         let mut body = Vec::with_capacity(der.len() + 1);
@@ -555,6 +565,29 @@ pub fn has_notify(list: &[Payload], kind: u16) -> bool {
 }
 
 /// The DER certificates of the CERT payloads of a list (other encodings are skipped).
+/// The authorities (SHA-1 of their public keys, RFC 7296 §3.7) the CERTREQ payloads of a list
+/// name, at most [`MAX_CERTREQ_HASHES`] in all; a trailing part that is not a whole hash is
+/// ignored.
+pub fn cert_request_hashes(list: &[Payload]) -> Vec<[u8; 20]> {
+    list.iter()
+        .filter_map(|p| match p {
+            Payload::Other { kind: PT_CERTREQ, body } if body.first() == Some(&CERT_X509_SIGNATURE) => body.get(1..),
+            _ => None,
+        })
+        .flat_map(|b| b.chunks_exact(20))
+        .filter_map(|c| <[u8; 20]>::try_from(c).ok())
+        .take(MAX_CERTREQ_HASHES)
+        .collect()
+}
+
+/// Whether a list carries a CERTREQ payload.
+pub fn asks_for_cert(list: &[Payload]) -> bool {
+    list.iter().any(|p| matches!(p, Payload::Other { kind: PT_CERTREQ, .. }))
+}
+
+/// Most authorities one CERTREQ names or a list is read for.
+pub const MAX_CERTREQ_HASHES: usize = 32;
+
 pub fn certs_of(list: &[Payload]) -> Vec<&[u8]> {
     list.iter()
         .filter_map(|p| match p {
@@ -828,6 +861,22 @@ mod tests {
         let list = vec![Payload::IdI { kind: 1, data: vec![10, 0, 0, 1] }, cert.clone(), Payload::Auth { method: AUTH_RSA_SIG, data: vec![5; 64] }];
         assert_eq!(certs_of(&list), vec![&[0x30u8, 0x03, 0x02, 0x01, 0x01][..]]);
         assert!(certs_of(&[Payload::Other { kind: PT_CERT, body: vec![1, 9] }]).is_empty());
+        // A certificate request names authorities by 20-byte key hashes.
+        let req = Payload::cert_request(&[[1; 20], [2; 20]]);
+        assert_eq!(req.name(), "CERTREQ");
+        assert!(asks_for_cert(std::slice::from_ref(&req)) && !asks_for_cert(&list));
+        assert_eq!(cert_request_hashes(&[req.clone(), cert.clone()]), vec![[1; 20], [2; 20]]);
+        let mut odd = vec![CERT_X509_SIGNATURE];
+        odd.extend_from_slice(&[3; 25]);
+        assert_eq!(cert_request_hashes(&[Payload::Other { kind: PT_CERTREQ, body: odd }]), vec![[3; 20]]);
+        assert!(cert_request_hashes(&[Payload::Other { kind: PT_CERTREQ, body: vec![2, 5, 5] }]).is_empty());
+        assert_eq!(cert_request_hashes(&[Payload::cert_request(&[[7; 20]; 40])]).len(), MAX_CERTREQ_HASHES);
+        let asking = Message { spi_i: [1; 8], spi_r: [0; 8], exchange: IKE_SA_INIT, flags: FLAG_INITIATOR, message_id: 0, payloads: vec![req] };
+        let wire = asking.encode();
+        assert_eq!(Message::decode(&wire).unwrap(), asking);
+        for n in 0..wire.len() {
+            let _ = Message::decode(&wire[..n]);
+        }
         let msg = Message { spi_i: [1; 8], spi_r: [2; 8], exchange: IKE_AUTH, flags: FLAG_INITIATOR, message_id: 1, payloads: list.clone() };
         let raw = msg.encode();
         assert_eq!(Message::decode(&raw).unwrap(), msg);
