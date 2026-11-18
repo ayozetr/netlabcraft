@@ -1515,6 +1515,11 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
         };
         let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
     }
+    // A virtual link that is up is a neighbour too, across its transit area.
+    for (k, v) in st.virtual_links.get(&d.id).into_iter().flatten().filter(|v| v.up).enumerate() {
+        let name = v.peer.and_then(|p| t.device(p)).map_or("?".to_string(), |x| x.name.clone());
+        let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", v.peer_id.to_string(), "FULL/ -", "-", format!("OSPF_VL{k} (area {})", v.area));
+    }
     for (iface, addr) in st.type_mismatch.get(&d.id).into_iter().flatten() {
         let _ = writeln!(
             s,
