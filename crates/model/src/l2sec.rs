@@ -153,6 +153,14 @@ pub struct SwitchL2 {
     /// `monitor session N …`: port mirroring.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub span: Vec<crate::span::SpanSession>,
+    /// `ip source binding …`: bindings typed by hand, which IP source guard accepts like the
+    /// ones DHCP snooping learned.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub static_bindings: Vec<StaticBinding>,
+    /// `no errdisable detect cause …`: causes that no longer shut a port (the offending frame is
+    /// still dropped).
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    pub detect_off: BTreeSet<ErrCause>,
 }
 
 impl Default for SwitchL2 {
@@ -175,6 +183,8 @@ impl Default for SwitchL2 {
             relay_trust_all: false,
             cos_dscp: None,
             span: Vec::new(),
+            static_bindings: Vec::new(),
+            detect_off: BTreeSet::new(),
         }
     }
 }
@@ -229,6 +239,40 @@ pub fn vlan_list(set: &BTreeSet<VlanId>) -> String {
     }
     s.to_string()
 }
+
+/// What IP source guard checks in a frame from an untrusted port.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SourceGuard {
+    /// The source address has a binding on this port (`ip verify source`).
+    Ip,
+    /// The source address and the source MAC address both match one binding
+    /// (`ip verify source port-security`).
+    IpMac,
+}
+
+impl SourceGuard {
+    pub fn name(self) -> &'static str {
+        match self {
+            SourceGuard::Ip => "ip",
+            SourceGuard::IpMac => "ip-mac",
+        }
+    }
+}
+
+/// `ip source binding MAC vlan N A.B.C.D interface X`: a binding typed by hand, for a host that
+/// does not use DHCP.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StaticBinding {
+    pub mac: netlabcraft_core::MacAddr,
+    pub vlan: u16,
+    pub ip: std::net::Ipv4Addr,
+    /// The port, by index.
+    pub port: usize,
+}
+
+/// Most static bindings one switch keeps.
+pub const MAX_STATIC_BINDINGS: usize = 1_024;
 
 /// `spanning-tree link-type`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -300,6 +344,15 @@ pub struct PortL2 {
     /// `spanning-tree [vlan N] port-priority P`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub stp_priority: PerVlan,
+    /// `ip verify source [port-security]`: IP source guard on this port.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source_guard: Option<SourceGuard>,
+    /// `spanning-tree mst N cost C`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub mst_cost: BTreeMap<u16, u32>,
+    /// `spanning-tree mst N port-priority P`.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub mst_priority: BTreeMap<u16, u32>,
     /// `lacp port-priority N`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub lacp_priority: Option<u16>,

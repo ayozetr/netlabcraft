@@ -12,12 +12,14 @@ use netlabcraft_sim::{DebugKind, PingOptions, Sim, port_up};
 
 use crate::grammar::{self, Id, Modes, ParseError};
 use crate::{host, render};
+pub use dialogs::{Dialog, DialogKind};
 
 pub(crate) mod automation;
 pub(crate) mod bgp;
 pub(crate) mod cef;
 pub(crate) mod cellular;
 pub(crate) mod debug;
+mod dialogs;
 pub(crate) mod eigrp6;
 pub(crate) mod families;
 pub(crate) mod fhrp;
@@ -27,6 +29,7 @@ pub(crate) mod keychain;
 pub(crate) mod knobs;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
+pub(crate) mod mst;
 pub(crate) mod netflow;
 pub(crate) mod pki;
 pub(crate) mod policy;
@@ -36,6 +39,7 @@ pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
 pub(crate) mod span;
+pub(crate) mod srcguard;
 pub(crate) mod sweep;
 pub(crate) mod swroute;
 pub(crate) mod voice;
@@ -165,6 +169,8 @@ pub enum Mode {
     KeyChain(String),
     /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
     KeyChainKey(String, u32),
+    /// `S1(config-mst)#`: `spanning-tree mst configuration`.
+    MstConfig,
 }
 
 impl Mode {
@@ -217,6 +223,7 @@ impl Mode {
             Mode::PkiServer(_) => Modes::PKI_SERVER,
             Mode::KeyChain(_) => Modes::KEYCHAIN,
             Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
+            Mode::MstConfig => Modes::MST,
         }
     }
 }
@@ -238,6 +245,8 @@ pub struct Cli {
     pub modulus_prompt: bool,
     /// `copy running-config tftp:` typed without a server: asking for it, then the file name.
     pub copy_prompt: Option<CopyPrompt>,
+    /// `ping` or `traceroute` typed with no target: the questions it still asks.
+    pub dialog: Option<Dialog>,
     /// Collecting pasted PEM text for a certificate command, until a line that says `quit`.
     pub paste: Option<Paste>,
     /// A Telnet or SSH session this console opened to another device.
@@ -638,6 +647,9 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
     if cli.modulus_prompt {
         return MODULUS_PROMPT.into();
     }
+    if let Some(q) = cli.dialog.as_ref().and_then(Dialog::question) {
+        return q.into();
+    }
     if let Some(p) = &cli.copy_prompt {
         return match (&p.address, p.upload) {
             (None, _) => "Address or name of remote host []? ".into(),
@@ -699,6 +711,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
         Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
         Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
+        Mode::MstConfig => format!("{n}(config-mst)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -726,6 +739,25 @@ fn qos_map_named_like_type(words: &[&str]) -> Option<(Id, usize)> {
         (_, true, true) => Some((Id::NoPolicyMap, at + 1)),
         _ => None,
     }
+}
+
+/// One line typed while `ping` or `traceroute` is asking its questions.
+fn dialog_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, mut dlg: Dialog, line: &str) -> Outcome {
+    let word = line.trim();
+    if word.eq_ignore_ascii_case("abort") {
+        return Outcome { output: "Cancelled: nothing was sent.".into(), ..Outcome::default() };
+    }
+    if let Err(output) = dlg.accept(word) {
+        cli.dialog = Some(dlg);
+        return Outcome { output, ..Outcome::default() };
+    }
+    if dlg.question().is_some() {
+        cli.dialog = Some(dlg);
+        return Outcome::default();
+    }
+    let mut c = Ctx { t, sim, dev, cli };
+    let output = dlg.finish(&mut c).unwrap_or_else(|e| e);
+    Outcome { output, ..Outcome::default() }
 }
 
 /// Runs one line typed at a device. A reload that was scheduled (`reload in|at`) and whose time
@@ -817,6 +849,9 @@ fn execute_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, l
             }
             Some(a) => execute(t, sim, dev, cli, format!("{} {a} {answer}", p.command).trim_end()),
         };
+    }
+    if let Some(dlg) = cli.dialog.take() {
+        return dialog_line(t, sim, dev, cli, dlg, line);
     }
     if d.kind == DeviceKind::Hub {
         return Outcome { output: "A hub has no console: it repeats every frame and has nothing to configure.".into(), ..Outcome::default() };
@@ -1117,6 +1152,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
                 | Mode::KeyChainKey(..)
+                | Mode::MstConfig
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -1197,6 +1233,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
                 | Mode::KeyChain(_)
+                | Mode::MstConfig
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
@@ -1220,6 +1257,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok("Configuring from the terminal, one command per line; `end` returns to privileged mode.".into())
         }
         Id::Ping => c.ping(arg(0), 5, None),
+        Id::PingDialog | Id::TracerouteDialog => {
+            let kind = if spec.id == Id::PingDialog { DialogKind::Ping } else { DialogKind::Traceroute };
+            c.cli.dialog = Some(Dialog::new(kind));
+            Ok("Answer the questions one by one: an empty answer takes the default, `abort` gives up.".into())
+        }
         Id::PingRepeat => c.ping_extended(arg(0), arg(1)),
         Id::ShowIpTraffic => Ok(render::ip_traffic(c.sim, c.dev)),
         Id::ShowTcpBrief => Ok(render::tcp_brief(c.sim, c.dev)),
@@ -2258,12 +2300,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::StpMode => {
-            let rapid = match arg(0).to_ascii_lowercase().as_str() {
-                "pvst" => false,
-                "rapid-pvst" => true,
-                _ => return Err("% pvst or rapid-pvst".into()),
+            let (rapid, mst) = match arg(0).to_ascii_lowercase().as_str() {
+                "pvst" => (false, false),
+                "rapid-pvst" => (true, false),
+                // Multiple spanning tree is rapid too: ports use the rapid handshake.
+                "mst" => (true, true),
+                _ => return Err("% pvst, rapid-pvst or mst".into()),
             };
-            c.dm()?.rapid_stp = rapid;
+            let d = c.dm()?;
+            d.rapid_stp = rapid;
+            d.mst.on = mst;
             Ok(String::new())
         }
         Id::ShowStandby => {
@@ -2465,6 +2511,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowIpCefAddressDetail
         | Id::IpDefaultNetwork
         | Id::NoIpDefaultNetwork => cef::command(&mut c, spec.id, &args),
+        Id::IpSgOn | Id::IpSgPortSecurity | Id::IpSgOff | Id::IpSgBinding | Id::IpSgNoBinding | Id::IpSgShowVerify | Id::IpSgShowBinding => {
+            srcguard::command(&mut c, spec.id, &args)
+        }
         Id::KeyChain
         | Id::NoKeyChain
         | Id::KeyChainKey
@@ -2476,6 +2525,22 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoAcceptLifetime
         | Id::NoSendLifetime
         | Id::ShowKeyChain => keychain::command(&mut c, spec.id, &args),
+        Id::MstConfiguration
+        | Id::NoMstConfiguration
+        | Id::MstName
+        | Id::MstRevision
+        | Id::MstInstanceVlan
+        | Id::NoMstInstance
+        | Id::MstPriority
+        | Id::NoMstPriority
+        | Id::MstRoot
+        | Id::MstCost
+        | Id::NoMstCost
+        | Id::MstPortPriority
+        | Id::NoMstPortPriority
+        | Id::ShowMst
+        | Id::ShowMstConfig
+        | Id::ShowMstInstance => mst::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
@@ -2621,6 +2686,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoRecoveryInterval
         | Id::L2ShowErrDisabled
         | Id::L2ShowRecovery
+        | Id::L2DetectCause
+        | Id::L2NoDetectCause
+        | Id::L2ShowErrDetect
         | Id::L2PsecAgingTime
         | Id::L2NoPsecAgingTime
         | Id::L2PsecAgingType
@@ -6022,12 +6090,16 @@ impl Ctx<'_> {
     }
 
     fn traceroute_address(&mut self, target: &str) -> R {
+        self.traceroute_with(target, 30, 2_000_000)
+    }
+
+    fn traceroute_with(&mut self, target: &str, max_hops: u8, timeout_us: u64) -> R {
         if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
-            let hops = self.sim.traceroute6(self.t, self.dev, dst6, 30, 2_000_000).map_err(|e| format!("% {e}"))?;
+            let hops = self.sim.traceroute6(self.t, self.dev, dst6, max_hops, timeout_us).map_err(|e| format!("% {e}"))?;
             return Ok(render::traceroute(dst6.into(), &hops));
         }
         let dst = parse_ip(target).map_err(|e| format!("% {e}"))?;
-        let hops = self.sim.traceroute(self.t, self.dev, dst, 30, 2_000_000).map_err(|e| format!("% {e}"))?;
+        let hops = self.sim.traceroute(self.t, self.dev, dst, max_hops, timeout_us).map_err(|e| format!("% {e}"))?;
         Ok(render::traceroute(dst.into(), &hops))
     }
 

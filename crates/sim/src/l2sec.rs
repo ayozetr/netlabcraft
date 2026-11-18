@@ -48,6 +48,8 @@ pub struct Binding {
 pub struct Counts {
     pub dhcp_forwarded: u64,
     pub dhcp_dropped: u64,
+    /// Frames IP source guard dropped.
+    pub source_guard_dropped: u64,
 }
 
 /// ARP inspection counts for one VLAN.
@@ -196,7 +198,7 @@ fn host_address(a: Ipv4Addr) -> bool {
 impl Sim {
     /// Shuts a port down for `cause` (once), logging why.
     pub(crate) fn err_disable(&mut self, d: &Device, port: usize, cause: ErrCause, why: &str) {
-        if self.err_disabled_now(d.id, port) {
+        if self.err_disabled_now(d.id, port) || d.l2.detect_off.contains(&cause) {
             return;
         }
         self.events.push(PortEvent::ErrDisabledBy { device: d.id, port, cause });
@@ -314,7 +316,31 @@ impl Sim {
             }
             c.forwarded += 1;
         }
-        Ok(())
+        self.source_guard_check(d, port, vlan, f)
+    }
+
+    /// IP source guard: an IPv4 frame from an untrusted port of a snooped VLAN must come from an
+    /// address (and, with `port-security`, a MAC address) that a binding gives this port. Frames
+    /// from 0.0.0.0 pass, so a client can still ask DHCP for an address.
+    fn source_guard_check(&mut self, d: &Device, port: usize, vlan: VlanId, f: &Frame) -> Result<(), String> {
+        let Some(p) = d.ports.get(port) else { return Ok(()) };
+        let Some(mode) = p.l2.source_guard else { return Ok(()) };
+        if !d.l2.snoops(vlan) || p.l2.snoop_trust || f.ethertype != ETHERTYPE_IPV4 {
+            return Ok(());
+        }
+        let Ok(ip) = Ipv4::decode(&f.payload) else { return Ok(()) };
+        if ip.src.is_unspecified() {
+            return Ok(());
+        }
+        let mac_ok = |m: MacAddr| mode == netlabcraft_model::l2sec::SourceGuard::Ip || m == f.src;
+        let learned = self.snooping_bindings(d.id).iter().any(|b| b.port == port && b.vlan == vlan && b.ip == ip.src && mac_ok(b.mac));
+        let typed = d.l2.static_bindings.iter().any(|b| b.port == port && b.vlan == vlan.get() && b.ip == ip.src && mac_ok(b.mac));
+        if learned || typed {
+            return Ok(());
+        }
+        self.l2.counts.entry(d.id).or_default().source_guard_dropped += 1;
+        let short = ifname::short(&p.name);
+        Err(format!("IP source guard: {} sent from {} on {short} (VLAN {vlan}), which no binding gives this port; dropped", f.src.dotted(), ip.src))
     }
 
     /// Option 82 on a frame that passed snooping (see the module notes): the frame as it goes

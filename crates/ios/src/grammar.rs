@@ -107,6 +107,8 @@ impl Modes {
     pub const KEYCHAIN: Modes = Modes(1 << 59);
     /// `key N` inside a key chain.
     pub const KEYCHAIN_KEY: Modes = Modes(1 << 60);
+    /// `spanning-tree mst configuration`.
+    pub const MST: Modes = Modes(1 << 61);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -149,7 +151,8 @@ impl Modes {
             | (1 << 57)
             | (1 << 58)
             | (1 << 59)
-            | (1 << 60),
+            | (1 << 60)
+            | (1 << 61),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -257,6 +260,8 @@ pub enum Id {
     NoKnob,
     // ---- small commands found missing by the sweep (exec/sweep.rs) ----
     More,
+    PingDialog,
+    TracerouteDialog,
     ReloadIn,
     ReloadAt,
     ReloadCancel,
@@ -331,6 +336,13 @@ pub enum Id {
     StpRoot,
     Portfast,
     NoPortfast,
+    IpSgOn,
+    IpSgPortSecurity,
+    IpSgOff,
+    IpSgBinding,
+    IpSgNoBinding,
+    IpSgShowVerify,
+    IpSgShowBinding,
     // ---- switch edge protection and tuning (exec/l2sec.rs) ----
     L2Snooping,
     L2NoSnooping,
@@ -370,6 +382,9 @@ pub enum Id {
     L2NoRecoveryInterval,
     L2ShowErrDisabled,
     L2ShowRecovery,
+    L2DetectCause,
+    L2NoDetectCause,
+    L2ShowErrDetect,
     MonitorSource,
     MonitorSourceVlan,
     MonitorDestination,
@@ -1201,6 +1216,22 @@ pub enum Id {
     IpFtpPassword,
     NoIpFtpLogin,
     StpMode,
+    MstConfiguration,
+    NoMstConfiguration,
+    MstName,
+    MstRevision,
+    MstInstanceVlan,
+    NoMstInstance,
+    MstPriority,
+    NoMstPriority,
+    MstRoot,
+    MstCost,
+    NoMstCost,
+    MstPortPriority,
+    NoMstPortPriority,
+    ShowMst,
+    ShowMstConfig,
+    ShowMstInstance,
     VoiceTelephonyService,
     VoiceNoTelephonyService,
     VoiceMaxEphones,
@@ -1418,6 +1449,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::ROUTE_MAP)
     .or(Modes::KEYCHAIN)
     .or(Modes::KEYCHAIN_KEY)
+    .or(Modes::MST)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1469,6 +1501,7 @@ pub static SPECS: &[Spec] = &[
     spec!(End, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("end")], "Return to privileged mode"),
     spec!(ConfigureTerminal, Modes::EXEC, BOTH_FW, [K("configure"), K("terminal")], "Configure from the terminal"),
     spec!(Ping, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D|X:X::X")], "Send echo requests"),
+    spec!(PingDialog, EXECS, BOTH_FW, [K("ping")], "Send echo requests, asking for the options one question at a time"),
     spec!(
         PingRepeat,
         EXECS,
@@ -1482,6 +1515,7 @@ pub static SPECS: &[Spec] = &[
     spec!(HistorySize, Modes::LINE, Modes::BOTH, [K("history"), K("size"), Arg("<0-256>")], "How many commands a session remembers"),
     spec!(NoHistorySize, Modes::LINE, Modes::BOTH, [K("no"), K("history"), K("size")], "Remember the default number of commands"),
     spec!(Traceroute, EXECS, BOTH_FW, [K("traceroute"), Arg("A.B.C.D|X:X::X")], "Trace the route to a destination"),
+    spec!(TracerouteDialog, EXECS, BOTH_FW, [K("traceroute")], "Trace the route to a destination, asking for the options one question at a time"),
     spec!(ShowRun, Modes::EXEC, BOTH_FW, [K("show"), K("running-config")], "Current configuration"),
     spec!(ShowStartup, Modes::EXEC, BOTH_FW, [K("show"), K("startup-config")], "Saved configuration"),
     spec!(ShowIpIntBrief, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), K("brief")], "Interface addresses and status"),
@@ -5385,11 +5419,142 @@ pub static SPECS: &[Spec] = &[
         StpMode,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst}")],
-        "Classic (30 s to forward) or rapid spanning tree"
+        [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst|mst}")],
+        "Classic (30 s to forward), rapid, or multiple spanning tree"
     ),
+    spec!(
+        MstConfiguration,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), K("configuration")],
+        "Edit the multiple spanning tree region: name, revision and which VLANs each instance holds"
+    ),
+    spec!(
+        NoMstConfiguration,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), K("configuration")],
+        "Empty the region's name, revision and instance table"
+    ),
+    spec!(MstName, Modes::MST, Modes::SWITCH, [K("name"), Arg("NAME")], "Name the region (switches share a region only with the same name)"),
+    spec!(MstRevision, Modes::MST, Modes::SWITCH, [K("revision"), Arg("<0-65535>")], "The region's revision number"),
+    spec!(
+        MstInstanceVlan,
+        Modes::MST,
+        Modes::SWITCH,
+        [K("instance"), Arg("<1-15>"), K("vlan"), Arg("<1-4094>[,-]")],
+        "Map VLANs to an instance (each VLAN is in one instance)"
+    ),
+    spec!(
+        NoMstInstance,
+        Modes::MST,
+        Modes::SWITCH,
+        [K("no"), K("instance"), Arg("<1-15>")],
+        "Delete an instance; its VLANs go back to the common tree"
+    ),
+    spec!(
+        MstPriority,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("priority"), Arg("<0-61440>")],
+        "Bridge priority in an instance (multiples of 4096)"
+    ),
+    spec!(
+        NoMstPriority,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), Arg("<0-15>"), K("priority")],
+        "Back to priority 32768 in an instance"
+    ),
+    spec!(
+        MstRoot,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("root"), Arg("{primary|secondary}")],
+        "Make this switch the root (or the backup root) of an instance"
+    ),
+    spec!(
+        MstCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("cost"), Arg("<1-200000000>")],
+        "Path cost of this port in an instance"
+    ),
+    spec!(
+        NoMstCost,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), Arg("<0-15>"), K("cost")],
+        "Path cost of this port in an instance from its speed again"
+    ),
+    spec!(
+        MstPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("spanning-tree"), K("mst"), Arg("<0-15>"), K("port-priority"), Arg("<0-240>")],
+        "Port priority in an instance (multiples of 16)"
+    ),
+    spec!(
+        NoMstPortPriority,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("spanning-tree"), K("mst"), Arg("<0-15>"), K("port-priority")],
+        "Port priority back to 128 in an instance"
+    ),
+    spec!(ShowMst, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("mst")], "Every instance's tree on this switch"),
+    spec!(
+        ShowMstConfig,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("spanning-tree"), K("mst"), K("configuration")],
+        "The region's name, revision, digest and instance table"
+    ),
+    spec!(ShowMstInstance, EXECS, Modes::SWITCH, [K("show"), K("spanning-tree"), K("mst"), Arg("<0-15>")], "One instance's tree"),
     spec!(Portfast, Modes::IF, Modes::SWITCH, [K("spanning-tree"), K("portfast")], "An edge port: forward at once"),
     spec!(NoPortfast, Modes::IF, Modes::SWITCH, [K("no"), K("spanning-tree"), K("portfast")], "Not an edge port"),
+    spec!(
+        IpSgOn,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("verify"), K("source")],
+        "IP source guard: only addresses with a binding on this port may send"
+    ),
+    spec!(
+        IpSgPortSecurity,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("ip"), K("verify"), K("source"), K("port-security")],
+        "IP source guard that also checks the source MAC address against the binding"
+    ),
+    spec!(IpSgOff, Modes::IF, Modes::SWITCH, [K("no"), K("ip"), K("verify"), K("source")], "No IP source guard on this port"),
+    spec!(
+        IpSgBinding,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("ip"), K("source"), K("binding"), Arg("H.H.H"), K("vlan"), Arg("<1-4094>"), Arg("A.B.C.D"), K("interface"), Rest("<interface>")],
+        "A binding typed by hand, for a host that does not use DHCP"
+    ),
+    spec!(
+        IpSgNoBinding,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("ip"), K("source"), K("binding"), Arg("H.H.H"), K("vlan"), Arg("<1-4094>")],
+        "Remove a binding typed by hand"
+    ),
+    spec!(
+        IpSgShowVerify,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("verify"), K("source")],
+        "Ports with IP source guard and the addresses each lets through"
+    ),
+    spec!(
+        IpSgShowBinding,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("ip"), K("source"), K("binding")],
+        "Every binding: learned with DHCP snooping, or typed"
+    ),
     // ---- switch edge protection and tuning (exec/l2sec.rs) ----
     spec!(L2Snooping, Modes::CONFIG, Modes::SWITCH, [K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping on (then name its VLANs)"),
     spec!(L2NoSnooping, Modes::CONFIG, Modes::SWITCH, [K("no"), K("ip"), K("dhcp"), K("snooping")], "Turn DHCP snooping off"),
@@ -5630,6 +5795,21 @@ pub static SPECS: &[Spec] = &[
     spec!(L2NoRecoveryInterval, Modes::CONFIG, Modes::SWITCH, [K("no"), K("errdisable"), K("recovery"), K("interval")], "Back to 300 seconds"),
     spec!(L2ShowErrDisabled, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("status"), K("err-disabled")], "Err-disabled ports and why"),
     spec!(L2ShowRecovery, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("recovery")], "Which causes recover by themselves, and when"),
+    spec!(
+        L2DetectCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Shut ports for this cause again (detection is on unless turned off)"
+    ),
+    spec!(
+        L2NoDetectCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Stop shutting ports for this cause: the frame is still dropped, the port stays up"
+    ),
+    spec!(L2ShowErrDetect, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("detect")], "Which causes shut a port"),
     spec!(
         MonitorSource,
         Modes::CONFIG,
@@ -7135,6 +7315,7 @@ mod tests {
                 Modes::DIALER,
                 Modes::KEYCHAIN,
                 Modes::KEYCHAIN_KEY,
+                Modes::MST,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

@@ -218,7 +218,10 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::voice::running_config(&mut s, d);
     crate::exec::families::running_config(&mut s, d);
-    if d.rapid_stp {
+    if d.mst.on {
+        let _ = writeln!(s, "spanning-tree mode mst");
+        crate::exec::mst::running_config(&mut s, d);
+    } else if d.rapid_stp {
         let _ = writeln!(s, "spanning-tree mode rapid-pvst");
     }
     for (v, p) in &d.stp_priority {
@@ -228,6 +231,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::l2sec::global_lines(&mut s, d);
+    crate::exec::srcguard::global_lines(&mut s, d);
     crate::exec::l2sec::relay_global_lines(&mut s, d);
     crate::exec::span::global_lines(&mut s, d);
     crate::exec::fhrp::global_lines(&mut s, d);
