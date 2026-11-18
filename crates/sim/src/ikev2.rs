@@ -22,7 +22,10 @@
 //! real too (`netlabcraft_wire::ah`): as the child SA of a transform set made of `ah-*`
 //! transforms, or, next to ESP in one set, as a second child SA (a Child SA has one protocol,
 //! RFC 7296 §1.3) negotiated by a CREATE_CHILD_SA right after IKE_AUTH, with AH outside ESP.
-//! Only a transform set with no cipher keeps the stand-in cipher of `netlabcraft_wire::vpn`.
+//! A set with an integrity transform and no cipher is ESP with null encryption; `mode transport`
+//! is negotiated with the USE_TRANSPORT_MODE notification (RFC 7296 §1.3.1) in IKE_AUTH and
+//! protects only traffic between the peers. Only a set with nothing real to run keeps the
+//! stand-in cipher of `netlabcraft_wire::vpn`.
 //!
 //! Rekeying: near the end of the child SA's lifetime (90 % of its seconds or kilobytes) the
 //! router that started the IKE SA renews it with a CREATE_CHILD_SA exchange (RFC 7296 §1.3.3:
@@ -252,7 +255,7 @@ fn esp_proposal(d: &Device, e: &CryptoMapEntry, spi: u32) -> Proposal {
         transforms.push(Transform { kind: ikev2::TT_ENCR, id: ikev2::ENCR_AES_CBC, key_len: Some(bits) });
     } else if has("esp-3des") {
         transforms.push(Transform { kind: ikev2::TT_ENCR, id: ikev2::ENCR_3DES, key_len: None });
-    } else if has("esp-null") {
+    } else if has("esp-null") || ts.is_some_and(crate::vpn::no_cipher) {
         transforms.push(Transform { kind: ikev2::TT_ENCR, id: ikev2::ENCR_NULL, key_len: None });
     } else {
         transforms.push(Transform { kind: ikev2::TT_ENCR, id: 2, key_len: None });
@@ -329,12 +332,18 @@ fn child_protocol(suite: Option<EspSuite>) -> u8 {
 
 /// Seals a datagram as ESP with an association's outbound keys.
 pub(crate) fn esp_seal(suite: Option<EspSuite>, key: &[u8], spi: u32, seq: u32, datagram: &[u8]) -> netlabcraft_wire::vpn::Esp {
+    esp_seal_next(suite, key, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram)
+}
+
+/// Seals `inner` as ESP with this next header: 4 for a whole packet (tunnel mode), the payload's
+/// own protocol in transport mode.
+pub(crate) fn esp_seal_next(suite: Option<EspSuite>, key: &[u8], spi: u32, seq: u32, next: u8, inner: &[u8]) -> netlabcraft_wire::vpn::Esp {
     match suite.and_then(|s| EspSa::from_keymat(s, key)) {
         Some(sa) => {
             let iv = iv_for(&[key, &seq.to_be_bytes()[..], &spi.to_be_bytes()[..]].concat());
-            netlabcraft_wire::vpn::Esp::seal_with(&sa, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram, iv)
+            netlabcraft_wire::vpn::Esp::seal_with(&sa, spi, seq, next, inner, iv)
         }
-        None => netlabcraft_wire::vpn::Esp::seal(key, spi, seq, netlabcraft_wire::vpn::NEXT_IPV4, datagram),
+        None => netlabcraft_wire::vpn::Esp::seal(key, spi, seq, next, inner),
     }
 }
 
@@ -383,6 +392,78 @@ pub(crate) fn ipsec_seal_bundle(
     let mut wrapped = netlabcraft_wire::ah::Ah::protect_transport(ah.integ, &ah.key_out, &esp_ip, ah.spi_out, seq).encode();
     crate::qos::copy_ds(datagram, &mut wrapped);
     wrapped
+}
+
+/// Protects `datagram` as the transform set says: in tunnel mode a new outer packet
+/// ([`ipsec_seal_bundle`]); in transport mode (`transport`) the datagram's own IPv4 header stays,
+/// its protocol becomes ESP (or AH), and only the payload is protected, with the original
+/// protocol as the next header (RFC 4303 §3.1.1, RFC 4302 §3.1.1). Transport mode serves traffic
+/// between the two peers only: any other source or destination is an error, as no SA of the
+/// peers could carry it.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn ipsec_seal_mode(
+    transport: bool,
+    suite: Option<EspSuite>,
+    key: &[u8],
+    spi: u32,
+    seq: u32,
+    id: u16,
+    local: Ipv4Addr,
+    peer: Ipv4Addr,
+    datagram: &[u8],
+    ah: Option<&AhHalf>,
+) -> Result<Vec<u8>, String> {
+    if !transport {
+        return Ok(ipsec_seal_bundle(suite, key, spi, seq, id, local, peer, datagram, ah));
+    }
+    let ip = Ipv4::decode(datagram).map_err(|e| e.to_string())?;
+    if ip.src != local || ip.dst != peer {
+        return Err(format!(
+            "IPsec: transport mode protects only traffic between this router ({local}) and its peer ({peer}); {} → {} is dropped (`mode tunnel` carries other traffic)",
+            ip.src, ip.dst
+        ));
+    }
+    let mut packet = match suite {
+        Some(EspSuite { encr: netlabcraft_wire::vpn::EspEncr::Ah, integ }) => {
+            netlabcraft_wire::ah::Ah::protect_transport(integ, key, &ip, spi, seq).encode()
+        }
+        _ => Ipv4 {
+            protocol: netlabcraft_wire::vpn::PROTO_ESP,
+            payload: esp_seal_next(suite, key, spi, seq, ip.protocol, &ip.payload).encode(),
+            ..ip.clone()
+        }
+        .encode(),
+    };
+    if let Some(ah) = ah
+        && let Ok(esp_ip) = Ipv4::decode(&packet)
+    {
+        packet = netlabcraft_wire::ah::Ah::protect_transport(ah.integ, &ah.key_out, &esp_ip, ah.spi_out, seq).encode();
+    }
+    crate::qos::copy_ds(datagram, &mut packet);
+    Ok(packet)
+}
+
+/// What a received IPsec packet carried, by the mode of the association: the whole inner packet
+/// (tunnel mode), or the original packet rebuilt from the outer header and the protected payload
+/// (transport mode).
+pub(crate) fn ipsec_open_mode(transport: bool, suite: Option<EspSuite>, key: &[u8], ip: &Ipv4) -> Result<Vec<u8>, String> {
+    use netlabcraft_wire::vpn::{EspEncr, NEXT_IPV4, PROTO_ESP};
+    let ah_only = suite.filter(|s| s.encr == EspEncr::Ah);
+    let (next, inner) = match ah_only {
+        Some(s) if transport => {
+            let opened = netlabcraft_wire::ah::Ah::open_transport_any(ip, s.integ, key).map_err(|_| "AH failed its integrity check".to_string())?;
+            (opened.protocol, opened.payload)
+        }
+        _ => ipsec_open(suite, key, ip).map_err(|_| "ESP failed its integrity check (the keys differ?)".to_string())?,
+    };
+    match (transport, next) {
+        (false, NEXT_IPV4) => Ok(inner),
+        (true, n) if n != NEXT_IPV4 && n != PROTO_ESP && n != netlabcraft_wire::ah::PROTO_AH => {
+            Ok(Ipv4 { protocol: n, payload: inner, ..ip.clone() }.encode())
+        }
+        (true, _) => Err("a tunnel-mode packet arrived on a transport-mode association".to_string()),
+        (false, n) => Err(format!("ESP carrying next header {n} is not understood")),
+    }
 }
 
 /// The SPI of an ESP or AH packet.
@@ -437,6 +518,11 @@ pub(crate) fn v2_local_check(d: &Device, e: &CryptoMapEntry, local: Ipv4Addr) ->
         return Err("no IKEv2 policy offers a complete proposal (encryption, integrity and group)".into());
     }
     Ok(())
+}
+
+/// The notification that makes the child SA of an IKE_AUTH a transport mode one.
+fn transport_notify() -> Payload {
+    Payload::Notify { protocol: 0, spi: Vec::new(), kind: ikev2::USE_TRANSPORT_MODE, data: Vec::new() }
 }
 
 /// This router's authentication payloads for a profile: its CERT and an RSA AUTH when the
@@ -593,7 +679,16 @@ impl Sim {
             let spi = sa.spi_out;
             let ah = sa.ah.clone();
             let id = self.ip_id();
-            return Ok(Some((ipsec_seal_bundle(suite, &key, spi, seq, id, local, peer, datagram, ah.as_ref()), peer)));
+            return match ipsec_seal_mode(crate::vpn::entry_transport(d, entry), suite, &key, spi, seq, id, local, peer, datagram, ah.as_ref()) {
+                Ok(packet) => Ok(Some((packet, peer))),
+                Err(why) => {
+                    if let Some(sa) = self.st(d.id).ipsec.get_mut(&peer) {
+                        sa.encaps = sa.encaps.saturating_sub(1);
+                        sa.drops = sa.drops.saturating_add(1);
+                    }
+                    Err(why)
+                }
+            };
         }
         sa.drops = sa.drops.saturating_add(1);
         let busy = matches!(sa.phase, IkePhase::V2Init | IkePhase::V2Auth | IkePhase::Failed) && now.saturating_sub(sa.started_us) < RETRY_US;
@@ -874,6 +969,9 @@ impl Sim {
             message_id: 1,
             payloads: {
                 payloads.extend([Payload::Sa(vec![esp_proposal(d, &entry, spi_in)]), Payload::TsI(vec![tsi]), Payload::TsR(vec![tsr])]);
+                if crate::vpn::entry_transport(d, &entry) {
+                    payloads.push(transport_notify());
+                }
                 payloads
             },
         };
@@ -961,6 +1059,8 @@ impl Sim {
                 let mine = esp_proposal(d, e, spi_in);
                 if (mine.protocol, &mine.transforms) != (o.protocol, &o.transforms) {
                     Err((ikev2::NO_PROPOSAL_CHOSEN, "the ESP transforms differ from this router's transform set".to_string()))
+                } else if ikev2::has_notify(&inner, ikev2::USE_TRANSPORT_MODE) != crate::vpn::entry_transport(d, e) {
+                    Err((ikev2::NO_PROPOSAL_CHOSEN, "the peer's transform set is for another mode (tunnel against transport)".to_string()))
                 } else {
                     let tsi = inner.iter().find_map(|p| if let Payload::TsI(v) = p { v.first().copied() } else { None });
                     let tsr = inner.iter().find_map(|p| if let Payload::TsR(v) = p { v.first().copied() } else { None });
@@ -1012,6 +1112,9 @@ impl Sim {
             message_id: m.message_id,
             payloads: {
                 payloads.extend([Payload::Sa(vec![esp]), Payload::TsI(tsi), Payload::TsR(tsr)]);
+                if entry.as_ref().is_some_and(|e| crate::vpn::entry_transport(d, e)) {
+                    payloads.push(transport_notify());
+                }
                 payloads
             },
         };
@@ -1078,6 +1181,10 @@ impl Sim {
             }
         }
         let entry = entry_for(d, local, peer);
+        if entry.as_ref().is_some_and(|e| crate::vpn::entry_transport(d, e)) != ikev2::has_notify(&inner, ikev2::USE_TRANSPORT_MODE) {
+            self.ike2_fail(d, peer, "the peer answered IKE_AUTH for another mode (tunnel against transport)".into());
+            return Ok(());
+        }
         let suite = entry.as_ref().and_then(|e| esp_suite_for(d, e));
         let (k_ir, k_ri) = esp_keys(&keys, suite, &v2.ni, &v2.nr);
         v2.esp_out = k_ir;
@@ -1681,11 +1788,7 @@ impl Sim {
             Err(format!("IPsec SPI 0x{spi:08x} from {} matches no security association", ip.src))
         } else {
             let (suite, key) = prev.map_or((v2.esp_suite, v2.esp_in.clone()), |p| (p.1, p.2));
-            match ipsec_open(suite, &key, ip) {
-                Ok((netlabcraft_wire::vpn::NEXT_IPV4, inner)) => Ok(inner),
-                Ok((next, _)) => Err(format!("IPsec packet carrying next header {next} is not understood")),
-                Err(_) => Err(format!("IPsec packet from {} failed its integrity check", ip.src)),
-            }
+            ipsec_open_mode(crate::vpn::peer_uses_transport(d, ip.src), suite, &key, ip).map_err(|e| format!("{e} (from {})", ip.src))
         };
         let sa = self.st(d.id).ipsec.entry(ip.src).or_default();
         Some(match opened {

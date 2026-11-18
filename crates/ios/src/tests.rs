@@ -25,6 +25,7 @@ mod ipsec_crypto;
 mod ipv6_ra;
 mod knobs;
 mod knobs_routing;
+mod ipsec_modes;
 mod leftovers;
 mod line_protocol;
 mod name_resolution;

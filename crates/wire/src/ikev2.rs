@@ -63,6 +63,8 @@ pub const INVALID_KE_PAYLOAD: u16 = 17;
 pub const AUTHENTICATION_FAILED: u16 = 24;
 pub const TS_UNACCEPTABLE: u16 = 38;
 pub const CHILD_SA_NOT_FOUND: u16 = 44;
+/// Status notify: the child SA is for transport mode, not tunnel mode (RFC 7296 §1.3.1).
+pub const USE_TRANSPORT_MODE: u16 = 16_391;
 /// Status notify: the CREATE_CHILD_SA rekeys the child SA with this SPI (RFC 7296 §3.10.1).
 pub const REKEY_SA: u16 = 16_393;
 /// Identification types.
@@ -90,6 +92,7 @@ pub fn notify_name(kind: u16) -> &'static str {
         TS_UNACCEPTABLE => "TS_UNACCEPTABLE",
         CHILD_SA_NOT_FOUND => "CHILD_SA_NOT_FOUND",
         REKEY_SA => "REKEY_SA",
+        USE_TRANSPORT_MODE => "USE_TRANSPORT_MODE",
         _ => "notification",
     }
 }
@@ -546,6 +549,11 @@ pub fn signed_octets(prf: Prf, message: &[u8], peer_nonce: &[u8], sk_p: &[u8], i
     [message, peer_nonce, &prf.prf(sk_p, id_body)[..]].concat()
 }
 
+/// Whether a list carries a notification of this type.
+pub fn has_notify(list: &[Payload], kind: u16) -> bool {
+    list.iter().any(|p| matches!(p, Payload::Notify { kind: k, .. } if *k == kind))
+}
+
 /// The DER certificates of the CERT payloads of a list (other encodings are skipped).
 pub fn certs_of(list: &[Payload]) -> Vec<&[u8]> {
     list.iter()
@@ -662,10 +670,11 @@ impl Message {
         parse_chain(*first, inner)
     }
 
-    /// The first notification's type, if the message carries one.
+    /// The first error notification's type, if the message carries one. Status types (16384 and
+    /// above: REKEY_SA, USE_TRANSPORT_MODE) say how an exchange went on, not that it failed.
     pub fn notify(payloads: &[Payload]) -> Option<u16> {
         payloads.iter().find_map(|p| match p {
-            Payload::Notify { kind, .. } => Some(*kind),
+            Payload::Notify { kind, .. } if *kind < 16_384 => Some(*kind),
             _ => None,
         })
     }
@@ -809,6 +818,11 @@ mod tests {
         // The pre-shared key's AUTH is a MAC of these same octets.
         let pad = Prf::HmacSha1.prf(b"psk", b"Key Pad for IKEv2");
         assert_eq!(psk_auth_with(Prf::HmacSha1, b"psk", b"msg1", b"nonce", b"sk_p", b"idbody"), Prf::HmacSha1.prf(&pad, &octets));
+        // A status notification is not an error: only an error type is reported by `notify`.
+        let status = Payload::Notify { protocol: 0, spi: Vec::new(), kind: USE_TRANSPORT_MODE, data: Vec::new() };
+        assert_eq!(Message::notify(std::slice::from_ref(&status)), None);
+        assert!(has_notify(std::slice::from_ref(&status), USE_TRANSPORT_MODE) && !has_notify(&[], USE_TRANSPORT_MODE));
+        assert_eq!(notify_name(USE_TRANSPORT_MODE), "USE_TRANSPORT_MODE");
         let cert = Payload::cert(&[0x30, 0x03, 0x02, 0x01, 0x01]);
         assert_eq!(cert.name(), "CERT");
         let list = vec![Payload::IdI { kind: 1, data: vec![10, 0, 0, 1] }, cert.clone(), Payload::Auth { method: AUTH_RSA_SIG, data: vec![5; 64] }];
