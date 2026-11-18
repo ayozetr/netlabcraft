@@ -1469,12 +1469,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree transmit hold-count` | config | switch | Return this setting to its default |
 | `spanning-tree etherchannel guard misconfig` | config | switch | Warn about a misconfigured EtherChannel (on) |
 | `no spanning-tree etherchannel guard misconfig` | config | switch | Turn this off (it is on by default) |
-| `udld enable` | config | switch | Detect one-way fibre links on every fibre port |
-| `no udld enable` | config | switch | Return this setting to its default |
-| `udld aggressive` | config | switch | Detect one-way links and shut the port |
-| `no udld aggressive` | config | switch | Return this setting to its default |
-| `udld message time <1-90>` | config | switch | Seconds between UDLD probes |
-| `no udld message time` | config | switch | Return this setting to its default |
 | `udld recovery` | config | switch | Bring a UDLD-disabled port back on a timer |
 | `no udld recovery` | config | switch | Return this setting to its default |
 | `mac address-table aging-time <0-1000000>` | config | switch | Seconds a learned address is kept (0: forever) |

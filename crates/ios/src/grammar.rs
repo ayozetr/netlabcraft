@@ -5368,12 +5368,6 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("spanning-tree"), K("etherchannel"), K("guard"), K("misconfig")],
         "Turn this off (it is on by default)"
     ),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("enable")], "Detect one-way fibre links on every fibre port"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("enable")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("aggressive")], "Detect one-way links and shut the port"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("aggressive")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("message"), K("time"), Arg("<1-90>")], "Seconds between UDLD probes"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("message"), K("time")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("recovery")], "Bring a UDLD-disabled port back on a timer"),
     spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("recovery")], "Return this setting to its default"),
     spec!(
