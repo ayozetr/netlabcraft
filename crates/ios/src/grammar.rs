@@ -14,7 +14,7 @@ pub enum Tok {
 
 /// Where a command is available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Modes(pub u64);
+pub struct Modes(pub u128);
 
 impl Modes {
     pub const USER: Modes = Modes(1);
@@ -67,7 +67,7 @@ impl Modes {
     pub const FIREWALL: Modes = Modes(1 << 29);
     /// `object network NAME` on the firewall.
     pub const OBJECT: Modes = Modes(1 << 30);
-    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u64).
+    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u128).
     pub const ZONE: Modes = Modes(1 << 40);
     /// `class-map type inspect NAME`.
     pub const INSPECT_CLASS: Modes = Modes(1 << 41);
@@ -113,6 +113,8 @@ impl Modes {
     pub const ARCHIVE: Modes = Modes(1 << 62);
     /// `spanning-tree mst configuration`.
     pub const MST: Modes = Modes(1 << 61);
+    /// `ip vrf NAME`.
+    pub const VRF: Modes = Modes(1 << 36);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         (1 << 63)
@@ -159,7 +161,8 @@ impl Modes {
             | (1 << 59)
             | (1 << 60)
             | (1 << 61)
-            | (1 << 62),
+            | (1 << 62)
+            | (1 << 36),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -428,6 +431,19 @@ pub enum Id {
     L2NoRecoveryCause,
     L2RecoveryInterval,
     L2NoRecoveryInterval,
+    StormLevel,
+    NoStormLevel,
+    StormAction,
+    NoStormAction,
+    ShowStormControl,
+    UdldGlobal,
+    NoUdldGlobal,
+    UdldMessageTime,
+    UdldReset,
+    UdldPort,
+    UdldPortAggressive,
+    NoUdldPort,
+    ShowUdld,
     L2ShowErrDisabled,
     L2ShowRecovery,
     L2DetectCause,
@@ -1352,6 +1368,30 @@ pub enum Id {
     IpFtpPassword,
     NoIpFtpLogin,
     StpMode,
+    IpVrf,
+    NoIpVrf,
+    VrfRd,
+    NoVrfRd,
+    VrfRouteTarget,
+    NoVrfRouteTarget,
+    VrfDescription,
+    IpVrfForwarding,
+    NoIpVrfForwarding,
+    IpRouteVrf,
+    NoIpRouteVrf,
+    ShowIpRouteVrf,
+    ShowIpVrf,
+    ShowIpVrfDetail,
+    ShowIpVrfInterfaces,
+    ShowIpArpVrf,
+    PingVrf,
+    PingVrfRepeat,
+    RouterOspfVrf,
+    NoRouterOspfVrf,
+    BgpAddressFamilyVrf,
+    ShowIpBgpVrf,
+    ShowIpBgpVrfSummary,
+    ShowOspfNeighborVrf,
     MstConfiguration,
     NoMstConfiguration,
     MstName,
@@ -1563,6 +1603,10 @@ pub enum Id {
     SrNoVtpPruning,
     SrTrunkPruning,
     SrNoTrunkPruning,
+    ShowDot1x,
+    ShowDot1xAll,
+    ShowDot1xInterface,
+    Dot1xReauth,
 }
 
 use Tok::{Arg, K, Rest};
@@ -1588,6 +1632,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::KEYCHAIN_KEY)
     .or(Modes::ARCHIVE)
     .or(Modes::MST)
+    .or(Modes::VRF)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1612,6 +1657,7 @@ const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
 /// The site-to-site VPN sub-modes.
+const VRF_IFACES: Modes = Modes::IF.or(Modes::SUBIF).or(Modes::SVI).or(Modes::LOOPBACK);
 const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM).or(Modes::CLIENT_GROUP);
 /// The QoS sub-modes.
 const QOS_MODES: Modes = Modes::CLASS_MAP.or(Modes::POLICY_MAP).or(Modes::POLICY_CLASS);
@@ -5476,12 +5522,6 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("spanning-tree"), K("etherchannel"), K("guard"), K("misconfig")],
         "Turn this off (it is on by default)"
     ),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("enable")], "Detect one-way fibre links on every fibre port"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("enable")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("aggressive")], "Detect one-way links and shut the port"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("aggressive")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("message"), K("time"), Arg("<1-90>")], "Seconds between UDLD probes"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("message"), K("time")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("recovery")], "Bring a UDLD-disabled port back on a timer"),
     spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("recovery")], "Return this setting to its default"),
     spec!(
@@ -5550,26 +5590,83 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("power"), K("efficient-ethernet")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("channel-protocol"), Arg("{lacp|pagp}")], "Protocol that bundles this port"),
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("channel-protocol"), Arg("{lacp|pagp}")], "Return this setting to its default"),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("udld"), K("port")], "Detect one-way links on this port"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port")], "Return this setting to its default"),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("udld"), K("port"), K("aggressive")], "Detect one-way links on this port and shut it"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port"), K("aggressive")], "Return this setting to its default"),
     spec!(
-        Knob,
+        StormLevel,
         KNOB_IF,
         Modes::SWITCH,
-        [K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level"), Arg("<0.00-100.00>")],
-        "Traffic level that starts a storm response"
+        [K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level"), Rest("{<0.00-100.00>|bps N|pps N} [FALLING]")],
+        "Level of this kind of traffic (percent of the link, bits or packets a second) above which the excess is dropped; a second level says when the storm ends"
     ),
     spec!(
-        NoKnob,
+        NoStormLevel,
         KNOB_IF,
         Modes::SWITCH,
         [K("no"), K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level")],
-        "Return this setting to its default"
+        "No limit for this kind of traffic"
     ),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("storm-control"), K("action"), Arg("{shutdown|trap}")], "What to do when a storm is detected"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action"), Arg("{shutdown|trap}")], "Return this setting to its default"),
+    spec!(
+        StormAction,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("storm-control"), K("action"), Arg("{shutdown|trap}")],
+        "Err-disable the port, or log the storm, when a level is passed"
+    ),
+    spec!(NoStormAction, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action"), Arg("{shutdown|trap}")], "Only drop the excess"),
+    spec!(NoStormAction, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action")], "Only drop the excess"),
+    spec!(
+        UdldGlobal,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("udld"), Arg("{enable|aggressive}")],
+        "Run UDLD on every port that has no setting of its own (aggressive also shuts a port whose neighbour falls silent)"
+    ),
+    spec!(
+        NoUdldGlobal,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("udld"), Arg("{enable|aggressive}")],
+        "Stop running UDLD on the ports that have no setting of their own"
+    ),
+    spec!(
+        UdldMessageTime,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("udld"), K("message"), K("time"), Arg("<1-90>")],
+        "Seconds between UDLD probes (15 by default)"
+    ),
+    spec!(UdldReset, Modes::EXEC, Modes::SWITCH, [K("udld"), K("reset")], "Bring back the ports UDLD shut down"),
+    spec!(
+        UdldPort,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("udld"), K("port")],
+        "Detect one-way links on this port: probes are sent and heard, and a one-way link shuts the port"
+    ),
+    spec!(
+        UdldPortAggressive,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("udld"), K("port"), K("aggressive")],
+        "As `udld port`, and a neighbour that was heard and goes silent shuts the port too"
+    ),
+    spec!(NoUdldPort, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port")], "No UDLD on this port, whatever the switch-wide setting says"),
+    spec!(
+        NoUdldPort,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("no"), K("udld"), K("port"), K("aggressive")],
+        "No UDLD on this port, whatever the switch-wide setting says"
+    ),
+    spec!(ShowUdld, EXECS, Modes::SWITCH, [K("show"), K("udld")], "Each UDLD port, its neighbour and whether the link works both ways"),
+    spec!(ShowUdld, EXECS, Modes::SWITCH, [K("show"), K("udld"), Rest("<interface>")], "One port's UDLD state"),
+    spec!(ShowStormControl, EXECS, Modes::SWITCH, [K("show"), K("storm-control")], "Each port's storm-control levels and what it measured"),
+    spec!(
+        ShowStormControl,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("storm-control"), Rest("<interface>|broadcast|multicast|unicast")],
+        "One port's, or one kind of traffic's, storm-control state"
+    ),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("switchport"), K("protected")], "Do not forward to other protected ports"),
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("switchport"), K("protected")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("switchport"), K("block"), Arg("{unicast|multicast}")], "Do not flood unknown traffic out of this port"),
@@ -6186,6 +6283,105 @@ pub static SPECS: &[Spec] = &[
         [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst|mst}")],
         "Classic (30 s to forward), rapid, or multiple spanning tree"
     ),
+    // ---- VRF-lite (exec/vrf.rs) ----
+    spec!(IpVrf, Modes::CONFIG, Modes::BOTH, [K("ip"), K("vrf"), Arg("NAME")], "Define a VRF and edit it: its own routing and ARP tables"),
+    spec!(NoIpVrf, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("vrf"), Arg("NAME")], "Delete a VRF; its interfaces go back to the global table"),
+    spec!(VrfRd, Modes::VRF, Modes::BOTH, [K("rd"), Arg("ASN:NN|A.B.C.D:NN")], "The route distinguisher that makes this VRF's prefixes unique"),
+    spec!(NoVrfRd, Modes::VRF, Modes::BOTH, [K("no"), K("rd")], "Remove the route distinguisher"),
+    spec!(
+        VrfRouteTarget,
+        Modes::VRF,
+        Modes::BOTH,
+        [K("route-target"), Arg("{import|export|both}"), Arg("ASN:NN|A.B.C.D:NN")],
+        "A route target this VRF imports or exports (kept and shown; VRF-lite does not move routes with it)"
+    ),
+    spec!(
+        NoVrfRouteTarget,
+        Modes::VRF,
+        Modes::BOTH,
+        [K("no"), K("route-target"), Arg("{import|export|both}"), Arg("ASN:NN|A.B.C.D:NN")],
+        "Remove a route target"
+    ),
+    spec!(VrfDescription, Modes::VRF, Modes::BOTH, [K("description"), Rest("TEXT")], "Describe the VRF"),
+    spec!(
+        IpVrfForwarding,
+        VRF_IFACES,
+        Modes::BOTH,
+        [K("ip"), K("vrf"), K("forwarding"), Arg("NAME")],
+        "Put this interface in a VRF (its IPv4 address is removed)"
+    ),
+    spec!(
+        NoIpVrfForwarding,
+        VRF_IFACES,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("vrf"), K("forwarding")],
+        "Back to the global table (its IPv4 address is removed)"
+    ),
+    spec!(
+        IpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>]")],
+        "Add a static route to a VRF's table"
+    ),
+    spec!(
+        NoIpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface>")],
+        "Remove a static route of a VRF"
+    ),
+    spec!(
+        NoIpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK")],
+        "Remove the static routes of a VRF to a network"
+    ),
+    spec!(ShowIpRouteVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), K("vrf"), Arg("NAME")], "A VRF's routing table"),
+    spec!(ShowIpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf")], "The VRFs: route distinguisher and interfaces"),
+    spec!(ShowIpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf"), K("brief")], "The VRFs: route distinguisher and interfaces"),
+    spec!(
+        ShowIpVrfDetail,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("vrf"), K("detail")],
+        "Every VRF with its route targets, interfaces and protocols"
+    ),
+    spec!(ShowIpVrfInterfaces, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf"), K("interfaces")], "Each VRF interface, its address and VRF"),
+    spec!(ShowIpArpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp"), K("vrf"), Arg("NAME")], "A VRF's ARP table"),
+    spec!(PingVrf, EXECS, Modes::BOTH, [K("ping"), K("vrf"), Arg("NAME"), Arg("A.B.C.D")], "Send echo requests through a VRF"),
+    spec!(
+        PingVrfRepeat,
+        EXECS,
+        Modes::BOTH,
+        [K("ping"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Rest("[repeat <1-1000>] [size <36-18024>] [source A.B.C.D] [timeout <0-3600>]")],
+        "Send echo requests through a VRF with options"
+    ),
+    spec!(
+        RouterOspfVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("router"), K("ospf"), Arg("<1-65535>"), K("vrf"), Arg("NAME")],
+        "Start or configure the OSPF process of a VRF"
+    ),
+    spec!(
+        NoRouterOspfVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("router"), K("ospf"), Arg("<1-65535>"), K("vrf"), Arg("NAME")],
+        "Remove the OSPF process of a VRF"
+    ),
+    spec!(ShowIpBgpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("vrf"), Arg("NAME")], "The BGP table of a VRF"),
+    spec!(ShowIpBgpVrfSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("vrf"), Arg("NAME"), K("summary")], "The BGP sessions of a VRF"),
+    spec!(
+        ShowOspfNeighborVrf,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("neighbor"), K("vrf"), Arg("NAME")],
+        "The OSPF neighbours of a VRF"
+    ),
+    spec!(BgpAddressFamilyVrf, Modes::BGP, Modes::BOTH, [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")], "Configure BGP inside a VRF"),
     spec!(
         MstConfiguration,
         Modes::CONFIG,
@@ -6606,14 +6802,20 @@ pub static SPECS: &[Spec] = &[
         L2RecoveryCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")],
         "Bring ports shut for this reason back by themselves"
     ),
     spec!(
         L2NoRecoveryCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("no"), K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [
+            K("no"),
+            K("errdisable"),
+            K("recovery"),
+            K("cause"),
+            Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")
+        ],
         "Ports shut for this reason wait for shutdown / no shutdown"
     ),
     spec!(
@@ -6630,14 +6832,20 @@ pub static SPECS: &[Spec] = &[
         L2DetectCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")],
         "Shut ports for this cause again (detection is on unless turned off)"
     ),
     spec!(
         L2NoDetectCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("no"), K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [
+            K("no"),
+            K("errdisable"),
+            K("detect"),
+            K("cause"),
+            Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")
+        ],
         "Stop shutting ports for this cause: the frame is still dropped, the port stays up"
     ),
     spec!(L2ShowErrDetect, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("detect")], "Which causes shut a port"),
@@ -7843,6 +8051,72 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(ShowPppoeSummary, EXECS, Modes::ROUTER, [K("show"), K("pppoe"), K("summary")], "PPPoE totals and the ports that answer or dial"),
     spec!(ClearPppoeAll, Modes::EXEC, Modes::ROUTER, [K("clear"), K("pppoe"), K("all")], "End every PPPoE session of this router"),
+    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("dot1x"), K("system-auth-control")], "Turn on 802.1X port access control"),
+    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("dot1x"), K("system-auth-control")], "Turn 802.1X port access control off"),
+    spec!(
+        Knob,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("aaa"), K("authentication"), K("dot1x"), K("default"), Rest("group radius")],
+        "The servers that check 802.1X logins"
+    ),
+    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("aaa"), K("authentication"), K("dot1x"), K("default")], "No method for 802.1X logins"),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("authentication"), K("port-control"), Arg("{auto|force-authorized|force-unauthorized}")],
+        "Whether the host on this port has to log in"
+    ),
+    spec!(NoKnob, Modes::IF, Modes::SWITCH, [K("no"), K("authentication"), K("port-control")], "The port asks for no login"),
+    spec!(Knob, Modes::IF, Modes::SWITCH, [K("dot1x"), K("pae"), K("authenticator")], "This port is the authenticator of the host on it"),
+    spec!(NoKnob, Modes::IF, Modes::SWITCH, [K("no"), K("dot1x"), K("pae"), K("authenticator")], "Not an authenticator port"),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("authentication"), K("event"), K("no-response"), K("action"), K("authorize"), K("vlan"), Arg("<1-4094>")],
+        "The guest VLAN for a host that never answers"
+    ),
+    spec!(
+        NoKnob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("authentication"), K("event"), K("no-response"), K("action"), K("authorize"), K("vlan")],
+        "No guest VLAN"
+    ),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("authentication"), K("event"), K("fail"), K("action"), K("authorize"), K("vlan"), Arg("<1-4094>")],
+        "The VLAN for a host the server refused"
+    ),
+    spec!(
+        NoKnob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("authentication"), K("event"), K("fail"), K("action"), K("authorize"), K("vlan")],
+        "No auth-fail VLAN"
+    ),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("dot1x"), K("timeout"), K("tx-period"), Arg("<1-65535>")],
+        "Seconds between the switch's identity requests"
+    ),
+    spec!(NoKnob, Modes::IF, Modes::SWITCH, [K("no"), K("dot1x"), K("timeout"), K("tx-period")], "Back to 30 seconds"),
+    spec!(ShowDot1x, EXECS, Modes::SWITCH, [K("show"), K("dot1x")], "Whether 802.1X is on and how many ports it controls"),
+    spec!(ShowDot1xAll, EXECS, Modes::SWITCH, [K("show"), K("dot1x"), K("all")], "Every port 802.1X controls and who is logged in on it"),
+    spec!(ShowDot1xInterface, EXECS, Modes::SWITCH, [K("show"), K("dot1x"), K("interface"), Rest("<interface>")], "One port's 802.1X state"),
+    spec!(
+        Dot1xReauth,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("dot1x"), K("re-authenticate"), K("interface"), Rest("<interface>")],
+        "Make the host on a port log in again"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -8149,6 +8423,7 @@ mod tests {
                 Modes::KEYCHAIN_KEY,
                 Modes::ARCHIVE,
                 Modes::MST,
+                Modes::VRF,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

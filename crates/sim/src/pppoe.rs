@@ -326,7 +326,7 @@ pub(crate) fn router_ifaces(d: &Device) -> Vec<L3If> {
             continue;
         }
         let Some((i, p)) = d.ports.iter().enumerate().find(|(_, p)| p.name == ds.port) else { continue };
-        out.push(L3If { port: i, sub: None, vlan: None, net: Ipv4Net::new(ds.session.address, 32), mac: p.mac, name: dl.name() });
+        out.push(L3If { port: i, sub: None, vlan: None, net: Ipv4Net::new(ds.session.address, 32), mac: p.mac, name: dl.name(), vrf: None });
     }
     let mut n = 0;
     for (i, p) in d.ports.iter().enumerate() {
@@ -335,7 +335,7 @@ pub(crate) fn router_ifaces(d: &Device) -> Vec<L3If> {
         }
         let Some(addr) = d.pppoe_router.template_of_port(&p.name).and_then(|t| template_address(d, t)) else { continue };
         n += 1;
-        out.push(L3If { port: i, sub: None, vlan: None, net: Ipv4Net::new(addr, 32), mac: p.mac, name: format!("Virtual-Access{n}") });
+        out.push(L3If { port: i, sub: None, vlan: None, net: Ipv4Net::new(addr, 32), mac: p.mac, name: format!("Virtual-Access{n}"), vrf: None });
     }
     out
 }
