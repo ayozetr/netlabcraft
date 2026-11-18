@@ -749,6 +749,23 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::knobs::line_lines(&mut s, d, if name == "line con 0" { "con" } else { "vty" });
         let _ = writeln!(s, "!");
     }
+    // The asynchronous lines of an octal card that were set.
+    for n in 1..=d.octal_lines().min(16) {
+        let group = format!("tty{n}");
+        let transport = a.async_transport.get(&n);
+        let mut knob = String::new();
+        crate::exec::knobs::line_lines(&mut knob, d, &group);
+        if transport.is_none() && knob.is_empty() {
+            continue;
+        }
+        let _ = writeln!(s, "line {n}");
+        if let Some(tr) = transport {
+            let names: Vec<&str> = tr.iter().map(|p| p.name()).collect();
+            let _ = writeln!(s, " transport input {}", if names.is_empty() { "none".to_string() } else { names.join(" ") });
+        }
+        s.push_str(&knob);
+        let _ = writeln!(s, "!");
+    }
     s.push_str("end");
     s
 }
