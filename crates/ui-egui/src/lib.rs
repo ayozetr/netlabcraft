@@ -147,6 +147,9 @@ pub enum Tool {
     Note,
     /// Drag out a rectangle, ellipse or line.
     Draw(netlabcraft_model::Shape),
+    /// Click a rectangle, ellipse or line, then drag its handles (Resize Shape, Alt+R). Devices
+    /// are neither picked nor moved with this tool.
+    Resize,
     /// Click a source then a destination: one echo request (a simple PDU).
     Ping,
     Delete,
@@ -1415,7 +1418,11 @@ impl PacketApp {
                     self.set_tool(tool);
                 }
             }
-            tool_button(ui, Glyph::Resize, "Resize Shape (not available yet)", false, false);
+            let drawings = !self.session.physical;
+            let label = if drawings { "Resize Shape (Alt+R)" } else { "Resize Shape (Alt+R): drawings are in the logical view" };
+            if tool_button(ui, Glyph::Resize, label, t == Tool::Resize, drawings).clicked() {
+                self.set_tool(Tool::Resize);
+            }
             if tool_button(ui, Glyph::Cluster, "Group into Cluster (Ctrl+G): the picked devices", false, self.can_group()).clicked() {
                 self.group_selection();
             }

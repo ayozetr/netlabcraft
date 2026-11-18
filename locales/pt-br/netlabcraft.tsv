@@ -941,7 +941,9 @@
 	Reset Activity	Reiniciar atividade
 	Reset room	Reiniciar ambiente
 	Reset Simulation	Reiniciar simulação
-	Resize Shape (not available yet)	Redimensionar forma (ainda indisponível)
+	Resize Shape (Alt+R)	Redimensionar forma (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Redimensionar forma (Alt+R): os desenhos só existem na visão lógica
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Redimensionar forma: clique em um retângulo, uma elipse ou uma linha e arraste as alças. Esc para sair.
 	Resource Records	Registros de recurso
 	Response headers	Cabeçalhos da resposta
 	RESTCONF (HTTP)	RESTCONF (HTTP)
@@ -1780,6 +1782,7 @@ event	write request for	requisição de escrita de
 	Delete Scenario	Excluir cenário
 	Device box	Caixa de dispositivos
 	Draw Freehand	Desenhar à mão livre
+	Resize Shape	Redimensionar forma
 	Fast Forward Time	Avançar o tempo rápido
 	Go Back One Level	Voltar um nível
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	As teclas que digitam uma letra são ignoradas enquanto um campo de texto ou o console está com o teclado.
