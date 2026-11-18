@@ -141,18 +141,25 @@ run phone.status {"device": "Phone2"}
 S1# show interfaces fa0/1 switchport
   expect: Voice VLAN: 100
 S1# show interfaces fa0/2 switchport
-  expect: Voice VLAN: 101 (not in the VLAN database)
+  expect: Voice VLAN: 101 (VLAN0101)
 ```
 
-Phone1's port names the voice VLAN, which exists. Phone2's port names VLAN 101, which the
-switch does not have: the phone tags its frames for a VLAN that is not there, and the switch
-drops them. Fix the number and let the phone ask DHCP again.
+Phone1's port names the voice VLAN, 100, which has a name and a DHCP pool behind it. Phone2's
+port names VLAN 101: giving a port a voice VLAN creates the VLAN on the switch (with a default
+name, `VLAN0101`), so the phone tags its frames for a VLAN that exists and has nothing in it: no
+router interface, no DHCP server. Fix the number, wait for the port to start forwarding again
+(a port whose settings changed goes through spanning tree's 30 seconds), and let the phone ask
+DHCP again.
 
 ```console S1
 configure terminal
 interface fa0/2
 switchport voice vlan 100
 end
+```
+
+```lab
+sim.advance {"seconds": 35}
 ```
 
 ```console Phone2
@@ -183,6 +190,10 @@ configure terminal
 telephony-service
 max-ephones 2
 end
+```
+
+```lab
+sim.advance {"seconds": 5}
 ```
 
 ```console Phone2
