@@ -161,7 +161,7 @@ mod t {
             rect.min.to_vec2() + app.ui.pan,
             app.ui.zoom,
             app.ui.prefs.grid.spacing(GridLevel::Intercity),
-            g::metres_per_unit(GridLevel::Intercity),
+            g::metres_per_unit(app, GridLevel::Intercity),
         );
         assert!(!l.xs.is_empty() || l.dense, "the Intercity grid has lines to draw or says it is too dense");
         let boxes: Vec<_> = h.get_all_by_role(egui::accesskit::Role::CheckBox).collect();
@@ -290,5 +290,72 @@ mod t {
         h.run_steps(2);
         let b = h.get_by_label("Grid Preferences").rect();
         assert!(b.center().x > h.get_by_label("Physical").rect().right() && b.center().x > 600.0, "{b:?}");
+    }
+
+    fn sized(scale: f32) -> Option<netlabcraft_model::backdrop::Size> {
+        Some(netlabcraft_model::backdrop::Size { width: 100.0, length: 100.0, height: 3.0, scale })
+    }
+
+    fn enter(h: &mut Harness<'static, PacketApp>, id: Option<u32>) {
+        match id {
+            Some(id) => h.state_mut().run("view.enter_place", json!({"id": id})),
+            None => h.state_mut().run("view.intercity", json!({})),
+        };
+        h.run_steps(3);
+    }
+
+    #[test]
+    fn the_metres_of_a_unit_follow_the_scale_set_on_the_place() {
+        let mut h = physical();
+        enter(&mut h, None);
+        assert_eq!(g::metres_per_unit(h.state(), GridLevel::Intercity), 100.0, "the built-in unit");
+        h.state_mut().session.topology.set_place_size(netlabcraft_model::backdrop::INTERCITY, sized(250.0)).unwrap();
+        assert_eq!(g::metres_per_unit(h.state(), GridLevel::Intercity), 250.0);
+        enter(&mut h, Some(1));
+        assert_eq!(g::current_level(h.state()), Some(GridLevel::City));
+        assert_eq!(g::metres_per_unit(h.state(), GridLevel::City), 1.0, "a city without a size keeps 1 m a unit");
+        h.state_mut().session.topology.set_place_size(1, sized(10.0)).unwrap();
+        assert_eq!(g::metres_per_unit(h.state(), GridLevel::City), 10.0);
+        // The same spacing is ten times closer on screen once a unit stands for ten metres.
+        let rect = Rect::from_min_size(pos2(0.0, 0.0), vec2(1000.0, 700.0));
+        let near = g::lines(rect, Vec2::ZERO, 1.0, (200.0, 200.0), 1.0);
+        let far = g::lines(rect, Vec2::ZERO, 1.0, (200.0, 200.0), 10.0);
+        assert!(far.xs.len() > near.xs.len());
+        enter(&mut h, Some(2));
+        assert_eq!(g::metres_per_unit(h.state(), GridLevel::Building), 1.0, "another place keeps its own scale");
+    }
+
+    #[test]
+    fn a_container_has_a_level_and_a_closet_has_none() {
+        let mut h = physical();
+        let c = h.state_mut().session.topology.add_place(netlabcraft_model::physical::PlaceKind::Container, None, Some(1), 0.0, 0.0).unwrap();
+        enter(&mut h, Some(3));
+        assert_eq!(g::current_level(h.state()), None, "a wiring closet has no scale");
+        enter(&mut h, Some(c));
+        assert_eq!(g::current_level(h.state()), Some(GridLevel::Container));
+        assert_eq!(g::metres_per_unit(h.state(), GridLevel::Container), 1.0);
+        h.state_mut().session.topology.set_place_size(c, sized(0.5)).unwrap();
+        assert_eq!(g::metres_per_unit(h.state(), GridLevel::Container), 0.5);
+        // Shift+G turns the container's grid on, and the grid is drawn in its view.
+        key(&mut h, egui::Key::G, egui::Modifiers::SHIFT);
+        assert!(h.state().ui.prefs.grid.on(GridLevel::Container));
+        assert!(g::showing(h.state()));
+        assert!(!h.state().ui.prefs.grid.on(GridLevel::City), "only its own level");
+        key(&mut h, egui::Key::G, egui::Modifiers::SHIFT);
+        assert!(!g::showing(h.state()));
+    }
+
+    #[test]
+    fn creating_and_going_home_still_work_inside_a_container() {
+        use crate::physical_bar::{Create, reason};
+        use netlabcraft_model::furniture::FurnitureKind;
+        let mut h = physical();
+        let c = h.state_mut().session.topology.add_place(netlabcraft_model::physical::PlaceKind::Container, None, Some(1), 0.0, 0.0).unwrap();
+        enter(&mut h, Some(c));
+        assert!(reason(h.state(), Create::Furniture(FurnitureKind::Rack)).is_none(), "furniture stands in a container");
+        assert!(reason(h.state(), Create::Container).is_some(), "a container holds no places");
+        h.get_by_label("Go to Working Closet").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.place_view, h.state().session.topology.working_closet());
     }
 }

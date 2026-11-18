@@ -312,6 +312,8 @@ pub fn show(app: &mut PacketApp, ui: &mut Ui) {
     if let Some(place) = crate::closet::current(app) {
         crate::closet::keep_in_view(app, place);
         crate::pictures::draw_place(app, ui.ctx(), &painter, rect.min.to_vec2() + app.ui.pan, app.ui.zoom, Some(place));
+        // A container has a scale of its own, so its grid shows under the furniture (a closet's does not).
+        crate::physical_grid::draw(app, &painter, rect, rect.min.to_vec2() + app.ui.pan, app.ui.zoom, &tk);
         crate::closet::show(app, ui, &resp, &painter, rect, place);
         crate::closet::title_plate(&painter, rect.min + vec2(12.0, 8.0), caption(app), &tk);
         return;
