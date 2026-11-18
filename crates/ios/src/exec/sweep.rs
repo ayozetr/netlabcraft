@@ -55,8 +55,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             let d = c.d()?;
             let lines = d.octal_lines().min(16);
             if lines > 0 {
-                let _ =
-                    write!(s, "\n\n{:<5} {:<5} {:<6} {:<9} {:<13} {:<10} {}", "Line", "Type", "Speed", "State", "Transport in", "Users", "Cabled to");
+                s.push_str("\n\nLine  Type  Speed  State     Transport in  Users      Cabled to");
                 for n in 1..=lines {
                     let cabled = c.t.octal_at_line(d.id, n - 1).and_then(|o| c.t.device(o.device)).map(|x| x.name.clone());
                     let owner = c.sim.async_owner(d.id, n).and_then(|o| c.t.device(o)).map(|x| x.name.clone());
@@ -73,8 +72,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                     let speed = if cabled.is_some() { "9600" } else { "-" };
                     let _ = write!(
                         s,
-                        "\n{n:<5} {:<5} {speed:<6} {state:<9} {transport:<13} {:<10} {}",
-                        "TTY",
+                        "\n{n:<5} TTY   {speed:<6} {state:<9} {transport:<13} {:<10} {}",
                         owner.as_deref().unwrap_or("-"),
                         cabled.as_deref().unwrap_or("-")
                     );
