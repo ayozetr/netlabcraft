@@ -285,6 +285,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `write` | privileged | router, switch, firewall | Save the configuration |
 | `erase startup-config` | privileged | router, switch, firewall | Delete the saved configuration |
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
+| `archive` | config | router, switch | Keep copies of the running configuration |
+| `no archive` | config | router, switch | Stop archiving and forget the settings (the copies stay) |
+| `path URL` |  | router, switch | Where the copies are named (for example flash:archive) |
+| `no path` |  | router, switch | No archive path: no copy can be made |
+| `maximum <1-14>` |  | router, switch | Most copies kept (the oldest goes first) |
+| `no maximum` |  | router, switch | Keep 10 copies |
+| `time-period <1-525600>` |  | router, switch | Make a copy when this many minutes have passed since the last |
+| `no time-period` |  | router, switch | No periodic copy |
+| `write-memory` |  | router, switch | Make a copy whenever the startup configuration is saved |
+| `no write-memory` |  | router, switch | Saving the startup configuration makes no copy |
+| `archive config` | privileged | router, switch | Make a copy of the running configuration now |
+| `show archive` | user, privileged | router, switch | The archive's settings and copies |
+| `configure replace NAME` | privileged | router, switch | Replace the running configuration with a copy (startup-config, or a copy's name or number) |
+| `configure revert now` | privileged | router, switch | Replace the running configuration with the newest copy |
 | `reload in <minutes\|hh:mm>` | privileged | router, switch | Restart after a delay of simulated time |
 | `reload in <minutes\|hh:mm> <reason>` | privileged | router, switch | Restart after a delay, with a reason |
 | `reload at <hh:mm>` | privileged | router, switch | Restart at the next time the device clock shows this |
@@ -1589,10 +1603,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `switchport port-security mac-address H.H.H` | interface | switch | Allow this address |
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
-| `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
+| `telnet A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with Telnet, by address or name |
 | `telnet A.B.C.D <port>` | user, privileged | router | Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it) |
 | `clear line <1-16>` | privileged | router | End the reverse Telnet session held on a line of an octal card |
-| `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
+| `ssh -l USER A.B.C.D\|NAME` | user, privileged | router, switch | Log in to another device with SSH, by address or name |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
 | `ip ssh time-out <1-120>` | config | router, switch | Seconds an SSH login may take |
