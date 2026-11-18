@@ -161,7 +161,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `image.list` | List pictures |  |  | `{} → {"images": [{"id", "kind", "w", "h", "bytes"}], "uses": [{"kind": "logical"\|"background"\|"icon", "place", "place_name", "image"}], "total_bytes", "limits"}` |
 | `image.remove` | Remove picture |  |  | `{"kind": "logical"\|"background"\|"icon", "place"? (not for logical)} → image.list: stops using the picture there; the picture goes when nothing else uses it` |
 | `device.place` | Move to place |  |  | `{"device" \| "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building` |
-| `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)` |
+| `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (a cable longer than its medium reaches carries nothing: copper 100 m, multi-mode fiber 550 m, single-mode fiber 10 km, coaxial 500 m, phone line 5 km, serial 1200 m; console and octal cables 15 m and USB cables 5 m, which the Terminal and `link.list` check from where their ends stand)` |
 | `closet.list` | List a wiring closet |  |  | `{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" \| "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}` |
 | `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table" \| "inventory-shelf" \| "pegboard" \| "icp", "name"?, "place"?: wiring closet or container number, "size"?: rack units 4-48 (default 12), shelf or inventory shelf levels 1-8 (default 4), pegboard rows of hooks 1-8 (default 4) or control panel DIN slots 6-24 (default 12), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets and containers; a device put on an inventory shelf is switched off; a control panel takes industrial devices only; a pegboard takes cables, not devices` |
 | `furniture.rename` | Rename furniture |  |  | `{"furniture": name or number, "name"}` |
@@ -194,7 +194,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) \| "console" \| "straight-through" \| "cross-over" \| "fiber-single-mode" \| "fiber-multi-mode" \| "phone" \| "coaxial" \| "serial-dce" \| "serial-dte" \| "octal" \| "iot-custom" \| "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}` |
 | `link.list` | List cables |  |  | `{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")` |
-| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
+| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "reach": {"max_m", "standard"} \| null, "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
 | `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
 | `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
 | `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (from a router's own console it is reached by reverse Telnet: telnet to the router's address and port 2000 plus the line number)` |
@@ -254,6 +254,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `end` | config, interface, subinterface, vlan, object | router, switch, firewall | Return to privileged mode |
 | `configure terminal` | privileged | router, switch, firewall | Configure from the terminal |
 | `ping A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Send echo requests |
+| `ping` | user, privileged | router, switch, firewall | Send echo requests, asking for the options one question at a time |
 | `ping A.B.C.D\|X:X::X [repeat <1-1000>] [size <36-18024>] [source A.B.C.D\|INTERFACE] [timeout <0-3600>]` | user, privileged | router, switch, firewall | Send echo requests with options |
 | `show ip traffic` | user, privileged | router, switch | IPv4 packets counted by what happened to them |
 | `show tcp brief` | user, privileged | router, switch | TCP connections to and from this device |
@@ -261,6 +262,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `history size <0-256>` |  | router, switch | How many commands a session remembers |
 | `no history size` |  | router, switch | Remember the default number of commands |
 | `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Trace the route to a destination |
+| `traceroute` | user, privileged | router, switch, firewall | Trace the route to a destination, asking for the options one question at a time |
 | `show running-config` | privileged | router, switch, firewall | Current configuration |
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
@@ -1031,6 +1033,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `maximum-paths ibgp <1-32>` |  | router, switch | Put up to this many equal internal paths in the routing table |
 | `no maximum-paths ibgp` |  | router, switch | One internal path per prefix again |
 | `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
+| `timers bgp <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time of every neighbour that has none of its own (seconds) |
+| `no timers bgp` |  | router, switch | Keepalive 60 and hold time 180 again |
 | `show ip bgp neighbors A.B.C.D advertised-routes` | user, privileged | router, switch | What this router sends a neighbour after the outbound policy |
 | `show ip bgp neighbors A.B.C.D routes` | user, privileged | router, switch | The paths accepted from a neighbour after the inbound policy |
 | `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |
@@ -1715,6 +1719,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no errdisable recovery interval` | config | switch | Back to 300 seconds |
 | `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
 | `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
+| `errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Shut ports for this cause again (detection is on unless turned off) |
+| `no errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Stop shutting ports for this cause: the frame is still dropped, the port stays up |
+| `show errdisable detect` | user, privileged | switch | Which causes shut a port |
 | `monitor session <1-66> source interface <interfaces> [both\|rx\|tx]` | config | switch | Copy the frames that enter or leave these ports (ranges such as `fa0/1 - 3, fa0/5` work) to the session's destination |
 | `monitor session <1-66> source vlan <1-4094>[,-] [both\|rx\|tx]` | config | switch | Copy the frames of these VLANs, on every port, to the session's destination |
 | `monitor session <1-66> destination interface <interface>` | config | switch | The port that receives the copies: it forwards no other traffic |

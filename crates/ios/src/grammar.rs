@@ -249,6 +249,8 @@ pub enum Id {
     NoKnob,
     // ---- small commands found missing by the sweep (exec/sweep.rs) ----
     More,
+    PingDialog,
+    TracerouteDialog,
     ReloadIn,
     ReloadAt,
     ReloadCancel,
@@ -362,6 +364,9 @@ pub enum Id {
     L2NoRecoveryInterval,
     L2ShowErrDisabled,
     L2ShowRecovery,
+    L2DetectCause,
+    L2NoDetectCause,
+    L2ShowErrDetect,
     MonitorSource,
     MonitorSourceVlan,
     MonitorDestination,
@@ -1042,6 +1047,8 @@ pub enum Id {
     BgpMaximumPathsIbgp,
     NoBgpMaximumPathsIbgp,
     ShowIpBgpReceived,
+    BgpTimers,
+    NoBgpTimers,
     ShowIpBgpAdvertised,
     ShowIpBgpNeighborRoutes,
     ShowIpBgpRegexp,
@@ -1459,6 +1466,7 @@ pub static SPECS: &[Spec] = &[
     spec!(End, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("end")], "Return to privileged mode"),
     spec!(ConfigureTerminal, Modes::EXEC, BOTH_FW, [K("configure"), K("terminal")], "Configure from the terminal"),
     spec!(Ping, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D|X:X::X")], "Send echo requests"),
+    spec!(PingDialog, EXECS, BOTH_FW, [K("ping")], "Send echo requests, asking for the options one question at a time"),
     spec!(
         PingRepeat,
         EXECS,
@@ -1472,6 +1480,7 @@ pub static SPECS: &[Spec] = &[
     spec!(HistorySize, Modes::LINE, Modes::BOTH, [K("history"), K("size"), Arg("<0-256>")], "How many commands a session remembers"),
     spec!(NoHistorySize, Modes::LINE, Modes::BOTH, [K("no"), K("history"), K("size")], "Remember the default number of commands"),
     spec!(Traceroute, EXECS, BOTH_FW, [K("traceroute"), Arg("A.B.C.D|X:X::X")], "Trace the route to a destination"),
+    spec!(TracerouteDialog, EXECS, BOTH_FW, [K("traceroute")], "Trace the route to a destination, asking for the options one question at a time"),
     spec!(ShowRun, Modes::EXEC, BOTH_FW, [K("show"), K("running-config")], "Current configuration"),
     spec!(ShowStartup, Modes::EXEC, BOTH_FW, [K("show"), K("startup-config")], "Saved configuration"),
     spec!(ShowIpIntBrief, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), K("brief")], "Interface addresses and status"),
@@ -3895,6 +3904,14 @@ pub static SPECS: &[Spec] = &[
         "What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound)"
     ),
     spec!(
+        BgpTimers,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("timers"), K("bgp"), Arg("<0-65535>"), Arg("<0|3-65535>")],
+        "Keepalive interval and hold time of every neighbour that has none of its own (seconds)"
+    ),
+    spec!(NoBgpTimers, Modes::BGP, Modes::BOTH, [K("no"), K("timers"), K("bgp")], "Keepalive 60 and hold time 180 again"),
+    spec!(
         ShowIpBgpAdvertised,
         EXECS,
         Modes::BOTH,
@@ -5575,6 +5592,21 @@ pub static SPECS: &[Spec] = &[
     spec!(L2NoRecoveryInterval, Modes::CONFIG, Modes::SWITCH, [K("no"), K("errdisable"), K("recovery"), K("interval")], "Back to 300 seconds"),
     spec!(L2ShowErrDisabled, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("status"), K("err-disabled")], "Err-disabled ports and why"),
     spec!(L2ShowRecovery, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("recovery")], "Which causes recover by themselves, and when"),
+    spec!(
+        L2DetectCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Shut ports for this cause again (detection is on unless turned off)"
+    ),
+    spec!(
+        L2NoDetectCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Stop shutting ports for this cause: the frame is still dropped, the port stays up"
+    ),
+    spec!(L2ShowErrDetect, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("detect")], "Which causes shut a port"),
     spec!(
         MonitorSource,
         Modes::CONFIG,
