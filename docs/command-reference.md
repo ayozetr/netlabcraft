@@ -651,6 +651,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug ip ssh` | privileged | router, switch | Report SSH logins to this device |
 | `debug crypto isakmp` | privileged | router, switch | Report the IKE exchanges of this device |
 | `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
+| `debug crypto pki` | privileged | router, switch | Report certificates checked, requests, grants and revocations |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
@@ -688,6 +689,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug ip ssh` | privileged | router, switch | Stop reporting SSH |
 | `no debug crypto isakmp` | privileged | router, switch | Stop reporting ISAKMP |
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
+| `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
