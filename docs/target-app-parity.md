@@ -177,7 +177,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-11-18 | minor | Object tracking, IP SLA, policy-based routing, `show ip cef` and `ip default-network` (see [protocol-parity.md](protocol-parity.md)); the console counts are measured again: 2002 grammar entries across 50 modes. |
+| 2026-11-18 | minor | Object tracking, IP SLA, policy-based routing, `show ip cef` and `ip default-network` (see [protocol-parity.md](protocol-parity.md)); the console counts are measured again: 2004 grammar entries across 50 modes. |
 | 2026-11-18 | minor | Console sweep: the commands the public courses teach were checked against the grammar; 155 settings are kept and shown, routers and switches resolve host names, router advertisements can be suppressed, BGP gains distribute lists, bestpath settings and activation (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) items 9 and 17). The grammar has 1823 entries (measured:  rows). |
 | 2026-11-18 | minor | IKE `authentication rsa-sig` is real (IKEv1 main mode and IKEv2 IKE_AUTH sign and verify with trustpoint certificates); the console grammar gains `pki trustpoint` in the IKEv2 profile. |
 | 2026-11-18 | minor | The PKI flows of gaps item 3 are done (terminal enrollment, manual grant, revocation lists, host names); the console grammar has 1354 entries. |
