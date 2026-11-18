@@ -664,6 +664,8 @@ pub enum Id {
     NoIpsecSaLifetime,
     CryptoSetSaLifetime,
     NoCryptoSetSaLifetime,
+    CryptoSetPfs,
+    NoCryptoSetPfs,
     CryptoMatchAddress,
     NoCryptoMatchAddress,
     CryptoMapIf,
@@ -2271,6 +2273,14 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("set"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}")],
         "Use the global key lifetime"
     ),
+    spec!(
+        CryptoSetPfs,
+        Modes::CRYPTO_MAP,
+        Modes::ROUTER,
+        [K("set"), K("pfs"), Arg("{group2|group5|group14|group15|group16|group19|group20|group24}")],
+        "Run a fresh Diffie-Hellman exchange for every new set of IPsec keys"
+    ),
+    spec!(NoCryptoSetPfs, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("pfs")], "Derive IPsec keys from the IKE keys alone"),
     spec!(CryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("match"), K("address"), Arg("ACL")], "The access list choosing what to protect"),
     spec!(NoCryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("match"), K("address")], "Protect nothing"),
     spec!(CryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("crypto"), K("map"), Arg("WORD")], "Protect traffic leaving this interface"),
