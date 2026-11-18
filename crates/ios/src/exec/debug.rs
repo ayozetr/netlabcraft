@@ -47,6 +47,7 @@ pub(crate) const TOPICS: &[(&str, DebugKind, &str)] = &[
     ("ip ssh", DebugKind::Ssh, "Report SSH logins to this device"),
     ("crypto isakmp", DebugKind::CryptoIsakmp, "Report the IKE exchanges of this device"),
     ("crypto ipsec", DebugKind::CryptoIpsec, "Report IPsec SAs coming and going"),
+    ("crypto pki", DebugKind::CryptoPki, "Report certificates checked, requests, grants and revocations"),
 ];
 
 /// The words of a spec after `[no] debug`, joined by spaces, without a trailing argument.

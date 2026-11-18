@@ -151,19 +151,10 @@ pub(crate) fn publishers_tab(ui: &mut egui::Ui) {
     ui.label(tl("Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results."));
 }
 
-pub(crate) fn image_cleanup_tab(app: &PacketApp, ui: &mut egui::Ui) {
+pub(crate) fn image_cleanup_tab(app: &mut PacketApp, ui: &mut egui::Ui) {
     ui.label(RichText::new(tl("Images held by the lab")).strong());
     let tk = theme::tokens(app.ui.dark);
-    egui::Frame::group(ui.style()).stroke(egui::Stroke::new(1.0, tk.chrome_line)).show(ui, |ui| {
-        egui::Grid::new("image_cleanup").num_columns(4).spacing([24.0, 4.0]).show(ui, |ui| {
-            for h in ["Remove", "Type", "Size", "Image"] {
-                ui.label(RichText::new(tl(h)).strong());
-            }
-            ui.end_row();
-        });
-        ui.separator();
-        ui.label(tl("The lab holds no images: a lab file is only its devices, cables, places and settings."));
-    });
+    egui::Frame::group(ui.style()).stroke(egui::Stroke::new(1.0, tk.chrome_line)).show(ui, |ui| crate::pictures::cleanup_table(app, ui));
 }
 
 #[cfg(test)]
