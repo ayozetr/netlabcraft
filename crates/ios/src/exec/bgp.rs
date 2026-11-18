@@ -728,6 +728,7 @@ const PROCESS_ON: &[&str] = &["bgp fast-external-fallover", "bgp client-to-clien
 const PROCESS_ACTS: &[&str] = &[
     "bgp bestpath as-path multipath-relax",
     "bgp bestpath med missing-as-worst",
+    "bgp deterministic-med",
     "bgp fast-external-fallover",
     "bgp client-to-client reflection",
     "bgp default ipv4-unicast",
