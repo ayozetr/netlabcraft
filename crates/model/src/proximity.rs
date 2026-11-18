@@ -14,7 +14,6 @@
 use netlabcraft_core::DeviceId;
 
 use crate::cellular::city_position;
-use crate::physical::CITY_UNIT_M;
 use crate::{Device, DeviceKind, Topology};
 
 /// Workspace units to a metre on the logical map (a radio's 250 m is 450 units).
@@ -43,7 +42,7 @@ impl Topology {
             if ca != cb {
                 return None;
             }
-            ((xa - xb).powi(2) + (ya - yb).powi(2)).sqrt() * CITY_UNIT_M
+            ((xa - xb).powi(2) + (ya - yb).powi(2)).sqrt() * self.map_scale(ca)
         };
         d.is_finite().then_some(d)
     }

@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 pub mod acl;
 pub mod activity;
 pub mod automation;
+pub mod backdrop;
 pub mod bgp;
 pub mod board;
 pub mod cable;
@@ -2412,6 +2413,12 @@ pub struct Topology {
     /// The environments of the places (the Environments window): the clock and what each place sets.
     #[serde(default, skip_serializing_if = "environments::Environments::is_default")]
     pub environments: environments::Environments,
+    /// The pictures of the lab (backgrounds and place icons), each stored once under its hash.
+    #[serde(default, skip_serializing_if = "backdrop::Images::is_default")]
+    pub images: backdrop::Images,
+    /// The background of the logical workspace.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background: Option<backdrop::Background>,
     /// Worked out from the lab by [`Topology::cell_refresh`], never saved: each cellular
     /// device's link to its tower and what the central office made of its attach.
     #[serde(skip)]
@@ -2604,6 +2611,8 @@ impl Topology {
             activity: None,
             environment: environment::Environment::default(),
             environments: environments::Environments::default(),
+            images: backdrop::Images::default(),
+            background: None,
             physical: physical::Physical::default(),
             scenarios: scenario::Scenarios::default(),
             cell_links: BTreeMap::new(),
@@ -2994,6 +3003,7 @@ impl Topology {
         self.sanitize_octals();
         self.sanitize_wires();
         self.sanitize_physical();
+        self.sanitize_backdrops();
         self.sanitize_environments();
         self.cell_refresh();
         let ids: Vec<DeviceId> = self.devices.iter().map(|d| d.id).collect();
