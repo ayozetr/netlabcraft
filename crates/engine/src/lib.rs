@@ -41,6 +41,7 @@ mod pppoe;
 pub mod settings;
 mod traffic;
 mod voice;
+mod dot1x;
 mod vpnclient;
 
 pub mod sample;
@@ -98,6 +99,7 @@ mod tests_traffic;
 #[cfg(test)]
 mod tests_vpnclient;
 #[cfg(test)]
+mod tests_dot1x;
 mod tests_wifisec;
 
 pub use catalog::{CATALOG, CommandInfo};

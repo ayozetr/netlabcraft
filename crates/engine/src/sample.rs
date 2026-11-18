@@ -745,7 +745,7 @@ pub fn build(id: &str) -> Result<Topology> {
                 ssid: "Staff".into(),
                 key: None,
                 channel: 6,
-                login: Some(netlabcraft_model::wlan::WifiLogin { user: "ana".into(), password: "ana12345".into() }),
+                login: Some(netlabcraft_model::wlan::WifiLogin { user: "ana".into(), password: "ana12345".into(), ..Default::default() }),
                 ..Default::default()
             };
             let guest =

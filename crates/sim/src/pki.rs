@@ -347,6 +347,43 @@ pub fn tls_identity(d: &Device) -> Option<Identity> {
     Some(Identity { chain, key })
 }
 
+/// An RSA key from its two primes in hex.
+pub fn key_from_hex(p: &str, q: &str) -> Option<RsaKey> {
+    let unhex = |h: &str| -> Option<Vec<u8>> {
+        let h = if h.len() % 2 == 1 { format!("0{h}") } else { h.to_string() };
+        h.as_bytes().chunks(2).map(|c| u8::from_str_radix(std::str::from_utf8(c).ok()?, 16).ok()).collect()
+    };
+    RsaKey::from_primes(&unhex(p)?, &unhex(q)?).ok()
+}
+
+/// What a Server's 802.1X (PEAP) login presents: the certificate set with `aaa.certificate`,
+/// then the CA's, and the key. `None` when none is set or its pieces are damaged or do not match.
+pub fn aaa_identity(d: &Device) -> Option<Identity> {
+    let c = d.services.aaa.cert.as_ref()?;
+    let key = key_from_hex(&c.p, &c.q)?;
+    let leaf = Certificate::from_pem(&c.certificate).ok()?;
+    if &leaf.key != key.public() {
+        return None;
+    }
+    let mut chain = vec![leaf.der().to_vec()];
+    if let Ok(ca) = Certificate::from_pem(&c.ca_certificate)
+        && ca.der() != leaf.der()
+    {
+        chain.push(ca.der().to_vec());
+    }
+    Some(Identity { chain, key })
+}
+
+/// What a host's login checks a server's certificate against, at the host's clock `now`; `None`
+/// when the login does not validate.
+pub fn login_trust(login: &netlabcraft_model::wlan::WifiLogin, now: i64) -> Option<crate::peap::TrustSpec> {
+    login.validate_server.then(|| crate::peap::TrustSpec {
+        cas: login.trusted_cas.clone(),
+        name: login.server_name.clone(),
+        now: u64::try_from(now).unwrap_or(0),
+    })
+}
+
 /// The CA certificates a device holds in its trustpoints, and its own CA's certificate: what its
 /// clients trust.
 pub fn trust_anchors(d: &Device) -> Vec<Certificate> {

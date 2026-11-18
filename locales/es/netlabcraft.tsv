@@ -2525,3 +2525,18 @@ furniture	Table	Mesa
 	Arctic	Ártico
 	Indoor office	Oficina interior
 	Greenhouse	Invernadero
+	802.1X login	Acceso 802.1X
+	Validate server certificate	Validar el certificado del servidor
+	Server name	Nombre del servidor
+	Trust the CA of	Confiar en la CA de
+	No trusted CA	Ninguna CA de confianza
+	Trusted CAs: {}	CA de confianza: {}
+	trusted	de confianza
+	not checked	sin comprobar
+	Server certificate: {} (issued by {}), {}	Certificado del servidor: {} (emitido por {}), {}
+	802.1X certificate	Certificado 802.1X
+	Presented in PEAP: {} (issued by {})	Presentado en PEAP: {} (emitido por {})
+	No certificate: PEAP uses an anonymous tunnel	Sin certificado: PEAP usa un túnel anónimo
+	Generate self-signed	Generar autofirmado
+	Issue from {}	Emitir desde {}
+	Remove certificate	Quitar el certificado
