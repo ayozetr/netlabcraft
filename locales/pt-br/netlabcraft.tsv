@@ -1817,7 +1817,7 @@ event	write request for	requisição de escrita de
 	Nothing on the workspace yet.	Ainda não há nada na área de trabalho.
 	Click or drag to move the view of the workspace	Clique ou arraste para mover a visão da área de trabalho
 	Workspace List	Lista da área de trabalho
-	Click a device to select it; double-click to open it.	Clique em um dispositivo para selecioná-lo; clique duas vezes para abri-lo.
+	Click a row to select it; double-click to open it.	Clique em uma linha para selecioná-la; clique duas vezes para abri-la.
 	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. Escolha um dispositivo na caixa inferior e clique na área de trabalho para colocá-lo.
 	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. Escolha um cabo na mesma caixa, clique em um dispositivo, depois em outro, e escolha as portas.
 	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. Clique em um dispositivo para abrir sua janela: roteadores e switches têm CLI, computadores têm uma Área de trabalho.
@@ -1829,7 +1829,7 @@ event	write request for	requisição de escrita de
 	Each lab lists the devices to place, the commands to type and what you should see.	Cada prática lista os dispositivos a colocar, os comandos a digitar e o que você deve ver.
 	Every device on the workspace is announced by a screen reader with its name and model.	Um leitor de tela anuncia cada dispositivo da área de trabalho com seu nome e modelo.
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab e as setas movem entre dispositivos e cabos; Enter ou Espaço abre o que está em foco.
-	The Workspace List in the View menu names every device in a table you can move through.	A lista da área de trabalho, no menu Exibir, nomeia cada dispositivo em uma tabela pela qual você pode navegar.
+	The Workspace List in the View menu names every place, piece of furniture and device in a tree you can move through.	A lista da área de trabalho, no menu Exibir, nomeia cada lugar, móvel e dispositivo em uma árvore pela qual você pode navegar.
 	Everything the menus do can also be typed, from the command line or by an agent.	Tudo o que os menus fazem também pode ser digitado, pela linha de comando ou por um agente.
 	Auto Capture / Play	Captura automática / Reproduzir
 	Bottom Toolbar	Barra inferior
@@ -1894,8 +1894,19 @@ event	write request for	requisição de escrita de
 	Rename	Renomear
 	Name:	Nome:
 	{}, {} units	{}, {} unidades
+	Turn to the Front	Girar para a frente
+	Turn to the Back	Girar para trás
+	Loose Devices	Dispositivos soltos
+	As a Grid	Em grade
+	As a List	Em lista
+	Width in cells ({} to {}):	Largura em células ({} a {}):
+	Depth in cells ({} to {}):	Profundidade em células ({} a {}):
+	{}, {} by {} cells	{}, {} por {} células
+	{}, rear view	{}, vista traseira
+	{} (rear)	{} (traseira)
 	{}, {} levels	{}, {} níveis
 	{}, on {}	{}, em {}
+	Other devices	Outros dispositivos
 	Rack	Rack
 	Shelf	Prateleira
 furniture	Table	Mesa

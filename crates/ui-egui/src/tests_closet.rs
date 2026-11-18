@@ -444,4 +444,98 @@ mod t {
         drag_tile(&mut h, "Router 2GE", area.center(), false);
         assert_eq!(h.state().session.topology.devices.len(), 1, "the router stands where it was released");
     }
+
+    #[test]
+    fn the_resize_dialog_sizes_a_table_in_cells() {
+        let mut h = closet();
+        h.run_steps(3);
+        h.state_mut().session.execute("furniture.add", json!({"kind": "table"})).unwrap();
+        let table = h.state().session.topology.furniture_in(3).iter().find(|f| f.name == "Table0").map(|f| f.id).unwrap();
+        h.run_steps(2);
+        assert!(h.query_by_label("Table0, 4 by 2 cells").is_some());
+        h.state_mut().ui.physical.closet.resize = Some((table, "6".into()));
+        h.state_mut().ui.physical.closet.resize_depth = "3".into();
+        h.run_steps(3);
+        assert!(h.query_by_label("Width in cells (2 to 8):").is_some() && h.query_by_label("Depth in cells (1 to 6):").is_some());
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        let f = h.state().session.topology.furniture_piece(table).unwrap().clone();
+        assert_eq!((f.table_cols(), f.table_rows()), (6, 3));
+        assert!(h.state().ui.physical.closet.resize.is_none());
+        h.run_steps(2);
+        assert!(h.query_by_label("Table0, 6 by 3 cells").is_some());
+        // Past the range: refused, the table stays.
+        h.state_mut().ui.physical.closet.resize = Some((table, "12".into()));
+        h.state_mut().ui.physical.closet.resize_depth = "3".into();
+        h.run_steps(3);
+        h.get_by_label("OK").click();
+        h.run_steps(3);
+        assert_eq!(h.state().session.topology.furniture_piece(table).unwrap().table_cols(), 6);
+    }
+
+    #[test]
+    fn a_rack_turned_around_draws_its_rear_with_the_ports_in_mirrored_order() {
+        let mut h = bare();
+        let name = h.state().session.topology.devices[2].name.clone();
+        h.state_mut().session.execute("furniture.mount", json!({"device": name, "furniture": "Rack0", "slot": 1})).unwrap();
+        h.run_steps(3);
+        let (a, b) = (socket(&h, 2, 0), socket(&h, 2, 1));
+        assert!(a.x < b.x, "from the front the first port is on the left");
+        assert!(h.query_by_label("Rack0, 12 units").is_some());
+        h.state_mut().session.execute("furniture.turn", json!({"furniture": "Rack0"})).unwrap();
+        h.run_steps(3);
+        let (a, b) = (socket(&h, 2, 0), socket(&h, 2, 1));
+        assert!(a.x > b.x, "from behind the order is mirrored");
+        assert!(h.query_by_label("Rack0, 12 units, rear view").is_some());
+        assert!(h.query_by_label(&format!("{name}, on Rack0")).is_some(), "the device is still on the rack");
+        // Turned back, the front returns.
+        h.state_mut().session.execute("edit.undo", json!({})).unwrap();
+        h.run_steps(3);
+        assert!(socket(&h, 2, 0).x < socket(&h, 2, 1).x);
+    }
+
+    /// A right click at `at`.
+    fn right_click(h: &mut Harness<'static, PacketApp>, at: egui::Pos2) {
+        let ev = |pressed| egui::Event::PointerButton { pos: at, button: egui::PointerButton::Secondary, pressed, modifiers: egui::Modifiers::NONE };
+        h.input_mut().events.push(egui::Event::PointerMoved(at));
+        h.input_mut().events.push(ev(true));
+        h.input_mut().events.push(ev(false));
+        h.run_steps(3);
+    }
+
+    #[test]
+    fn the_context_menu_of_a_rack_turns_it_and_the_ground_menu_lays_out_the_floor() {
+        let mut h = bare();
+        let rack = h.state().session.topology.physical.furniture[0].id;
+        let head = {
+            let app = h.state();
+            let (_, c) = app.session.topology.closet_layout(3).frames.iter().find(|(id, _)| *id == rack).copied().unwrap();
+            app.ui.canvas_rect.unwrap().min + app.ui.pan + egui::vec2(c.x + c.w / 2.0, c.y + 18.0) * app.ui.zoom
+        };
+        right_click(&mut h, head);
+        assert!(h.query_all_by_label("Turn to the Back").next().is_some());
+        h.query_all_by_label("Turn to the Back").next().unwrap().click();
+        h.run_steps(3);
+        assert!(h.state().session.topology.furniture_piece(rack).unwrap().back);
+        right_click(&mut h, head);
+        assert!(h.query_all_by_label("Turn to the Front").next().is_some(), "the menu offers the way back");
+        h.query_all_by_label("Turn to the Front").next().unwrap().click();
+        h.run_steps(3);
+        assert!(!h.state().session.topology.furniture_piece(rack).unwrap().back);
+        // The ground menu: Loose Devices, Grid or List.
+        let list = |h: &Harness<'static, PacketApp>| h.state().session.topology.floor_is_list(3);
+        assert!(!list(&h));
+        let r = h.state().ui.canvas_rect.unwrap();
+        right_click(&mut h, r.min + egui::vec2(r.width() * 0.9, r.height() * 0.8));
+        h.query_all_by_label("Loose Devices").next().unwrap().click();
+        h.run_steps(2);
+        h.query_all_by_label("As a List").next().unwrap().click();
+        h.run_steps(3);
+        assert!(list(&h), "the choice reaches the lab through the command");
+        // The loose devices are in one column now.
+        let t = &h.state().session.topology;
+        let layout = t.closet_layout(3);
+        let xs: Vec<f32> = t.devices.iter().filter_map(|d| layout.cell_of(netlabcraft_model::furniture::Item::Device(d.id))).map(|c| c.x).collect();
+        assert!(xs.len() >= 3 && xs.windows(2).all(|w| w[0] == w[1]));
+    }
 }

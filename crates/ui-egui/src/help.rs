@@ -103,7 +103,7 @@ fn accessibility(ui: &mut egui::Ui) {
     ui.heading(tl("Accessibility"));
     ui.label(tl("Every device on the workspace is announced by a screen reader with its name and model."));
     ui.label(tl("Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus."));
-    ui.label(tl("The Workspace List in the View menu names every device in a table you can move through."));
+    ui.label(tl("The Workspace List in the View menu names every place, piece of furniture and device in a tree you can move through."));
     ui.label(tl("Everything the menus do can also be typed, from the command line or by an agent."));
     ui.hyperlink_to(tl("Command line"), format!("{DOCS_URL}/cli.md"));
 }
