@@ -13,7 +13,7 @@ to end is in [`labs/`](labs/README.md).
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **220** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
+| Engine commands | **205** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
 | Console grammar entries | **1423** across 47 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
@@ -179,7 +179,6 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 |---|---|---|
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1423 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | Cables are objects (see [ui-parity.md](ui-parity.md)): `link.info` reports a cable's ends, kind, length, state and why it is down; the Summary counts 205 `c!(` entries. |
-| 2026-11-18 | minor | Four engine commands added (`furniture.hang`, `furniture.unhang`, `place.working.set`, `place.working.get`): 220 `c!(` entries counted in `crates/engine/src/catalog.rs`; lab file version 13. Percentages not re-scored. |
 | 2026-11-17 | minor | Consistency pass after the Preferences, closet, device-box and model rounds: the Summary said 202 engine commands (it is 204); every other count was measured again from the code and holds. Percentages not re-scored. |
 | 2026-11-17 | minor | Device models 134 → 146 (Smart City: pressure, wind, carbon dioxide and fire monitors, fire sprinkler, old car, beacon, RFID card and reader, trip sensor, smart LED; Industrial: signal generator). Counted from `MODELS`; percentages not re-scored. |
 | 2026-11-17 | minor | The Preferences tabs (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 12): 2 engine commands added, so 204 `c!(` entries; each of the six catalogs has 2,305 three-column lines (counted with awk, `@id` rows included). Percentages not re-scored. |

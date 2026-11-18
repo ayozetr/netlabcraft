@@ -679,6 +679,11 @@
 	Open Device	Abrir dispositivo
 	Move to	Mover a
 	Cable Length…	Longitud del cable…
+	Resize…	Cambiar tamaño…
+	Resize	Cambiar tamaño
+	Units ({} to {}):	Unidades ({} a {}):
+	Levels ({} to {}):	Niveles ({} a {}):
+	Enter a whole number	Escribe un número entero
 	Right-click a device to move it to another place.	Haz clic derecho en un dispositivo para moverlo a otro lugar.
 	Rename Place	Renombrar lugar
 	Place name:	Nombre del lugar:
@@ -2429,3 +2434,10 @@ furniture	Table	Mesa
 	PPP authentication failed (check the usernames and passwords)	falló la autenticación PPP (revisa los usuarios y las contraseñas)
 	Each place has its own physics	Cada lugar tiene su propia física
 	Parts change the place they stand in by rates, and the place settles back when they stop	Los dispositivos cambian su lugar con una tasa, y el lugar vuelve a su valor cuando se detienen
+	Pairing code:	Código de emparejamiento:
+	Profile:	Perfil:
+	Music (A2DP)	Música (A2DP)
+	Headset	Auriculares
+	Card id (hex):	Id de la tarjeta (hex):
+	Report crossings of the wire	Indicar los cruces del cable
+	Wire angle (degrees):	Ángulo del cable (grados):
