@@ -99,6 +99,8 @@ pub enum DebugKind {
     CryptoIsakmp,
     /// `debug crypto ipsec`: IPsec SAs coming and going.
     CryptoIpsec,
+    /// `debug crypto pki`: certificates checked, requests, grants, revocations and lists.
+    CryptoPki,
 }
 
 impl DebugKind {
@@ -143,6 +145,7 @@ impl DebugKind {
         DebugKind::Ssh,
         DebugKind::CryptoIsakmp,
         DebugKind::CryptoIpsec,
+        DebugKind::CryptoPki,
     ];
 
     /// `(label, name)`: the label starts every message of the topic (`LABEL debug: text`), the
@@ -191,6 +194,7 @@ impl DebugKind {
             DebugKind::Ssh => ("SSH", "SSH"),
             DebugKind::CryptoIsakmp => ("ISAKMP", "ISAKMP"),
             DebugKind::CryptoIpsec => ("IPsec", "IPsec"),
+            DebugKind::CryptoPki => ("PKI", "PKI"),
         }
     }
 
