@@ -145,6 +145,7 @@ console command is listed in [`command-reference.md`](command-reference.md) (gen
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | IPsec perfect forward secrecy (M9.14): `set pfs` in a crypto map gives IKEv1 quick mode and IKEv2 CREATE_CHILD_SA a fresh Diffie-Hellman exchange, with the mismatch reason. |
 | 2026-11-18 | minor | BGP: `timers bgp K H`. |
 | 2026-11-18 | minor | BGP: `maximum-prefix` really ends a session, `advertised-routes` and `routes` views. |
 | 2026-11-18 | minor | IKE `authentication rsa-sig` (M9.10): IKEv1 main mode messages 5 and 6 and IKEv2 IKE_AUTH carry a certificate and a real RSA signature, verified against the trustpoints' CA certificates. |
