@@ -1541,9 +1541,9 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
             if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
                 ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
             }
-            crate::cable_window::menu_items(app, ui, l.a, true);
             let boards: Vec<(u32, String)> =
                 t.furniture_in(place).iter().filter(|f| f.kind == FurnitureKind::CablePegboard).map(|f| (f.id, f.name.clone())).collect();
+            crate::cable_window::menu_items(app, ui, l.a, true);
             if !boards.is_empty() {
                 ui.menu_button(tl("Hang on a Peg"), |ui| {
                     for (id, n) in &boards {
