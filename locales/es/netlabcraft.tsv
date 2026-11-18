@@ -1886,6 +1886,8 @@ event	no APN	sin APN
 	Rename…	Renombrar…
 	Switch Off	Apagar
 	Switch On	Encender
+	Load {} of {} W	Carga {} de {} W
+	Breaker tripped	Magnetotérmico disparado
 	Take off the furniture	Quitar del mueble
 	Plug into	Enchufar en
 	Unplug	Desenchufar

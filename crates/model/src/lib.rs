@@ -2395,6 +2395,12 @@ impl Device {
         self.kind == DeviceKind::Router || (self.kind == DeviceKind::Switch && self.ip_routing)
     }
 
+    /// The draw of this device in watts when it is on: a nominal figure per model (see
+    /// [`models::Model::nominal_watts`]), what a power distribution device's breaker adds up.
+    pub fn nominal_watts(&self) -> u32 {
+        self.catalogue_model().nominal_watts()
+    }
+
     /// The catalogue entry of this device (the kind's default if the id is unknown).
     pub fn catalogue_model(&self) -> &'static models::Model {
         models::find(&self.model).filter(|m| m.kind == self.kind).unwrap_or_else(|| models::default_for(self.kind))

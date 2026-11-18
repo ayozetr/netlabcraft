@@ -1883,6 +1883,8 @@ event	write request for	Schreibanfrage für
 	Rename…	Umbenennen…
 	Switch Off	Ausschalten
 	Switch On	Einschalten
+	Load {} of {} W	Last {} von {} W
+	Breaker tripped	Sicherung ausgelöst
 	Take off the furniture	Vom Möbelstück nehmen
 	Plug into	Einstecken in
 	Unplug	Ausstecken

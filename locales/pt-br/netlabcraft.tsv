@@ -1883,6 +1883,8 @@ event	write request for	requisição de escrita de
 	Rename…	Renomear…
 	Switch Off	Desligar
 	Switch On	Ligar
+	Load {} of {} W	Carga {} de {} W
+	Breaker tripped	Disjuntor desarmado
 	Take off the furniture	Tirar do móvel
 	Plug into	Ligar em
 	Unplug	Desligar da tomada

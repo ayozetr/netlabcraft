@@ -284,6 +284,19 @@ fn yes() -> bool {
     true
 }
 
+/// The breaker rating of a new power distribution device, in watts (a small 6.5 A strip at 230 V).
+pub const DEFAULT_RATING_W: u32 = 1_500;
+/// The breaker ratings a power distribution device may be set to: up to a 16 A circuit at 230 V.
+pub const RATING_RANGE_W: (u32, u32) = (100, 3_680);
+
+fn default_rating() -> u32 {
+    DEFAULT_RATING_W
+}
+
+fn is_default_rating(w: &u32) -> bool {
+    *w == DEFAULT_RATING_W
+}
+
 fn one() -> u32 {
     1
 }
@@ -307,6 +320,14 @@ pub struct Fitting {
     /// A power distribution device's switch.
     #[serde(default = "yes")]
     pub on: bool,
+    /// A power distribution device's breaker: the most watts the devices that are on may draw
+    /// together (their nominal draws, `Device::nominal_watts`).
+    #[serde(default = "default_rating", skip_serializing_if = "is_default_rating")]
+    pub rating_w: u32,
+    /// The breaker has tripped: the strip is off and its devices lost power. Switching it on
+    /// again resets it, once the devices plugged in fit its rating.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub tripped: bool,
 }
 
 /// What can stand on furniture.
@@ -748,7 +769,18 @@ impl Topology {
         let id = self.physical.fittings.iter().map(|f| f.id).max().unwrap_or(0).saturating_add(1);
         let n = self.physical.fittings.iter().filter(|f| f.kind == kind).count();
         let name = name.and_then(clean_name).unwrap_or_else(|| format!("{}{n}", kind.label()));
-        self.physical.fittings.push(Fitting { id, place, kind, name, x: finite(x), y: finite(y), ports, on: true });
+        self.physical.fittings.push(Fitting {
+            id,
+            place,
+            kind,
+            name,
+            x: finite(x),
+            y: finite(y),
+            ports,
+            on: true,
+            rating_w: DEFAULT_RATING_W,
+            tripped: false,
+        });
         Ok(id)
     }
 
@@ -993,14 +1025,70 @@ impl Topology {
         self.plug_of(device).and_then(|p| self.fitting(p.strip)).is_some_and(|f| !f.on)
     }
 
-    /// Switches a power distribution device; returns the devices plugged into it.
+    /// The nominal draw, in watts, of the devices plugged into a power distribution device that
+    /// are switched on: what its breaker carries.
+    pub fn strip_load(&self, strip: u32) -> u32 {
+        self.plugs_in(strip)
+            .iter()
+            .filter_map(|p| self.device(p.device))
+            .filter(|d| !d.powered_off)
+            .fold(0u32, |sum, d| sum.saturating_add(d.nominal_watts()))
+    }
+
+    /// The nominal draw of everything plugged into a power distribution device, switched on or
+    /// not: what the breaker would carry if all of it were on.
+    pub fn strip_demand(&self, strip: u32) -> u32 {
+        self.plugs_in(strip).iter().filter_map(|p| self.device(p.device)).fold(0u32, |sum, d| sum.saturating_add(d.nominal_watts()))
+    }
+
+    /// Switches a power distribution device; returns the devices plugged into it. A strip whose
+    /// breaker tripped comes back only when what is plugged into it fits its rating.
     pub fn set_strip_power(&mut self, strip: u32, on: bool) -> Result<Vec<DeviceId>> {
+        let demand = self.strip_demand(strip);
         let f = self.fitting_mut(strip)?;
         if f.kind != FittingKind::PowerStrip {
             return Err(ModelError::Invalid(format!("{} has no power switch", f.name)));
         }
+        if on && f.tripped {
+            if demand > f.rating_w {
+                return Err(ModelError::Invalid(format!(
+                    "the breaker of {} tripped and {demand} W is still plugged in over its {} W rating: unplug something first",
+                    f.name, f.rating_w
+                )));
+            }
+            f.tripped = false;
+        }
         f.on = on;
         Ok(self.plugs_in(strip).iter().map(|p| p.device).collect())
+    }
+
+    /// Sets the breaker rating of a power distribution device, in watts (100 to 3680).
+    pub fn set_strip_rating(&mut self, strip: u32, watts: u32) -> Result<()> {
+        let (lo, hi) = RATING_RANGE_W;
+        let f = self.fitting_mut(strip)?;
+        if f.kind != FittingKind::PowerStrip {
+            return Err(ModelError::Invalid(format!("{} has no breaker", f.name)));
+        }
+        if !(lo..=hi).contains(&watts) {
+            return Err(ModelError::Invalid(format!("a breaker rating is {lo} to {hi} W")));
+        }
+        f.rating_w = watts;
+        Ok(())
+    }
+
+    /// Whether the devices that are on draw more than the breaker of a switched-on power
+    /// distribution device carries.
+    pub fn strip_overloaded(&self, strip: u32) -> bool {
+        self.fitting(strip).is_some_and(|f| f.kind == FittingKind::PowerStrip && f.on && self.strip_load(strip) > f.rating_w)
+    }
+
+    /// Trips the breaker: the strip switches off; returns the devices plugged into it.
+    pub fn trip_strip(&mut self, strip: u32) -> Vec<DeviceId> {
+        if let Some(f) = self.physical.fittings.iter_mut().find(|f| f.id == strip && f.kind == FittingKind::PowerStrip) {
+            f.on = false;
+            f.tripped = true;
+        }
+        self.plugs_in(strip).iter().map(|p| p.device).collect()
     }
 
     /// Drops what no longer fits: an item on furniture in another closet, a plug into a strip in

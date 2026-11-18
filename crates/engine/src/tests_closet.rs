@@ -224,3 +224,70 @@ fn cables_hang_on_a_pegboard_and_the_working_closet_is_set() {
     assert_eq!(s.execute("place.working.get", json!({})).unwrap()["id"], 3);
     assert!(s.execute("place.working.set", json!({"id": 2})).is_err(), "a building is not a closet");
 }
+
+#[test]
+fn a_power_strip_breaker_trips_over_its_rating_and_resets_after_unplugging() {
+    let (mut s, a, b, c) = lab();
+    let strip = id(&s.execute("passive.add", json!({"kind": "power-strip", "ports": 4})).unwrap());
+    // Two 45 W switches and a 60 W router: nominal draws from the model table.
+    assert_eq!(s.topology.find(&a).unwrap().nominal_watts(), 45);
+    assert_eq!(s.topology.find(&c).unwrap().nominal_watts(), 60);
+    assert!(s.execute("power.rating", json!({"strip": strip, "watts": 50})).is_ok());
+    assert!(s.execute("power.rating", json!({"strip": strip, "watts": 99})).is_err());
+    assert!(s.execute("power.rating", json!({"strip": strip, "watts": 3681})).is_err());
+    assert!(s.execute("power.rating", json!({"strip": strip})).is_err());
+    s.execute("power.rating", json!({"strip": strip, "watts": 100})).unwrap();
+    s.execute("power.plug", json!({"device": a, "strip": strip})).unwrap();
+    s.execute("power.plug", json!({"device": b, "strip": strip})).unwrap();
+    let l = s.execute("power.load", json!({"strip": strip})).unwrap();
+    assert_eq!((l["load_w"].as_u64(), l["rating_w"].as_u64(), l["tripped"].as_bool()), (Some(90), Some(100), Some(false)));
+    assert_eq!(l["outlets"].as_array().map(Vec::len), Some(2));
+    // The third device is one too many: the breaker trips, the strip is off and nothing has power.
+    let r = s.execute("power.plug", json!({"device": c, "strip": strip})).unwrap();
+    assert_eq!(r["tripped"], true);
+    let f = s.topology.fitting(strip as u32).unwrap();
+    assert!(f.tripped && !f.on);
+    assert!(s.topology.devices.iter().all(|d| d.powered_off));
+    let l = s.execute("power.load", json!({"strip": strip})).unwrap();
+    assert_eq!((l["load_w"].as_u64(), l["demand_w"].as_u64()), (Some(0), Some(150)));
+    // Switching on again is refused while the plugged devices are over the rating.
+    let e = s.execute("power.strip", json!({"strip": strip, "on": true})).unwrap_err().to_string();
+    assert!(e.contains("unplug something"), "{e}");
+    assert!(s.topology.fitting(strip as u32).unwrap().tripped);
+    s.execute("power.unplug", json!({"device": c})).unwrap();
+    let r = s.execute("power.strip", json!({"strip": strip, "on": true})).unwrap();
+    assert_eq!((r["on"].as_bool(), r["tripped"].as_bool()), (Some(true), Some(false)));
+    assert!(!s.topology.fitting(strip as u32).unwrap().tripped);
+    assert!(!s.topology.find(&a).unwrap().powered_off && !s.topology.find(&b).unwrap().powered_off);
+    // A lower rating than the load trips it at once.
+    let r = s.execute("power.rating", json!({"strip": strip, "watts": 80})).unwrap();
+    assert_eq!(r["tripped"], true);
+    assert!(s.topology.find(&a).unwrap().powered_off);
+    // Closet lists show it.
+    let list = s.execute("closet.list", json!({})).unwrap();
+    let p = &list["passive"][0];
+    assert_eq!((p["rating_w"].as_u64(), p["tripped"].as_bool()), (Some(80), Some(true)));
+    // Undo brings the breaker back.
+    s.execute("edit.undo", json!({})).unwrap();
+    assert!(!s.topology.fitting(strip as u32).unwrap().tripped);
+}
+
+#[test]
+fn a_device_switched_on_can_trip_the_breaker_of_its_strip() {
+    let (mut s, a, _, c) = lab();
+    let strip = id(&s.execute("passive.add", json!({"kind": "power-strip", "ports": 3})).unwrap());
+    s.execute("power.rating", json!({"strip": strip, "watts": 100})).unwrap();
+    s.execute("device.power", json!({"device": a, "on": false})).unwrap();
+    s.execute("power.plug", json!({"device": a, "strip": strip})).unwrap();
+    s.execute("power.plug", json!({"device": c, "strip": strip})).unwrap();
+    assert!(!s.topology.fitting(strip as u32).unwrap().tripped, "the switch that is off draws nothing");
+    let r = s.execute("device.power", json!({"device": a, "on": true})).unwrap();
+    assert_eq!((r["tripped"].as_bool(), r["power"].as_str()), (Some(true), Some("off")));
+    assert!(s.topology.fitting(strip as u32).unwrap().tripped);
+    assert!(s.topology.find(&c).unwrap().powered_off);
+    // The rating survives a save.
+    let json = netlabcraft_model::file::to_json(&s.topology).unwrap();
+    let back = netlabcraft_model::file::from_json(&json).unwrap();
+    let f = back.fitting(strip as u32).unwrap();
+    assert_eq!((f.rating_w, f.tripped), (100, true));
+}
