@@ -287,6 +287,33 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             }
             Ok(String::new())
         }
+        L2DetectCause | L2NoDetectCause => {
+            let causes: Vec<ErrCause> =
+                if arg(0).eq_ignore_ascii_case("all") {
+                    ErrCause::ALL.to_vec()
+                } else {
+                    vec![ErrCause::parse(arg(0)).ok_or_else(|| {
+                        format!("% `{}` is not a cause: bpduguard, psecure-violation, dhcp-rate-limit, arp-inspection or all", arg(0))
+                    })?]
+                };
+            let d = c.dm()?;
+            for cause in causes {
+                if id == L2NoDetectCause {
+                    d.l2.detect_off.insert(cause);
+                } else {
+                    d.l2.detect_off.remove(&cause);
+                }
+            }
+            Ok(String::new())
+        }
+        L2ShowErrDetect => {
+            let l = &c.d()?.l2;
+            let mut s = format!("{:<20} Shuts the port\n", "Cause");
+            for cause in ErrCause::ALL {
+                let _ = writeln!(s, "{:<20} {}", cause.name(), if l.detect_off.contains(&cause) { "no" } else { "yes" });
+            }
+            Ok(s.trim_end().to_string())
+        }
         L2RecoveryInterval | L2NoRecoveryInterval => {
             let n = if id == L2RecoveryInterval { number(arg(0), 30, 86_400, "The interval (seconds)")? } else { ERRDISABLE_INTERVAL };
             c.dm()?.l2.recovery_interval = n;
@@ -549,6 +576,9 @@ pub(crate) fn global_lines(s: &mut String, d: &Device) {
     if l.bpduguard_default {
         let _ = writeln!(s, "spanning-tree portfast bpduguard default");
     }
+    for cause in &l.detect_off {
+        let _ = writeln!(s, "no errdisable detect cause {}", cause.name());
+    }
     for cause in &l.recovery {
         let _ = writeln!(s, "errdisable recovery cause {}", cause.name());
     }
@@ -616,6 +646,12 @@ pub(crate) fn port_lines(s: &mut String, p: &netlabcraft_model::Port) {
             _ => writeln!(s, " spanning-tree vlan {k} port-priority {v}"),
         }
         .unwrap_or_default();
+    }
+    for (k, v) in &l.mst_cost {
+        let _ = writeln!(s, " spanning-tree mst {k} cost {v}");
+    }
+    for (k, v) in &l.mst_priority {
+        let _ = writeln!(s, " spanning-tree mst {k} port-priority {v}");
     }
     if let Some(n) = l.lacp_priority {
         let _ = writeln!(s, " lacp port-priority {n}");
@@ -814,7 +850,17 @@ fn port_state(sim: &Sim, d: &Device, p: usize, vlan: VlanId, role: Role) -> &'st
 fn show_stp_summary(t: &Topology, sim: &Sim, d: &Device, trees: &[(VlanId, netlabcraft_sim::stp::VlanTree)], totals_only: bool) -> String {
     let l = &d.l2;
     let mut s = String::new();
-    let _ = writeln!(s, "Mode:                 {}", if d.rapid_stp { "rapid-pvst" } else { "pvst" });
+    let _ = writeln!(
+        s,
+        "Mode:                 {}",
+        if d.mst.on {
+            "mst"
+        } else if d.rapid_stp {
+            "rapid-pvst"
+        } else {
+            "pvst"
+        }
+    );
     let roots: Vec<String> =
         trees.iter().filter(|(_, tr)| tr.bridges.get(&d.id).is_some_and(|b| b.root == b.id)).map(|(v, _)| format!("VLAN{:04}", v.get())).collect();
     let _ = writeln!(s, "Root bridge of:       {}", if roots.is_empty() { "none".to_string() } else { roots.join(", ") });

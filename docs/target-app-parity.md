@@ -13,7 +13,7 @@ to end is in [`labs/`](labs/README.md).
 
 | Number | Value | Kind |
 |---|---|---|
-| Engine commands | **220** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
+| Engine commands | **230** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
 | Console grammar entries | **1823** across 47 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
@@ -178,6 +178,9 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-18 | minor | Console sweep: the commands the public courses teach were checked against the grammar; 155 settings are kept and shown, routers and switches resolve host names, router advertisements can be suppressed, BGP gains distribute lists, bestpath settings and activation (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) items 9 and 17). The grammar has 1823 entries (measured:  rows). |
+| 2026-11-18 | minor | IKE `authentication rsa-sig` is real (IKEv1 main mode and IKEv2 IKE_AUTH sign and verify with trustpoint certificates); the console grammar gains `pki trustpoint` in the IKEv2 profile. |
+| 2026-11-18 | minor | The PKI flows of gaps item 3 are done (terminal enrollment, manual grant, revocation lists, host names); the console grammar has 1354 entries. |
+| 2026-11-18 | minor | PEAP's Diffie-Hellman is MODP group 14 (2048 bits) instead of a 61-bit toy group (M9.12). |
 | 2026-11-18 | minor | OSPF NSSA: P bit, Nt bit, forwarding address and `translate type7 always` (see [protocol-parity.md](protocol-parity.md)); percentages not re-scored. |
 | 2026-11-18 | minor | OSPF LSA copies per router, MaxAge flush, SPF counters and throttle timers, `debug ip ospf lsa-generation\|flood\|packet` (see [protocol-parity.md](protocol-parity.md)): 1343 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | Cables are objects, fiber loss budgets and resizable racks and shelves (see [ui-parity.md](ui-parity.md) and [hardware-parity.md](hardware-parity.md)): `link.info`, `link.splices`, `furniture.resize`, `transceiver type` and `show interfaces transceiver`. The Summary is counted again from the code: 220 `c!(` entries in the engine catalog and 1772 `spec!(` rows in the grammar (other changes had added commands since the last count). |
@@ -189,6 +192,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | 2026-11-18 | minor | Cables are objects (see [ui-parity.md](ui-parity.md)): `link.info` reports a cable's ends, kind, length, state and why it is down; the Summary counts 205 `c!(` entries. |
 | 2026-11-17 | minor | Consistency pass after the Preferences, closet, device-box and model rounds: the Summary said 202 engine commands (it is 204); every other count was measured again from the code and holds. Percentages not re-scored. |
 | 2026-11-18 | minor | Set Background Image and Image Cleanup (see [ui-parity.md](ui-parity.md)): 11 engine commands added (`place.scene.set`, `place.background.set` and `.clear`, `place.icon.set` and `.clear`, `place.size.set` and `.clear`, `workspace.background.set` and `.clear`, `image.list`, `image.remove`); one keyboard shortcut; lab file version 12; 35 rows in each catalog. Not re-scored. |
+| 2026-11-18 | minor | Counts measured again: 230 `c!(` entries in `crates/engine/src/catalog.rs` (it said 205: the commands of several changes had not been counted), 91 keyboard shortcuts, lab file version 13 (containers, inventory shelves, cable pegboards, industrial control panels, hung cables, the working closet). Percentages not re-scored. |
 | 2026-11-17 | minor | Device models 134 → 146 (Smart City: pressure, wind, carbon dioxide and fire monitors, fire sprinkler, old car, beacon, RFID card and reader, trip sensor, smart LED; Industrial: signal generator). Counted from `MODELS`; percentages not re-scored. |
 | 2026-11-17 | minor | The Preferences tabs (see [ui-parity.md](ui-parity.md) and [gaps.md](gaps.md) item 12): 2 engine commands added, so 204 `c!(` entries; each of the six catalogs has 2,305 three-column lines (counted with awk, `@id` rows included). Percentages not re-scored. |
 | 2026-11-17 | minor | Device models 126 → 134 (Smart Home: appliance, Bluetooth speaker, ceiling fan, furnace, humidifier, humiture monitor, music player, sound detector). Counted from `MODELS`; percentages not re-scored. |
