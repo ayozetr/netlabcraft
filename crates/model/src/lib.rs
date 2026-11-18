@@ -1539,6 +1539,10 @@ pub struct OspfArea {
     /// stay out of the NSSA as type 7 LSAs (they still go to the rest of the network as type 5).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub nssa_no_redist: bool,
+    /// `area N nssa translate type7 always` (on a border router): this router translates the
+    /// area's type 7 LSAs into type 5 whether or not it has the highest router ID.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nssa_translate_always: bool,
     /// `area N range`: the border router advertises these instead of the area's networks
     /// inside them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

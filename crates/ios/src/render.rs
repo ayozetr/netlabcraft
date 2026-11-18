@@ -558,10 +558,11 @@ pub fn running_config(d: &Device) -> String {
             if a.nssa {
                 let _ = writeln!(
                     s,
-                    " area {n} nssa{}{}{}",
+                    " area {n} nssa{}{}{}{}",
                     if a.no_summary { " no-summary" } else { "" },
                     if a.nssa_no_redist { " no-redistribution" } else { "" },
-                    if a.nssa_default { " default-information-originate" } else { "" }
+                    if a.nssa_default { " default-information-originate" } else { "" },
+                    if a.nssa_translate_always { " translate type7 always" } else { "" }
                 );
             }
             if let Some(cost) = a.default_cost {
@@ -3000,6 +3001,9 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState, spf: Opti
             }
             if conf.nssa_no_redist {
                 line.push_str(", keeps its own redistributed routes out of the area (no-redistribution)");
+            }
+            if conf.nssa_translate_always {
+                line.push_str(", translates type 7 LSAs into type 5 whether or not it is elected (translate type7 always)");
             }
             if let Some(c) = conf.default_cost {
                 line.push_str(&format!(", default route cost {c}"));

@@ -34,6 +34,7 @@ mod ospf_auth_rollover;
 mod ospf_database;
 mod ospf_debug;
 mod ospf_lsdb_copies;
+mod ospf_nssa_bits;
 mod pki;
 mod policy;
 mod protocols_summary;
