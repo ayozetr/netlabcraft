@@ -1224,12 +1224,16 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no neighbor A.B.C.D\|NAME disable-connected-check` |  | router, switch | Return this setting to its default |
 | `neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Open the session or wait for the neighbour to |
 | `no neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Return this setting to its default |
-| `neighbor A.B.C.D\|NAME activate` |  | router, switch | Exchange IPv4 routes with this neighbour |
-| `no neighbor A.B.C.D\|NAME activate` |  | router, switch | Stop exchanging IPv4 routes with this neighbour |
+| `neighbor A.B.C.D\|NAME activate` |  | router, switch | Exchange routes of this address family with this neighbour |
+| `no neighbor A.B.C.D\|NAME activate` |  | router, switch | Stop exchanging routes of this address family with this neighbour |
 | `address-family ipv4` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
 | `address-family ipv4 unicast` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
+| `address-family ipv6` |  | router, switch | Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised |
+| `address-family ipv6 unicast` |  | router, switch | Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised |
 | `exit-address-family` |  | router, switch | Leave the address family |
-| `address-family <other address family>` |  | router, switch | Only IPv4 unicast is simulated |
+| `address-family <other address family>` |  | router, switch | Only IPv4 and IPv6 unicast are simulated |
+| `show bgp ipv6 unicast summary` | user, privileged | router, switch | Each neighbour's session state and IPv6 prefix count |
+| `show bgp ipv6 summary` | user, privileged | router, switch | Each neighbour's session state and IPv6 prefix count |
 | `neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Filter the prefixes of this neighbour with a standard access list |
 | `no neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Stop filtering this neighbour's prefixes with the list |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |

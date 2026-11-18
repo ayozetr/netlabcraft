@@ -3,7 +3,7 @@
 //! configuration.
 
 use std::fmt::Write as _;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::bgp::{
@@ -34,7 +34,7 @@ fn peer_address(text: &str) -> Result<Ipv4Addr, String> {
     Ok(a)
 }
 
-fn process<'a>(c: &'a mut Ctx<'_>) -> Result<&'a mut Bgp, String> {
+pub(super) fn process<'a>(c: &'a mut Ctx<'_>) -> Result<&'a mut Bgp, String> {
     c.dm()?.bgp.as_mut().ok_or_else(|| "% Not in BGP mode".to_string())
 }
 
@@ -43,11 +43,36 @@ fn existing(b: &mut Bgp, addr: Ipv4Addr) -> Result<&mut Neighbor, String> {
     b.neighbors.iter_mut().find(|n| n.addr == addr).ok_or_else(|| format!("% Name the neighbour first: neighbor {addr} remote-as <AS>"))
 }
 
+/// The neighbour a line names, by its IPv4 or IPv6 address; it must have been named before.
+pub(super) fn named<'a>(b: &'a mut Bgp, who: &str) -> Result<&'a mut Neighbor, String> {
+    let who = who.trim();
+    if let Ok(a6) = who.parse::<Ipv6Addr>() {
+        return b
+            .neighbors6
+            .iter_mut()
+            .find(|n| n.addr6 == Some(a6))
+            .ok_or_else(|| format!("% Name the neighbour first: neighbor {a6} remote-as <AS>"));
+    }
+    existing(b, peer_address(who)?)
+}
+
+/// An IPv6 address a neighbour can have.
+pub(super) fn peer_address6(text: &str) -> Result<Ipv6Addr, String> {
+    let a: Ipv6Addr = text.trim().parse().map_err(|_| format!("% `{}` is not an IPv6 address", text.trim()))?;
+    if a.is_unspecified() || a.is_multicast() || a.is_loopback() {
+        return Err(format!("% {a} is not an address a neighbour can have"));
+    }
+    Ok(a)
+}
+
 /// Changes what `neighbor WHO …` sets: one neighbour (WHO is its address) or a peer group (its name).
 /// A change to a group reaches the members that follow it; after a change to a member, the settings
 /// it left unset (a `no` form) come from its group again.
 fn edit(b: &mut Bgp, who: &str, f: impl FnOnce(&mut Neighbor) -> Result<(), String>) -> Result<(), String> {
     let who = who.trim();
+    if who.parse::<Ipv6Addr>().is_ok() {
+        return f(named(b, who)?);
+    }
     if who.parse::<Ipv4Addr>().is_ok() {
         let a = peer_address(who)?;
         let conf = b.neighbor(a).and_then(|n| n.peer_group.as_deref()).and_then(|g| b.group(g)).map(|g| g.conf.clone());
@@ -216,7 +241,10 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             let who = arg(0).trim();
             let remote = asn(arg(1))?;
             let b = process(c)?;
-            if who.parse::<Ipv4Addr>().is_ok() {
+            if who.parse::<Ipv6Addr>().is_ok() {
+                let a = peer_address6(who)?;
+                b.neighbor6_mut(a).ok_or_else(|| format!("% At most {} neighbours", netlabcraft_model::bgp::MAX_NEIGHBORS))?;
+            } else if who.parse::<Ipv4Addr>().is_ok() {
                 // A neighbour is named by this line: it exists from here on.
                 let a = peer_address(who)?;
                 b.neighbor_mut(a).ok_or_else(|| format!("% At most {} neighbours", netlabcraft_model::bgp::MAX_NEIGHBORS))?;
@@ -226,6 +254,13 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 Ok(())
             })?;
             Ok(String::new())
+        }
+        Id::NoBgpNeighbor if arg(0).trim().parse::<Ipv6Addr>().is_ok() => {
+            let a = peer_address6(arg(0))?;
+            let b = process(c)?;
+            let before = b.neighbors6.len();
+            b.neighbors6.retain(|n| n.addr6 != Some(a));
+            if b.neighbors6.len() == before { Err(format!("% No neighbour {a}")) } else { Ok(String::new()) }
         }
         Id::NoBgpNeighbor => {
             let a = peer_address(arg(0))?;
@@ -251,19 +286,17 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborShutdown | Id::NoBgpNeighborShutdown => {
-            let a = peer_address(arg(0))?;
-            existing(process(c)?, a)?.shutdown = id == Id::BgpNeighborShutdown;
+            named(process(c)?, arg(0))?.shutdown = id == Id::BgpNeighborShutdown;
             Ok(String::new())
         }
         Id::BgpNeighborDescription | Id::NoBgpNeighborDescription => {
-            let a = peer_address(arg(0))?;
             let text = if id == Id::BgpNeighborDescription {
                 let t: String = arg(1).chars().filter(|ch| !ch.is_control()).take(MAX_TEXT).collect();
                 Some(t)
             } else {
                 None
             };
-            existing(process(c)?, a)?.description = text;
+            named(process(c)?, arg(0))?.description = text;
             Ok(String::new())
         }
         Id::BgpNeighborMultihop | Id::NoBgpNeighborMultihop => {
@@ -875,20 +908,35 @@ pub(super) fn option_command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
         }
         Id::BgpNeighborActivate | Id::NoBgpNeighborActivate => {
             let on = spec.id == Id::BgpNeighborActivate;
+            if c.cli.mode == Mode::BgpAf6 {
+                return super::bgp6::activate(c, arg(0), on);
+            }
             edit(process(c)?, arg(0), |n| {
                 n.activated = on;
                 Ok(())
             })?;
             Ok(String::new())
         }
-        Id::BgpAddressFamily | Id::BgpExitAddressFamily => {
+        Id::BgpAddressFamily => {
             process(c)?;
+            c.cli.mode = Mode::Bgp;
             Ok(String::new())
         }
-        _ => {
-            Err("% Only the IPv4 unicast address family is simulated: BGP here carries IPv4 routes (no MP-BGP, no IPv6 or VPN address families)"
-                .into())
+        Id::BgpAddressFamily6 => {
+            process(c)?;
+            c.cli.mode = Mode::BgpAf6;
+            Ok(String::new())
         }
+        Id::BgpExitAddressFamily => {
+            process(c)?;
+            c.cli.mode = Mode::Bgp;
+            Ok(String::new())
+        }
+        Id::ShowBgpIpv6Summary => {
+            let view = c.sim.bgp_state(c.t);
+            Ok(super::bgp6::summary(c.d()?, &view))
+        }
+        _ => Err("% Only the IPv4 and IPv6 unicast address families are simulated (no VPN address families)".into()),
     }
 }
 
@@ -1041,6 +1089,23 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             let _ = writeln!(s, " neighbor {who} shutdown");
         }
     }
+    for n in &b.neighbors6 {
+        let Some(a) = n.addr6 else { continue };
+        let who = a.to_string();
+        let base = Neighbor::new6(a);
+        if let Some(line) = remote_as_line(&who, n, &base) {
+            let _ = writeln!(s, " {line}");
+        }
+        if let Some(text) = &n.description {
+            let _ = writeln!(s, " neighbor {who} description {text}");
+        }
+        for line in neighbor_lines(&who, n, &base, &pw) {
+            let _ = writeln!(s, " {line}");
+        }
+        if n.shutdown {
+            let _ = writeln!(s, " neighbor {who} shutdown");
+        }
+    }
     for n in &b.networks {
         let _ = writeln!(s, " network {} mask {}", n.addr, n.mask());
     }
@@ -1077,6 +1142,7 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             let _ = writeln!(s, " exit-address-family");
         }
     }
+    super::bgp6::running_config(s, b);
     for r in &b.redistribute {
         let map = b.redistribute_maps.get(r.word()).map_or(String::new(), |m| format!(" route-map {m}"));
         match r {
@@ -1091,16 +1157,16 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     let _ = writeln!(s, "!");
 }
 
-fn hms(us: u64) -> String {
+pub(super) fn hms(us: u64) -> String {
     let secs = us / 1_000_000;
     format!("{:02}:{:02}:{:02}", secs / 3_600, secs / 60 % 60, secs % 60)
 }
 
-fn state_text(n: &NeighborView) -> String {
+pub(super) fn state_text(n: &NeighborView) -> String {
     if n.admin_down { "Idle (Admin)".to_string() } else { n.state.name().to_string() }
 }
 
-fn not_running() -> String {
+pub(super) fn not_running() -> String {
     "BGP is not running on this router.".to_string()
 }
 

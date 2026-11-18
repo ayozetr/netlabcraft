@@ -1218,6 +1218,8 @@ pub enum Id {
     BgpAddressFamily,
     BgpExitAddressFamily,
     BgpAddressFamilyOther,
+    BgpAddressFamily6,
+    ShowBgpIpv6Summary,
     BgpNeighborDistribute,
     NoBgpNeighborDistribute,
     BgpPeerGroup,
@@ -4899,14 +4901,14 @@ pub static SPECS: &[Spec] = &[
         Modes::BGP,
         Modes::BOTH,
         [K("neighbor"), Arg("A.B.C.D|NAME"), K("activate")],
-        "Exchange IPv4 routes with this neighbour"
+        "Exchange routes of this address family with this neighbour"
     ),
     spec!(
         NoBgpNeighborActivate,
         Modes::BGP,
         Modes::BOTH,
         [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("activate")],
-        "Stop exchanging IPv4 routes with this neighbour"
+        "Stop exchanging routes of this address family with this neighbour"
     ),
     spec!(
         BgpAddressFamily,
@@ -4922,8 +4924,42 @@ pub static SPECS: &[Spec] = &[
         [K("address-family"), K("ipv4"), K("unicast")],
         "Configure the IPv4 unicast address family (its commands apply to the process)"
     ),
+    spec!(
+        BgpAddressFamily6,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv6")],
+        "Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised"
+    ),
+    spec!(
+        BgpAddressFamily6,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv6"), K("unicast")],
+        "Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised"
+    ),
     spec!(BgpExitAddressFamily, Modes::BGP, Modes::BOTH, [K("exit-address-family")], "Leave the address family"),
-    spec!(BgpAddressFamilyOther, Modes::BGP, Modes::BOTH, [K("address-family"), Rest("<other address family>")], "Only IPv4 unicast is simulated"),
+    spec!(
+        BgpAddressFamilyOther,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), Rest("<other address family>")],
+        "Only IPv4 and IPv6 unicast are simulated"
+    ),
+    spec!(
+        ShowBgpIpv6Summary,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("summary")],
+        "Each neighbour's session state and IPv6 prefix count"
+    ),
+    spec!(
+        ShowBgpIpv6Summary,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("summary")],
+        "Each neighbour's session state and IPv6 prefix count"
+    ),
     spec!(
         BgpNeighborDistribute,
         Modes::BGP,
