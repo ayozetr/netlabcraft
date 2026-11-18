@@ -2,7 +2,7 @@
 //! originates and what it redistributes. The sessions and the routes are worked out by the
 //! simulator; nothing derived is kept here.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::Ipv4Net;
@@ -28,6 +28,8 @@ pub const MAX_MULTIPATH: u8 = 32;
 pub const MAX_CONFED_PEERS: usize = 32;
 /// Most peer groups under one BGP process.
 pub const MAX_PEER_GROUPS: usize = 16;
+/// Most process-wide or per-neighbour settings of the kept-and-shown kind.
+pub const MAX_OPTIONS: usize = 32;
 
 /// `aggregate-address A.B.C.D M.M.M.M [summary-only] [as-set]`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -146,6 +148,19 @@ pub struct Neighbor {
     /// `show ip bgp neighbors A.B.C.D received-routes` can list it.
     #[serde(default)]
     pub soft_reconfiguration_in: bool,
+    /// `distribute-list N in` / `out`: a standard access list that the prefixes must pass.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distribute_in: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub distribute_out: Option<String>,
+    /// `neighbor … activate`: the neighbour exchanges IPv4 unicast routes. Every neighbour does
+    /// unless `no bgp default ipv4-unicast` is set.
+    #[serde(default)]
+    pub activated: bool,
+    /// Settings that are kept and shown but not simulated (`version 4`, `maximum-prefix N`,
+    /// `allowas-in`, ...), by the words that name them, with the line as written.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub options: BTreeMap<String, String>,
     /// `peer-group NAME`: the group this neighbour belongs to. Its settings hold what the group
     /// gave plus what the neighbour set itself (see [`follow`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -203,6 +218,10 @@ pub fn follow(n: &mut Neighbor, old: &Neighbor, new: &Neighbor) {
         remove_private_as,
         remove_private_all,
         soft_reconfiguration_in,
+        distribute_in,
+        distribute_out,
+        activated,
+        options,
     );
 }
 
@@ -237,6 +256,10 @@ impl Neighbor {
             remove_private_as: false,
             remove_private_all: false,
             soft_reconfiguration_in: false,
+            distribute_in: None,
+            distribute_out: None,
+            activated: false,
+            options: BTreeMap::new(),
             peer_group: None,
         }
     }
@@ -261,12 +284,22 @@ fn sanitize_neighbor(n: &mut Neighbor) {
         &mut n.filter_list_in,
         &mut n.filter_list_out,
         &mut n.default_originate_map,
+        &mut n.distribute_in,
+        &mut n.distribute_out,
     ] {
         *name = name.take().map(|x| crate::policy::clean_name(&x)).filter(|x| !x.is_empty());
     }
     if let Some(u) = &mut n.update_source {
         *u = u.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect();
     }
+    let kept: BTreeMap<String, String> = std::mem::take(&mut n.options)
+        .into_iter()
+        .take(MAX_OPTIONS)
+        .map(|(k, v)| {
+            (k.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect(), v.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect())
+        })
+        .collect();
+    n.options = kept;
 }
 
 /// `router bgp N`.
@@ -320,6 +353,11 @@ pub struct Bgp {
     /// `neighbor NAME peer-group`.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub peer_groups: Vec<PeerGroup>,
+    /// Process-wide settings that are typed as `bgp …` words (`bgp bestpath med missing-as-worst`,
+    /// `bgp deterministic-med`), by the full line as written. Some change the simulation (see
+    /// [`Bgp::option`]), the others are only kept and shown.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub options: BTreeSet<String>,
 }
 
 impl Bgp {
@@ -342,6 +380,19 @@ impl Bgp {
             self.neighbors.sort_by_key(|n| n.addr);
         }
         self.neighbors.iter_mut().find(|n| n.addr == addr)
+    }
+
+    /// Whether the process has the setting written exactly as `line` (for example
+    /// `bgp bestpath as-path multipath-relax`, or `no bgp fast-external-fallover` for one that is
+    /// on until turned off).
+    pub fn option(&self, line: &str) -> bool {
+        self.options.contains(line)
+    }
+
+    /// Without `no bgp default ipv4-unicast` every neighbour exchanges IPv4 routes; with it only
+    /// the activated ones do.
+    pub fn exchanges(&self, n: &Neighbor) -> bool {
+        n.activated || !self.option("no bgp default ipv4-unicast")
     }
 
     pub fn group(&self, name: &str) -> Option<&PeerGroup> {
@@ -445,6 +496,11 @@ impl Bgp {
         self.neighbors.dedup_by_key(|n| n.addr);
         self.neighbors.truncate(MAX_NEIGHBORS);
         self.neighbors.iter_mut().for_each(sanitize_neighbor);
+        self.options = std::mem::take(&mut self.options)
+            .into_iter()
+            .take(MAX_OPTIONS)
+            .map(|o| o.chars().filter(|c| !c.is_control()).take(MAX_TEXT).collect::<String>())
+            .collect();
         self.peer_groups.truncate(MAX_PEER_GROUPS);
         for g in &mut self.peer_groups {
             g.name = crate::policy::clean_name(&g.name);

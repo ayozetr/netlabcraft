@@ -144,7 +144,6 @@
 	address or device name	Adresse oder Gerätename
 	Address pool (network/prefix)	Adresspool (Netz/Präfix)
 	Address {} · gateway {}	Adresse {} · Gateway {}
-	Adds a place to the map shown; drag it into position	Fügt der gezeigten Karte einen Ort hinzu; in Position ziehen
 	After a delay	Nach einer Verzögerung
 	Agent address	Agent-Adresse
 	Agents and scripts drive NetLabCraft through	Agenten und Skripte steuern NetLabCraft über
@@ -691,6 +690,38 @@
 	New File	Neue Datei
 	New from sample	Neu aus Beispiel
 	New Wiring Closet	Neuer Verteilerraum
+	Create New…	Neu erstellen…
+	Create New City	Neue Stadt erstellen
+	Create New Building	Neues Gebäude erstellen
+	Create New Closet	Neuen Schrank erstellen
+	Create New Generic Container	Neuen allgemeinen Container erstellen
+	Create New Rack	Neues Rack erstellen
+	Create New Table	Neuen Tisch erstellen
+	Create New Shelf	Neues Regal erstellen
+	Create New Inventory Shelf	Neues Lagerregal erstellen
+	Create New Cable Pegboard	Neue Kabel-Lochwand erstellen
+	Create New Industrial Control Panel (ICP)	Neuen Industrie-Schaltschrank (ICP) erstellen
+	Switch to the Physical view first.	Wechsle zuerst in die physische Ansicht.
+	Go to the Intercity map to create a city.	Gehe zur Intercity-Karte, um eine Stadt zu erstellen.
+	Open a city first.	Öffne zuerst eine Stadt.
+	Open a building first.	Öffne zuerst ein Gebäude.
+	Open a city or a building first.	Öffne zuerst eine Stadt oder ein Gebäude.
+	Open a wiring closet or a container first.	Öffne zuerst einen Verteilerschrank oder einen Container.
+	No wiring closet yet: create one with +	Noch kein Verteilerschrank: erstelle einen mit +
+	Go to Working Closet	Zum Arbeitsschrank gehen
+	Go to Working Closet ({})	Zum Arbeitsschrank gehen ({})
+	Added {}.	{} hinzugefügt.
+	Set as Working Closet	Als Arbeitsschrank festlegen
+	New Generic Container	Neuer allgemeiner Container
+	Container	Container
+	New Container	Neuer Container
+	Inventory Shelf	Lagerregal
+	Cable Pegboard	Kabel-Lochwand
+	Industrial Control Panel	Industrie-Schaltschrank
+	{}, {} DIN slots	{}, {} DIN-Plätze
+	{}, {} rows of hooks	{}, {} Hakenreihen
+	Hang on a Peg	An einen Haken hängen
+	Take off the Peg	Vom Haken nehmen
 	Next Hop	Next Hop
 	No	Nein
 	No adding or removing devices	Kein Hinzufügen oder Entfernen von Geräten
@@ -1832,7 +1863,6 @@ event	write request for	Schreibanfrage für
 	Selection	Auswahl
 	Show Event List	Ereignisliste anzeigen
 	Simulation Back	Simulation zurück
-	{} is not available at this level of the Physical view.	{} ist auf dieser Ebene der physischen Ansicht nicht verfügbar.
 	Automatically Choose Connection Type	Verbindungstyp automatisch wählen
 	Single Mode Fiber	Singlemode-Glasfaser
 	Multi Mode Fiber	Multimode-Glasfaser
@@ -2437,3 +2467,23 @@ furniture	Table	Tisch
 	Card id (hex):	Karten-ID (hex):
 	Report crossings of the wire	Überquerungen des Drahts melden
 	Wire angle (degrees):	Winkel des Drahts (Grad):
+	Custom environment:	Eigene Umgebung:
+	Create Custom Environment	Eigene Umgebung erstellen
+	Defaults:	Vorgaben:
+	Replace what this place sets with this environment	Ersetzt, was dieser Ort festlegt, durch diese Umgebung
+	Keyframes joined by:	Schlüsselbilder verbunden durch:
+	Straight line	Gerade
+	Step	Stufe
+	Smooth curve	Weiche Kurve
+	Variables defined by a formula	Durch eine Formel definierte Variablen
+	Formula:	Formel:
+	Add Variable	Variable hinzufügen
+	Copy Shows from Parent	Anzeige vom übergeordneten Ort kopieren
+	Leave out what the place above leaves out	Lässt weg, was der übergeordnete Ort weglässt
+	Show Only Actives	Nur Aktive anzeigen
+	Leave out every variable no place sets	Lässt jede Variable weg, die kein Ort festlegt
+	Desert	Wüste
+	Tropical	Tropen
+	Arctic	Arktis
+	Indoor office	Büro
+	Greenhouse	Gewächshaus

@@ -144,7 +144,6 @@
 	address or device name	indirizzo o nome del dispositivo
 	Address pool (network/prefix)	Pool di indirizzi (rete/prefisso)
 	Address {} · gateway {}	Indirizzo {} · gateway {}
-	Adds a place to the map shown; drag it into position	Aggiunge un luogo alla mappa mostrata; trascinalo in posizione
 	After a delay	Dopo un ritardo
 	Agent address	Indirizzo dell'agent
 	Agents and scripts drive NetLabCraft through	Agenti e script pilotano NetLabCraft tramite
@@ -691,6 +690,38 @@
 	New File	Nuovo file
 	New from sample	Nuovo da esempio
 	New Wiring Closet	Nuovo armadio di cablaggio
+	Create New…	Crea nuovo…
+	Create New City	Crea nuova città
+	Create New Building	Crea nuovo edificio
+	Create New Closet	Crea nuovo armadio
+	Create New Generic Container	Crea nuovo container generico
+	Create New Rack	Crea nuovo rack
+	Create New Table	Crea nuovo tavolo
+	Create New Shelf	Crea nuovo scaffale
+	Create New Inventory Shelf	Crea nuovo scaffale d'inventario
+	Create New Cable Pegboard	Crea nuovo pannello a ganci per cavi
+	Create New Industrial Control Panel (ICP)	Crea nuovo quadro di controllo industriale (ICP)
+	Switch to the Physical view first.	Passa prima alla vista fisica.
+	Go to the Intercity map to create a city.	Vai alla mappa Intercity per creare una città.
+	Open a city first.	Apri prima una città.
+	Open a building first.	Apri prima un edificio.
+	Open a city or a building first.	Apri prima una città o un edificio.
+	Open a wiring closet or a container first.	Apri prima un armadio di cablaggio o un container.
+	No wiring closet yet: create one with +	Nessun armadio di cablaggio: creane uno con +
+	Go to Working Closet	Vai all'armadio di lavoro
+	Go to Working Closet ({})	Vai all'armadio di lavoro ({})
+	Added {}.	Aggiunto {}.
+	Set as Working Closet	Imposta come armadio di lavoro
+	New Generic Container	Nuovo container generico
+	Container	Container
+	New Container	Nuovo container
+	Inventory Shelf	Scaffale d'inventario
+	Cable Pegboard	Pannello a ganci per cavi
+	Industrial Control Panel	Quadro di controllo industriale
+	{}, {} DIN slots	{}, {} posizioni DIN
+	{}, {} rows of hooks	{}, {} file di ganci
+	Hang on a Peg	Appendi a un gancio
+	Take off the Peg	Stacca dal gancio
 	Next Hop	Next hop
 	No	No
 	No adding or removing devices	Niente aggiunta o rimozione di dispositivi
@@ -1832,7 +1863,6 @@ event	write request for	richiesta di scrittura di
 	Selection	Selezione
 	Show Event List	Mostra elenco eventi
 	Simulation Back	Simulazione indietro
-	{} is not available at this level of the Physical view.	{} non è disponibile a questo livello della vista fisica.
 	Automatically Choose Connection Type	Scegli automaticamente il tipo di connessione
 	Single Mode Fiber	Fibra monomodale
 	Multi Mode Fiber	Fibra multimodale
@@ -2437,3 +2467,23 @@ furniture	Table	Tavolo
 	Card id (hex):	Id della scheda (hex):
 	Report crossings of the wire	Segnala gli attraversamenti del filo
 	Wire angle (degrees):	Angolo del filo (gradi):
+	Custom environment:	Ambiente personalizzato:
+	Create Custom Environment	Crea ambiente personalizzato
+	Defaults:	Predefiniti:
+	Replace what this place sets with this environment	Sostituisce ciò che questo luogo imposta con questo ambiente
+	Keyframes joined by:	Fotogrammi chiave uniti da:
+	Straight line	Linea retta
+	Step	Gradino
+	Smooth curve	Curva morbida
+	Variables defined by a formula	Variabili definite da una formula
+	Formula:	Formula:
+	Add Variable	Aggiungi variabile
+	Copy Shows from Parent	Copia la visualizzazione dal luogo superiore
+	Leave out what the place above leaves out	Omette ciò che omette il luogo superiore
+	Show Only Actives	Mostra solo le attive
+	Leave out every variable no place sets	Omette ogni variabile che nessun luogo imposta
+	Desert	Deserto
+	Tropical	Tropicale
+	Arctic	Artico
+	Indoor office	Ufficio interno
+	Greenhouse	Serra

@@ -29,6 +29,8 @@ pub const PT_SA: u8 = 33;
 pub const PT_KE: u8 = 34;
 pub const PT_IDI: u8 = 35;
 pub const PT_IDR: u8 = 36;
+pub const PT_CERT: u8 = 37;
+pub const PT_CERTREQ: u8 = 38;
 pub const PT_AUTH: u8 = 39;
 pub const PT_NONCE: u8 = 40;
 pub const PT_NOTIFY: u8 = 41;
@@ -66,8 +68,12 @@ pub const REKEY_SA: u16 = 16_393;
 /// Identification types.
 pub const ID_IPV4_ADDR: u8 = 1;
 pub const ID_FQDN: u8 = 2;
+/// Authentication method: RSA digital signature (RFC 7296 §3.8).
+pub const AUTH_RSA_SIG: u8 = 1;
 /// Authentication method: shared key message integrity code.
 pub const AUTH_SHARED_KEY: u8 = 2;
+/// Certificate encoding: an X.509 certificate for signatures (RFC 7296 §3.6).
+pub const CERT_X509_SIGNATURE: u8 = 4;
 /// Traffic selector type: an IPv4 address range.
 pub const TS_IPV4_ADDR_RANGE: u8 = 7;
 /// Longest message accepted (well beyond anything a lab sends).
@@ -192,6 +198,14 @@ fn len16(n: usize) -> [u8; 2] {
 }
 
 impl Payload {
+    /// A CERT payload carrying one DER certificate (encoding 4).
+    pub fn cert(der: &[u8]) -> Payload {
+        let mut body = Vec::with_capacity(der.len() + 1);
+        body.push(CERT_X509_SIGNATURE);
+        body.extend_from_slice(der);
+        Payload::Other { kind: PT_CERT, body }
+    }
+
     pub fn kind(&self) -> u8 {
         match self {
             Payload::Sa(_) => PT_SA,
@@ -222,6 +236,8 @@ impl Payload {
             Payload::TsR(_) => "TSr",
             Payload::Delete { .. } => "D",
             Payload::Sk { .. } => "SK",
+            Payload::Other { kind: PT_CERT, .. } => "CERT",
+            Payload::Other { kind: PT_CERTREQ, .. } => "CERTREQ",
             Payload::Other { .. } => "payload",
         }
     }
@@ -523,6 +539,23 @@ pub fn psk_auth_with(prf: Prf, psk: &[u8], message: &[u8], peer_nonce: &[u8], sk
     prf.prf(&pad, &[message, peer_nonce, &mac_id[..]].concat())
 }
 
+/// The data an RSA AUTH value signs (RFC 7296 §2.15): the sender's first message, the other
+/// side's nonce and prf(SK_p, the sender's identification body). A pre-shared key takes the
+/// same octets through a MAC ([`psk_auth_with`]).
+pub fn signed_octets(prf: Prf, message: &[u8], peer_nonce: &[u8], sk_p: &[u8], id_body: &[u8]) -> Vec<u8> {
+    [message, peer_nonce, &prf.prf(sk_p, id_body)[..]].concat()
+}
+
+/// The DER certificates of the CERT payloads of a list (other encodings are skipped).
+pub fn certs_of(list: &[Payload]) -> Vec<&[u8]> {
+    list.iter()
+        .filter_map(|p| match p {
+            Payload::Other { kind: PT_CERT, body } if body.first() == Some(&CERT_X509_SIGNATURE) => body.get(1..),
+            _ => None,
+        })
+        .collect()
+}
+
 /// An IKEv2 message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
@@ -766,6 +799,27 @@ mod tests {
         assert_ne!(other.sk_d, new.sk_d);
         assert_ne!(Keys::derive_with(suite, &shared, &ni, &nr, &[11; 8], &[12; 8]).sk_d, new.sk_d);
         assert_ne!(Keys::rekey_with(suite, &old.sk_d, &shared, &ni, &nr, &[11; 8], &[13; 8]).sk_d, new.sk_d);
+    }
+
+    #[test]
+    fn certificates_travel_in_cert_payloads_and_the_signed_octets_follow_the_rfc() {
+        let octets = signed_octets(Prf::HmacSha1, b"msg1", b"nonce", b"sk_p", b"idbody");
+        let mac_id = Prf::HmacSha1.prf(b"sk_p", b"idbody");
+        assert_eq!(octets, [&b"msg1"[..], b"nonce", &mac_id[..]].concat());
+        // The pre-shared key's AUTH is a MAC of these same octets.
+        let pad = Prf::HmacSha1.prf(b"psk", b"Key Pad for IKEv2");
+        assert_eq!(psk_auth_with(Prf::HmacSha1, b"psk", b"msg1", b"nonce", b"sk_p", b"idbody"), Prf::HmacSha1.prf(&pad, &octets));
+        let cert = Payload::cert(&[0x30, 0x03, 0x02, 0x01, 0x01]);
+        assert_eq!(cert.name(), "CERT");
+        let list = vec![Payload::IdI { kind: 1, data: vec![10, 0, 0, 1] }, cert.clone(), Payload::Auth { method: AUTH_RSA_SIG, data: vec![5; 64] }];
+        assert_eq!(certs_of(&list), vec![&[0x30u8, 0x03, 0x02, 0x01, 0x01][..]]);
+        assert!(certs_of(&[Payload::Other { kind: PT_CERT, body: vec![1, 9] }]).is_empty());
+        let msg = Message { spi_i: [1; 8], spi_r: [2; 8], exchange: IKE_AUTH, flags: FLAG_INITIATOR, message_id: 1, payloads: list.clone() };
+        let raw = msg.encode();
+        assert_eq!(Message::decode(&raw).unwrap(), msg);
+        for n in 0..raw.len() {
+            let _ = Message::decode(&raw[..n]);
+        }
     }
 
     #[test]

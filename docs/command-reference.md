@@ -97,12 +97,18 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
 | `iot.server` | IoT service |  |  | `{"device": server, "service"?: true\|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}` |
 | `iot.switch` | Switch a smart device |  |  | `{"device": server, "name": registered smart device, "on": true\|false} → the server's IoT page` |
-| `environment.get` | Environments | Options | Shift+E | `{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"\|"inherited"\|"default"\|"room"\|"live", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read, "live" what a place holds now where its parts are moving it (environment.physics).` |
+| `environment.get` | Environments | Options | Shift+E | `{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "name", "interpolation", "hidden", "hidden_from", "variables": [{id, label, group, unit, value, source: "own"\|"inherited"\|"default"\|"room"\|"live", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read, "live" what a place holds now where its parts are moving it (environment.physics).` |
 | `environment.set` | Set an environment variable |  |  | `{"place"?, "variable"?: id or label, "value"?: number within the variable's range (a constant for the whole day: its keyframes are replaced), "notes"?: text (up to 4000 characters), "show_notes"?: true\|false} → environment.get; one undo step. Needs a variable and its value, or notes, or show_notes` |
 | `environment.clear` | Clear an environment variable |  |  | `{"place"?, "variable"?: id or label (none: every variable of the place)} → environment.get: the place inherits again; one undo step` |
 | `environment.keyframe.add` | Add an environment keyframe |  |  | `{"place"?, "variable", "time": "HH:MM:SS" or seconds from midnight (0-86399), "value": number within the variable's range} → environment.get: adds a keyframe or changes the one at that time (at most 288 per variable); between keyframes the value moves in a straight line, and after the last it moves toward the first of the next day; one undo step` |
 | `environment.keyframe.remove` | Remove an environment keyframe |  |  | `{"place"?, "variable", "time"} → environment.get: removes the keyframe at that time; the variable is inherited again when none is left; one undo step` |
 | `environment.clock` | Environment clock |  |  | `{"time"?: "HH:MM:SS" or seconds from midnight (set the time of day now), "paused"?: true\|false, "real_minutes"?: 1-1440, "sim_minutes"?: 1-1440 (every `real_minutes` of simulated lab time pass `sim_minutes` in the environment; the time shown does not jump when the ratio changes)} → environment.get. The clock follows the lab's simulated time (it starts at 08:00:00); one undo step when something changes` |
+| `environment.create` | Create custom environment |  |  | `{"place"?, "name": text up to 60 characters} → environment.get: gives the place a custom environment of its own with this name (what it sets and the variables it defines are its own); one undo step. environment.clear with no variable removes it again` |
+| `environment.custom` | Define a custom variable |  |  | `{"place"?, "id": lowercase letters, digits and `_` (up to 32, not a built-in id), "label"?, "unit"?, "min"?, "max"?, "default"? (what it reads while the formula is empty or fails), "formula"?: text up to 200 characters} → environment.get: defines or changes a variable of the place by a formula over `time` (seconds), `hour` (0-24), `day` (0-1), the built-in variables (as the place reads them) and other custom variables, with + - * / % ^, comparisons, and, or, not, sin cos abs sqrt floor ceil round exp ln min max clamp if(c, a, b), pi and e; at most 16 per place; a formula that cannot be computed shows its error and the default; a generic environment sensor can read the variable (iot.configure "variable"); one undo step` |
+| `environment.custom.remove` | Remove a custom variable |  |  | `{"place"?, "id"} → environment.get; one undo step` |
+| `environment.shows` | Environment shows |  |  | `{"place"?, "hidden"?: [variable ids the window leaves out for this place], "copy_from_parent"?: true (Copy Shows from Parent), "only_active"?: true (Show Only Actives: leave out every variable no place from here up sets), "reset"?: true (read the place above again)} → environment.get with "hidden" and "hidden_from": the shows are saved with the lab; one undo step when something changes` |
+| `environment.defaults` | Environment defaults |  |  | `{"place"?, "name"?: "desert"\|"tropical"\|"arctic"\|"indoor-office"\|"greenhouse"} → with no name {"defaults": [{id, label}]}: the bundled environments of ours; with a name, the place sets what that environment sets (replacing what it set) and takes its name → environment.get; one undo step` |
+| `environment.settings` | Environment settings |  |  | `{"place"?, "interpolation"?: "linear"\|"step"\|"smooth" (how this place's keyframes are joined: a straight line, the value of the last keyframe until the next, or a half cosine)} → environment.get; one undo step when something changes` |
 | `environment.physics` | Physics of the places |  |  | `{"enabled"?: true\|false} → {"physics"}: with it on, each place that holds smart things has its own physics: the heaters, air conditioners, fans, furnaces, humidifiers, sprinklers, fire sprinklers, windows and lamps standing in a place change that place's variables by rates (a part moves a variable toward where it settles; the variable covers 63 % of the way in 0.5 to 20 minutes, depending on the variable), the place settles back toward what it sets when the part stops, flames make smoke, carbon monoxide and heat, an open window pulls the place toward the one above it (faster in wind), and a sound fades with the distance to the sensor; environment.get shows what a place holds now as source "live". Off (the default): a running part adds a fixed amount at once, as before; one undo step` |
 | `environment.export` | Export environment |  |  | `{"place"?} → {"place", "file": suggested file name, "text"}: the variables and notes the place sets itself, as a JSON file of its own (format "netlabcraft-environment", docs/file-format.md); the app saves it with a dialog` |
 | `environment.import` | Import environment |  |  | `{"place"?, "text": contents of an exported environment, "merge"?: true (only replace the variables the file names; default: replace everything the place sets)} → environment.get plus "imported": {variables, skipped}: unknown variables are skipped and values are clamped to their range; one undo step` |
@@ -138,7 +144,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `view.enter_place` | Open place |  |  | `{"id": place number} → {"physical", "place", "kind", "path"} (switches to the physical view)` |
 | `view.place_up` | Back to the enclosing place |  |  | `{} → {"physical", "place", "kind", "path"}` |
 | `view.intercity` | Back to the Intercity map |  |  | `{} → {"physical", "place": null, "path": []}` |
-| `place.add` | New place |  |  | `{"kind": "city"\|"building"\|"closet", "name"?, "parent"?: place number (a building goes in a city, a closet in a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}` |
+| `place.add` | New place |  |  | `{"kind": "city"\|"building"\|"closet"\|"container", "name"?, "parent"?: place number (a building goes in a city, a closet in a building, a container in a city or a building; default: the place being viewed), "x"?, "y"?} → {"id", "name", "parent"}` |
 | `place.rename` | Rename place |  |  | `{"id", "name"}` |
 | `place.move` | Move place |  |  | `{"id", "x", "y", "transient"?: false}: its icon on the map it sits in` |
 | `place.remove` | Remove place |  |  | `{"id"}: with the places inside it; their devices go to the building above, else the default closet (the last city stays)` |
@@ -157,13 +163,17 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.place` | Move to place |  |  | `{"device" \| "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building` |
 | `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)` |
 | `closet.list` | List a wiring closet |  |  | `{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" \| "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}` |
-| `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table", "name"?, "place"?: wiring closet number, "size"?: rack units 4-48 (default 12) or shelf levels 1-8 (default 4), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets` |
+| `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table" \| "inventory-shelf" \| "pegboard" \| "icp", "name"?, "place"?: wiring closet or container number, "size"?: rack units 4-48 (default 12), shelf or inventory shelf levels 1-8 (default 4), pegboard rows of hooks 1-8 (default 4) or control panel DIN slots 6-24 (default 12), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets and containers; a device put on an inventory shelf is switched off; a control panel takes industrial devices only; a pegboard takes cables, not devices` |
 | `furniture.rename` | Rename furniture |  |  | `{"furniture": name or number, "name"}` |
 | `furniture.resize` | Resize furniture |  |  | `{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size` |
 | `furniture.move` | Move furniture |  |  | `{"furniture", "x", "y", "transient"?: false}: where it stands in the closet` |
 | `furniture.remove` | Remove furniture |  |  | `{"furniture"}: what stood on it stays in the closet, loose` |
 | `furniture.mount` | Put on furniture |  |  | `{"device" \| "passive": name or number, "furniture": name or number, "slot"?: rack unit or shelf level counted from 1 at the top (default: the first free one), "units"?: 1-4 rack units (default 1)} → {"furniture", "slot", "units"}: the item moves into the furniture's closet; a rack takes no overlapping units, a shelf level holds 4 items, a table 8` |
 | `furniture.unmount` | Take off furniture |  |  | `{"device" \| "passive"}: it stays in the closet, loose` |
+| `furniture.hang` | Hang a cable |  |  | `{"furniture": cable pegboard name or number, "device", "port": either end of the cable, "peg"?: hook counted from 1 (default: the first free one)} → {"furniture", "peg"}: one of the cable's ends stands in the pegboard's place; a cable hangs on one peg` |
+| `furniture.unhang` | Take a cable off its peg |  |  | `{"device", "port": either end of the cable}` |
+| `place.working.set` | Set as working closet |  |  | `{"id"?: wiring closet number (default: the closet being viewed)} → {"id", "name"}: the closet the Home button goes to` |
+| `place.working.get` | Working closet |  |  | `{} → {"id", "name"}: the marked closet, else the first closet; null when there is none` |
 | `passive.add` | Add a passive device |  |  | `{"kind": "copper-patch-panel" \| "fiber-patch-panel" \| "copper-wall-mount" \| "fiber-wall-mount" \| "power-strip", "name"?, "place"?, "ports"?: ports or outlets (panels 4-48, wall mounts 1-4, power strip 2-16), "furniture"?, "slot"?, "units"?} → {"id", "name", "kind", "ports", "place"}` |
 | `passive.rename` | Rename a passive device |  |  | `{"passive": name or number, "name"}` |
 | `passive.remove` | Remove a passive device |  |  | `{"passive"}: with its patch wires (a cable they carried is unplugged) and its plugs` |
@@ -1006,6 +1016,54 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
 | `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |
 | `show ip bgp filter-list <1-500>` | user, privileged | router, switch | The paths an AS-path list permits |
+| `bgp bestpath as-path multipath-relax` |  | router, switch | Let paths from different neighbouring ASes share the load |
+| `no bgp bestpath as-path multipath-relax` |  | router, switch | Return this setting to its default |
+| `bgp bestpath compare-routerid` |  | router, switch | Prefer the lowest router id between equal external paths |
+| `no bgp bestpath compare-routerid` |  | router, switch | Return this setting to its default |
+| `bgp bestpath med missing-as-worst` |  | router, switch | Count a path without a MED as the worst one |
+| `no bgp bestpath med missing-as-worst` |  | router, switch | Return this setting to its default |
+| `bgp bestpath med confed` |  | router, switch | Compare the MED between member ASes of a confederation |
+| `no bgp bestpath med confed` |  | router, switch | Return this setting to its default |
+| `bgp deterministic-med` |  | router, switch | Choose among the paths of one neighbouring AS first |
+| `no bgp deterministic-med` |  | router, switch | Return this setting to its default |
+| `bgp fast-external-fallover` |  | router, switch | End a direct external session when its link goes down (on) |
+| `no bgp fast-external-fallover` |  | router, switch | Turn this off (it is on by default) |
+| `bgp client-to-client reflection` |  | router, switch | Pass a route reflector client path to the other clients (on) |
+| `no bgp client-to-client reflection` |  | router, switch | Turn this off (it is on by default) |
+| `bgp default ipv4-unicast` |  | router, switch | Exchange IPv4 routes with every neighbour without activating it (on) |
+| `no bgp default ipv4-unicast` |  | router, switch | Turn this off (it is on by default) |
+| `synchronization` |  | router, switch | Wait for an IGP route before using an internal path |
+| `no synchronization` |  | router, switch | Return this setting to its default |
+| `auto-summary` |  | router, switch | Summarise networks at their classful boundary |
+| `no auto-summary` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME version <4-4>` |  | router, switch | The BGP version the session speaks |
+| `no neighbor A.B.C.D\|NAME version` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME advertisement-interval <0-600>` |  | router, switch | Seconds between the updates sent to this neighbour |
+| `no neighbor A.B.C.D\|NAME advertisement-interval` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME maximum-prefix <1-4294967295>` |  | router, switch | Most prefixes this neighbour may send |
+| `no neighbor A.B.C.D\|NAME maximum-prefix` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME maximum-prefix <1-4294967295> [threshold] [restart <minutes>] [warning-only]` |  | router, switch | Most prefixes this neighbour may send, with its options |
+| `no neighbor A.B.C.D\|NAME maximum-prefix` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME allowas-in` |  | router, switch | Accept paths that contain this AS |
+| `no neighbor A.B.C.D\|NAME allowas-in` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME allowas-in <1-10>` |  | router, switch | Accept paths that contain this AS up to this many times |
+| `no neighbor A.B.C.D\|NAME allowas-in` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME as-override` |  | router, switch | Replace the neighbour AS in the paths sent to it with this one |
+| `no neighbor A.B.C.D\|NAME as-override` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME ttl-security hops <1-254>` |  | router, switch | Accept only packets from at most this many hops away |
+| `no neighbor A.B.C.D\|NAME ttl-security hops` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME disable-connected-check` |  | router, switch | Let a loopback-to-loopback external session come up |
+| `no neighbor A.B.C.D\|NAME disable-connected-check` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Open the session or wait for the neighbour to |
+| `no neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Return this setting to its default |
+| `neighbor A.B.C.D\|NAME activate` |  | router, switch | Exchange IPv4 routes with this neighbour |
+| `no neighbor A.B.C.D\|NAME activate` |  | router, switch | Stop exchanging IPv4 routes with this neighbour |
+| `address-family ipv4` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
+| `address-family ipv4 unicast` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
+| `exit-address-family` |  | router, switch | Leave the address family |
+| `address-family <other address family>` |  | router, switch | Only IPv4 unicast is simulated |
+| `neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Filter the prefixes of this neighbour with a standard access list |
+| `no neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Stop filtering this neighbour's prefixes with the list |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
 | `no bandwidth` | interface | router, switch | Bandwidth from the port's speed again |
 | `delay <1-16777215>` | interface | router, switch | The delay EIGRP's metric adds (tens of microseconds) |
@@ -1885,8 +1943,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `pre-shared-key [local\|remote] KEY` |  | router | The key shared with the peer |
 | `match identity remote address A.B.C.D [MASK]` |  | router | Peers this profile is for |
 | `identity local address A.B.C.D` |  | router | The identity this router presents |
-| `authentication local pre-share` |  | router | How this router proves who it is |
-| `authentication remote pre-share` |  | router | How the peer proves who it is |
+| `authentication local {pre-share\|rsa-sig}` |  | router | How this router proves who it is |
+| `authentication remote {pre-share\|rsa-sig}` |  | router | How the peer proves who it is |
+| `pki trustpoint NAME` |  | router | The trustpoint whose certificate signs this router's IKE_AUTH |
 | `keyring local NAME` |  | router | The keyring holding the keys |
 | `lifetime <120-86400>` |  | router | Seconds before the IKE SA is replaced |
 | `no lifetime` |  | router | Back to the default IKE SA lifetime |

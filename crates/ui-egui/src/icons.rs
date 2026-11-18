@@ -452,6 +452,32 @@ pub fn closet(p: &Painter, rect: Rect, fill: Color32, edge: Color32) {
     }
 }
 
+/// A generic container: a plain steel box with ribbed sides and a door at one end (original drawing).
+pub fn container(p: &Painter, rect: Rect, fill: Color32, edge: Color32) {
+    let (w, h) = (rect.width(), rect.height());
+    let line = Stroke::new((h / 28.0).max(1.0), edge);
+    let at = |x: f32, y: f32| pos2(rect.left() + w * x, rect.top() + h * y);
+    let body = Rect::from_min_max(at(0.06, 0.26), at(0.94, 0.8));
+    p.rect_filled(body, 2.0, shade(fill, 0.85));
+    p.rect_stroke(body, 2.0, line, StrokeKind::Inside);
+    // Vertical ribs along the side.
+    for i in 1..8 {
+        let x = 0.06 + 0.88 * 0.8 * i as f32 / 8.0;
+        p.line_segment([at(x, 0.3), at(x, 0.76)], Stroke::new(line.width * 0.7, edge));
+    }
+    // The door end: two leaves and a locking bar.
+    let door = Rect::from_min_max(at(0.78, 0.3), at(0.9, 0.76));
+    p.rect_filled(door, 1.0, fill);
+    p.rect_stroke(door, 1.0, Stroke::new(line.width * 0.8, edge), StrokeKind::Inside);
+    p.line_segment([at(0.84, 0.3), at(0.84, 0.76)], Stroke::new(line.width * 0.8, edge));
+    p.line_segment([at(0.81, 0.4), at(0.81, 0.66)], Stroke::new(line.width * 1.2, edge));
+    p.line_segment([at(0.87, 0.4), at(0.87, 0.66)], Stroke::new(line.width * 1.2, edge));
+    // Corner castings and feet.
+    for x in [0.06, 0.86] {
+        p.rect_filled(Rect::from_min_max(at(x, 0.8), at(x + 0.08, 0.86)), 0.0, edge);
+    }
+}
+
 /// Toolbar and bar glyphs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Glyph {

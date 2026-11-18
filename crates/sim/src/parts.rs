@@ -341,6 +341,12 @@ impl Sim {
         let place = Self::part_place(t, d);
         match what {
             "environment" => {
+                // A variable a place defines by a formula.
+                if var_by_id(&d.iot.variable).is_none() && netlabcraft_model::envcustom::valid_custom_id(&d.iot.variable) {
+                    let c = t.env_custom_read(place, &d.iot.variable, self.env_time(t))?;
+                    let (lo, hi) = (f64::from(netlabcraft_model::iot::MIN_VALUE), f64::from(netlabcraft_model::iot::MAX_VALUE));
+                    return Some(c.value.round().clamp(lo, hi) as i32);
+                }
                 let var: &Var = var_by_id(&d.iot.variable).or_else(|| var_by_id("ambient_temperature"))?;
                 let pv = self.place_var(t, place, var.id)?;
                 if !pv.set

@@ -972,7 +972,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         | "softphone.hangup" => crate::voice::run(s, cmd, p),
         "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" | "iot.beacon" => crate::iot::run(s, cmd, p),
         "environment.get" | "environment.set" | "environment.clear" | "environment.keyframe.add" | "environment.keyframe.remove" | "environment.clock"
-        | "environment.export" | "environment.import" | "environment.physics" => crate::envs::run(s, cmd, p),
+        | "environment.export" | "environment.import" | "environment.physics" | "environment.create" | "environment.custom"
+        | "environment.custom.remove" | "environment.shows" | "environment.defaults" | "environment.settings" => crate::envs::run(s, cmd, p),
         "board.program" | "board.status" | "board.wire" => crate::board::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
         | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),
@@ -1490,16 +1491,17 @@ fn physical(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
         }
         "place.add" => {
             let kind = str_param(p, "kind")?;
-            let kind = PlaceKind::from_id(kind).ok_or_else(|| bad(format!("unknown place kind `{kind}` (city, building, closet)")))?;
+            let kind = PlaceKind::from_id(kind).ok_or_else(|| bad(format!("unknown place kind `{kind}` (city, building, closet, container)")))?;
             let parent = match p.get("parent") {
                 None | Some(Value::Null) => {
+                    let kinds = kind.parent_kinds();
                     // The place being looked at, when it is the right kind.
-                    let viewed = s.place_view.and_then(|x| s.topology.place(x)).filter(|x| Some(x.kind) == kind.parent_kind()).map(|x| x.id);
+                    let viewed = s.place_view.and_then(|x| s.topology.place(x)).filter(|x| kinds.contains(&x.kind)).map(|x| x.id);
                     // Else the only place of the right kind, if there is just one.
                     viewed.or_else(|| {
-                        kind.parent_kind().and_then(|pk| {
+                        kinds.iter().find_map(|pk| {
                             let places = s.topology.places();
-                            let mut it = places.iter().filter(|x| x.kind == pk);
+                            let mut it = places.iter().filter(|x| x.kind == *pk);
                             match (it.next(), it.next()) {
                                 (Some(only), None) => Some(only.id),
                                 _ => None,

@@ -14,8 +14,9 @@ use std::collections::BTreeSet;
 
 use egui::{Align2, Color32, FontId, Rect, RichText, Sense, Stroke, pos2, vec2};
 use netlabcraft_model::Topology;
+use netlabcraft_model::envcustom::{BUNDLED, Interp};
 use netlabcraft_model::environments::{self as env, DAY_SECONDS, GROUPS, INTERCITY, Key, Source, VARS, Var};
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::i18n::{tl, tr, trf};
 use crate::{PacketApp, UiRequest};
@@ -67,6 +68,12 @@ pub struct EnvUi {
     pub scale: Option<(u32, u32)>,
     /// The notes being typed, with the place they belong to.
     pub notes: Option<(u32, String)>,
+    /// The custom environment's name, and the custom variable being typed.
+    pub custom_name: String,
+    pub custom_id: String,
+    pub custom_formula: String,
+    /// The place whose saved shows were loaded into `hidden`.
+    pub shows_for: Option<u32>,
 }
 
 impl Default for EnvUi {
@@ -91,6 +98,10 @@ impl Default for EnvUi {
             time_text: String::new(),
             scale: None,
             notes: None,
+            custom_name: String::new(),
+            custom_id: String::new(),
+            custom_formula: String::new(),
+            shows_for: None,
         }
     }
 }
@@ -207,6 +218,13 @@ pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
 
 fn body(app: &mut PacketApp, ui: &mut egui::Ui) {
     let place = current_place(app);
+    // The shows saved with a place come into the window when the place is first shown.
+    if app.ui.env_ui.shows_for != Some(place) {
+        app.ui.env_ui.shows_for = Some(place);
+        if let Some((_, ids)) = app.session.topology.env_hidden(place) {
+            app.ui.env_ui.hidden = VARS.iter().filter(|v| ids.iter().any(|i| i == v.id)).map(|v| v.id).collect();
+        }
+    }
     location(app, ui, place);
     ui.separator();
     if app.ui.env_ui.edit {
@@ -583,9 +601,84 @@ fn advanced_tab(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
             app.run("environment.clear", json!({"place": place}));
         }
     });
+    custom_environment(app, ui, place);
     notes(app, ui, place);
     ui.separator();
     tree(app, ui);
+}
+
+/// Create Custom Environment, the bundled defaults, how the keyframes are joined, and the variables
+/// the place defines by formula.
+fn custom_environment(app: &mut PacketApp, ui: &mut egui::Ui, place: u32) {
+    ui.separator();
+    let own = app.session.topology.place_env(place).cloned().unwrap_or_default();
+    ui.horizontal(|ui| {
+        let l = ui.label(tl("Custom environment:"));
+        ui.add(egui::TextEdit::singleline(&mut app.ui.env_ui.custom_name).desired_width(160.0).hint_text(own.name.clone())).labelled_by(l.id);
+        if ui.button(tl("Create Custom Environment")).clicked() && !app.ui.env_ui.custom_name.trim().is_empty() {
+            let name = app.ui.env_ui.custom_name.trim().to_string();
+            app.run("environment.create", json!({"place": place, "name": name}));
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label(tl("Defaults:"));
+        for b in &BUNDLED {
+            if ui.button(tr(b.label)).hint(tl("Replace what this place sets with this environment")).clicked() {
+                app.run("environment.defaults", json!({"place": place, "name": b.id}));
+            }
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label(tl("Keyframes joined by:"));
+        for (mode, label) in [(Interp::Linear, tl("Straight line")), (Interp::Step, tl("Step")), (Interp::Smooth, tl("Smooth curve"))] {
+            if ui.selectable_label(own.interpolation == mode, label).clicked() && own.interpolation != mode {
+                app.run("environment.settings", json!({"place": place, "interpolation": mode.id()}));
+            }
+        }
+    });
+    ui.label(RichText::new(tl("Variables defined by a formula")).strong());
+    let customs = app.session.topology.env_customs(place);
+    if customs.is_empty() {
+        ui.label(RichText::new(tl("(none)")).weak());
+    }
+    for (from, c) in customs {
+        ui.horizontal(|ui| {
+            ui.label(
+                RichText::new(format!("{} = {}", c.id, if c.formula.is_empty() { c.default.to_string() } else { c.formula.clone() })).monospace(),
+            );
+            if from == place && ui.button(tl("Remove")).clicked() {
+                app.run("environment.custom.remove", json!({"place": place, "id": c.id}));
+            }
+        });
+    }
+    ui.horizontal(|ui| {
+        let l = ui.label(tl("Variable:"));
+        ui.add(egui::TextEdit::singleline(&mut app.ui.env_ui.custom_id).desired_width(90.0)).labelled_by(l.id);
+        let l = ui.label(tl("Formula:"));
+        ui.add(
+            egui::TextEdit::singleline(&mut app.ui.env_ui.custom_formula).desired_width(260.0).hint_text("20 + 8 * sin((hour - 9) / 24 * 2 * pi)"),
+        )
+        .labelled_by(l.id);
+        if ui.button(tl("Add Variable")).clicked() && !app.ui.env_ui.custom_id.trim().is_empty() {
+            let (id, formula) = (app.ui.env_ui.custom_id.trim().to_string(), app.ui.env_ui.custom_formula.clone());
+            if app.run("environment.custom", json!({"place": place, "id": id, "formula": formula})).is_some() {
+                app.ui.env_ui.custom_id.clear();
+                app.ui.env_ui.custom_formula.clear();
+            }
+        }
+    });
+}
+
+/// Saves what the tree leaves out as the place's shows.
+fn save_shows(app: &mut PacketApp) {
+    let place = current_place(app);
+    let hidden: Vec<&str> = app.ui.env_ui.hidden.iter().copied().collect();
+    app.run("environment.shows", json!({"place": place, "hidden": hidden}));
+}
+
+/// Takes the shows a command answered with into the window.
+fn load_shows(app: &mut PacketApp, ids: &[Value]) {
+    app.ui.env_ui.hidden = VARS.iter().filter(|v| ids.iter().any(|i| i.as_str() == Some(v.id))).map(|v| v.id).collect();
 }
 
 fn keyframes(app: &mut PacketApp, ui: &mut egui::Ui, place: u32, v: &'static Var) {
@@ -655,9 +748,22 @@ fn tree(app: &mut PacketApp, ui: &mut egui::Ui) {
         ui.label(RichText::new(tl("Variables")).strong());
         if ui.button(tl("Show All")).clicked() {
             app.ui.env_ui.hidden.clear();
+            save_shows(app);
         }
         if ui.button(tl("Hide All")).clicked() {
             app.ui.env_ui.hidden = VARS.iter().map(|v| v.id).collect();
+            save_shows(app);
+        }
+        let place = current_place(app);
+        if ui.button(tl("Copy Shows from Parent")).hint(tl("Leave out what the place above leaves out")).clicked()
+            && let Some(r) = app.run("environment.shows", json!({"place": place, "copy_from_parent": true}))
+        {
+            load_shows(app, r["hidden"].as_array().map_or(&[][..], Vec::as_slice));
+        }
+        if ui.button(tl("Show Only Actives")).hint(tl("Leave out every variable no place sets")).clicked()
+            && let Some(r) = app.run("environment.shows", json!({"place": place, "only_active": true}))
+        {
+            load_shows(app, r["hidden"].as_array().map_or(&[][..], Vec::as_slice));
         }
     });
     egui::ScrollArea::vertical().id_salt("env_tree").max_height(160.0).auto_shrink([false, true]).show(ui, |ui| {
@@ -675,6 +781,7 @@ fn tree(app: &mut PacketApp, ui: &mut egui::Ui) {
                                 app.ui.env_ui.hidden.insert(*i);
                             }
                         }
+                        save_shows(app);
                     }
                 })
                 .body(|ui| {
@@ -686,6 +793,7 @@ fn tree(app: &mut PacketApp, ui: &mut egui::Ui) {
                             } else {
                                 app.ui.env_ui.hidden.insert(v.id);
                             }
+                            save_shows(app);
                         }
                     }
                 });

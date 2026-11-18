@@ -48,6 +48,8 @@ pub struct PhysState {
     pub(crate) grid: crate::physical_grid::State,
     /// The wiring-closet view's state (furniture, drags, the Rename dialog).
     pub(crate) closet: crate::closet::State,
+    /// The `+` menu of the bar.
+    pub(crate) menu: crate::physical_bar::MenuState,
 }
 
 /// What stands for a device at the level shown: itself, or the place (city, building or closet)
@@ -215,12 +217,18 @@ pub fn new_label(kind: PlaceKind) -> &'static str {
         PlaceKind::City => "New City",
         PlaceKind::Building => "New Building",
         PlaceKind::Closet => "New Wiring Closet",
+        PlaceKind::Container => "New Container",
     }
 }
 
 /// Adds a place of the kind this map holds; `at` in map units (else the engine picks a spot).
 pub fn add_place(app: &mut PacketApp, at: Option<(f32, f32)>) {
     let Some(kind) = child_kind(app) else { return };
+    add_kind(app, kind, at);
+}
+
+/// Adds a place of a given kind in the place being looked at.
+pub fn add_kind(app: &mut PacketApp, kind: PlaceKind, at: Option<(f32, f32)>) {
     let mut p = json!({"kind": kind.id(), "parent": app.session.place_view});
     if let Some((x, y)) = at {
         let (x, y) = crate::physical_grid::snap_xy(app, x, y);
@@ -423,6 +431,7 @@ fn draw_places(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &Token
             PlaceKind::City => icons::city(painter, r, tk.place, edge),
             PlaceKind::Building => icons::building(painter, r, tk.place, edge),
             PlaceKind::Closet => icons::closet(painter, r, tk.place, edge),
+            PlaceKind::Container => icons::container(painter, r, tk.place, edge),
         }
         let inside = view.shown.values().filter(|n| **n == Node::Place(p.id)).count();
         let font = FontId::proportional((16.0 * view.zoom).clamp(9.0, 24.0));
@@ -584,7 +593,7 @@ fn destinations(app: &PacketApp, host: bool) -> Vec<(u32, String)> {
     let t = &app.session.topology;
     t.places()
         .iter()
-        .filter(|p| p.kind == PlaceKind::Closet || (host && p.kind == PlaceKind::Building))
+        .filter(|p| p.kind.holds_things() || (host && p.kind == PlaceKind::Building))
         .map(|p| (p.id, t.place_path(Some(p.id)).iter().map(|x| tr(&x.name)).collect::<Vec<_>>().join(" › ")))
         .collect()
 }
@@ -597,6 +606,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
                 ui.close();
                 return;
             };
+            let working = t.working_closet();
             ui.label(egui::RichText::new(format!("{} ({})", tr(&p.name), tr(p.kind.label()))).strong());
             if ui.button(tl("Open")).clicked() {
                 enter(app, id);
@@ -604,6 +614,10 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             }
             if ui.button(tl("Rename Place…")).clicked() {
                 app.ui.physical.renaming = Some((id, p.name.clone()));
+                ui.close();
+            }
+            if p.kind == PlaceKind::Closet && ui.add_enabled(working != Some(id), egui::Button::new(tl("Set as Working Closet"))).clicked() {
+                app.run("place.working.set", json!({"id": id}));
                 ui.close();
             }
             if ui.button(tl("Remove Place")).clicked() {
@@ -662,6 +676,11 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             }
             if ui.button(tl("Grid Preferences…")).clicked() {
                 app.ui.physical.grid.open = true;
+                ui.close();
+            }
+            let can_container = crate::physical_bar::reason(app, crate::physical_bar::Create::Container).is_none();
+            if can_container && ui.button(tl(new_label(PlaceKind::Container))).clicked() {
+                add_kind(app, PlaceKind::Container, Some((x, y)));
                 ui.close();
             }
         }
