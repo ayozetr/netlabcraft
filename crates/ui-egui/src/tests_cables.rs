@@ -247,7 +247,16 @@ mod t {
         let info = h.state().session.topology.cable_info(r).unwrap();
         let label = format!("Cable, {}, {} - {}", info.kind.label(), info.a_label, info.b_label);
         assert!(h.query_by_label(&label).is_some(), "no node labelled {label}");
-        h.get_by_label(&label).click();
+        h.get_by_label(&label).focus();
+        h.run_steps(2);
+        assert_eq!(h.state().ui.cable_focus, Some(r));
+        h.input_mut().events.push(egui::Event::Key {
+            key: egui::Key::Enter,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers::NONE,
+        });
         h.run_steps(3);
         assert_eq!(h.state().ui.cable_window, Some(r));
         assert_eq!(h.state().ui.selected_cable, Some(r));
