@@ -141,6 +141,8 @@ struct Facts {
     budget: Option<netlabcraft_model::physical::FiberBudget>,
     /// How far this kind of cable carries a signal, and the standard behind it.
     reach: Option<netlabcraft_model::cable::Reach>,
+    /// A cable that runs through a backbone: where it leaves and where it arrives.
+    backbone: Option<String>,
 }
 
 fn facts(app: &PacketApp, r: CableRef) -> Option<Facts> {
@@ -161,6 +163,10 @@ fn facts(app: &PacketApp, r: CableRef) -> Option<Facts> {
         fiber: link.filter(|_| info.kind.is_fiber()).map(|l| (t.single_mode_at(l.a), t.single_mode_at(l.b))),
         budget: link.and_then(|l| t.fiber_budget(l)),
         reach: info.kind.reach(),
+        backbone: link.and_then(|l| t.backbone_of_link(l)).map(|(a, b)| {
+            let place = |p| t.pole_place(p).and_then(|q| t.place(q)).map(|q| tr(&q.name).to_string()).unwrap_or_default();
+            crate::i18n::trf("{} in {} to {} in {}", &[&t.pole_label(a), &place(a), &t.pole_label(b), &place(b)])
+        }),
     })
 }
 
@@ -207,6 +213,11 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
                 if let Some(r) = &f.reach {
                     ui.label(tl("Reach"));
                     ui.label(format!("{} ({})", physical::length_text(r.meters, metric), r.standard));
+                    ui.end_row();
+                }
+                if let Some(text) = &f.backbone {
+                    ui.label(tl("Backbone"));
+                    ui.label(text);
                     ui.end_row();
                 }
                 ui.label(tl("Status"));

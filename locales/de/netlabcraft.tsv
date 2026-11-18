@@ -1906,6 +1906,12 @@ event	write request for	Schreibanfrage für
 	{} (rear)	{} (hinten)
 	{}, {} levels	{}, {} Ebenen
 	{}, on {}	{}, auf {}
+	to {}	nach {}
+	Backbone	Backbone-Verkabelung
+	Backbone to	Backbone nach
+	Remove Backbone	Backbone entfernen
+	No panel or wall mount with a free port in another place.	Kein Patchfeld und keine Wandanschlussdose mit freiem Port an einem anderen Ort.
+	{} in {} to {} in {}	{} in {} nach {} in {}
 	Other devices	Weitere Geräte
 	Rack	Rack
 	Shelf	Regal

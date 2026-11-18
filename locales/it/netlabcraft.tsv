@@ -1906,6 +1906,12 @@ event	write request for	richiesta di scrittura di
 	{} (rear)	{} (retro)
 	{}, {} levels	{}, {} livelli
 	{}, on {}	{}, su {}
+	to {}	verso {}
+	Backbone	Dorsale
+	Backbone to	Dorsale verso
+	Remove Backbone	Rimuovi la dorsale
+	No panel or wall mount with a free port in another place.	Nessun pannello o presa a muro con una porta libera in un altro luogo.
+	{} in {} to {} in {}	{} in {} verso {} in {}
 	Other devices	Altri dispositivi
 	Rack	Rack
 	Shelf	Scaffale

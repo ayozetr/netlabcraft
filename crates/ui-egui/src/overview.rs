@@ -8,6 +8,7 @@ use std::collections::BTreeSet;
 use egui::Ui;
 use netlabcraft_core::DeviceId;
 use netlabcraft_model::furniture::Item;
+use netlabcraft_model::physical::PlaceKind;
 use netlabcraft_model::{Shown, Topology};
 use serde_json::json;
 
@@ -170,7 +171,7 @@ impl Walk<'_> {
             for child in t.places_in(Some(id)) {
                 w.place(ui, child.id);
             }
-            if !place.kind.holds_things() {
+            if place.kind == PlaceKind::City {
                 return;
             }
             for f in t.furniture_in(id) {

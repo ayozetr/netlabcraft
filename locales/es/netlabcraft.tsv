@@ -1909,6 +1909,12 @@ event	no APN	sin APN
 	{} (rear)	{} (trasera)
 	{}, {} levels	{}, {} niveles
 	{}, on {}	{}, en {}
+	to {}	a {}
+	Backbone	Cableado troncal
+	Backbone to	Cable troncal a
+	Remove Backbone	Quitar cable troncal
+	No panel or wall mount with a free port in another place.	Ningún panel ni roseta con un puerto libre en otro lugar.
+	{} in {} to {} in {}	{} en {} a {} en {}
 	Other devices	Otros dispositivos
 	Rack	Bastidor
 	Shelf	Estante
