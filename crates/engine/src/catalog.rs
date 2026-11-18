@@ -673,6 +673,9 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"place"?, "interpolation"?: "linear"|"step"|"smooth" (how this place's keyframes are joined: a straight line, the value of the last keyframe until the next, or a half cosine)} → environment.get; one undo step when something changes"#,
+        true
+    ),
+    c!(
         "environment.physics",
         "Physics of the places",
         "",
