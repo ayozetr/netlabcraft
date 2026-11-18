@@ -43,3 +43,27 @@ jobs:
           path: sheets/*.png
           if-no-files-found: error
           retention-days: 14
+
+  readme:
+    # The seven README screenshots (docs/images), rendered with the offscreen `snapshot` example.
+    # Not run on pull requests; start it by hand or from a `visual/*` branch.
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Software Vulkan driver
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Build the snapshot example
+        run: cargo build --release -p netlabcraft-ui-egui --example snapshot
+      - name: Render the README screenshots
+        run: bash .github/scripts/readme-images.sh readme-images
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: readme-images
+          path: readme-images/*.png
+          if-no-files-found: error
+          retention-days: 14
