@@ -3463,6 +3463,13 @@ impl Sim {
                     self.log(d.id, &format!("RIP debug: version {v} update from {} on {}: {}{more}", ip.src, ifc.name, listed.join(", ")));
                 }
             }
+            if ip.protocol == netlabcraft_wire::pim::PROTO_PIM
+                && d.pim.routing
+                && self.debug_on(d.id, DebugKind::Pim)
+                && let Ok(m) = netlabcraft_wire::pim::Pim::decode(&ip.payload)
+            {
+                self.debug_log(d.id, DebugKind::Pim, &format!("{} from {} on {}", m.describe(), ip.src, ifc.name));
+            }
             if hsrp
                 && self.debug_on(d.id, DebugKind::Standby)
                 && let Some(h) =

@@ -27,7 +27,7 @@ use netlabcraft_wire::igmp::{ALL_HOSTS, Igmp, PROTO_IGMP};
 use netlabcraft_wire::pim::{ALL_PIM_ROUTERS, Hello, JOIN_PRUNE_HOLDTIME_SECS, JoinPrune, JpGroup, JpSource, PROTO_PIM, Pim};
 use netlabcraft_wire::{ETHERTYPE_IPV4, Frame, Ipv4};
 
-use crate::{L3If, SVI_PORT, Sim, l3_ifaces, up_ifaces};
+use crate::{DebugKind, L3If, SVI_PORT, Sim, l3_ifaces, up_ifaces};
 
 /// Hellos go out this often (RFC 7761 §4.11).
 pub const HELLO_EVERY_US: u64 = 30_000_000;
@@ -295,6 +295,13 @@ impl Sim {
         nodes
     }
 
+    /// One line of `debug ip mpacket`.
+    fn mdebug(&mut self, d: &Device, text: &str) {
+        if self.debug_on(d.id, DebugKind::Mpacket) {
+            self.debug_log(d.id, DebugKind::Mpacket, text);
+        }
+    }
+
     /// Multicast data arriving at a router: checked against the reverse path, delivered to the
     /// router's own joins and forwarded out of the interfaces its tree has.
     pub(crate) fn mcast_in(&mut self, t: &Topology, d: &Device, ifc: &L3If, ip: Ipv4) -> Result<(), String> {
@@ -303,12 +310,15 @@ impl Sim {
         }
         if !d.pim.routing {
             self.bump(d.id, "multicast dropped: routing is off");
+            self.mdebug(d, &format!("{} to {} dropped: multicast routing is off", ip.src, ip.dst));
             return Err("multicast routing is off here (`ip multicast-routing`)".into());
         }
         let net = pim_net(t);
         let Some(info) = net.iface(d.id, &ifc.name) else {
             self.bump(d.id, "multicast dropped: no PIM on the interface");
-            return Err(format!("PIM is not running on {}", ifc.name));
+            let why = format!("PIM is not running on {}", ifc.name);
+            self.mdebug(d, &format!("{} to {} dropped: {why}", ip.src, ip.dst));
+            return Err(why);
         };
         let (src, group) = (ip.src, ip.dst);
         let sparse = sparse_on(d, &info.cfg, group);
@@ -324,18 +334,24 @@ impl Sim {
             n.rpf_failed = n.rpf_failed.saturating_add(1);
             self.bump(d.id, "multicast dropped: reverse path check");
             let way = node.iif.map_or("no route".to_string(), |i| format!("through {i}"));
-            return Err(format!("reverse path check failed: {src} is reached {way}, not through {}", ifc.name));
+            let why = format!("reverse path check failed: {src} is reached {way}, not through {}", ifc.name);
+            self.mdebug(d, &format!("{src} to {group} dropped on {}: {why}", ifc.name));
+            return Err(why);
         }
         if sparse && node.connected {
             let rp = d.pim.rp_for(&d.acls, group);
             let Some(rp) = rp else {
                 self.bump(d.id, "multicast dropped: no rendezvous point");
-                return Err(format!("no rendezvous point for {group}: the source cannot register"));
+                let why = format!("no rendezvous point for {group}: the source cannot register");
+                self.mdebug(d, &format!("{src} to {group} dropped on {}: {why}", ifc.name));
+                return Err(why);
             };
             let reachable = l3_ifaces(d).iter().any(|i| i.net.addr == rp) || self.route_flow(t, d, Ipv4Addr::UNSPECIFIED, rp).is_some();
             if !reachable {
                 self.bump(d.id, "multicast dropped: rendezvous point unreachable");
-                return Err(format!("the rendezvous point {rp} is unreachable"));
+                let why = format!("the rendezvous point {rp} is unreachable");
+                self.mdebug(d, &format!("{src} to {group} dropped on {}: {why}", ifc.name));
+                return Err(why);
             }
             if fresh {
                 self.pim_register(t, d, ifc, rp, &ip);
@@ -350,6 +366,7 @@ impl Sim {
         }
         if ip.ttl <= 1 {
             self.bump(d.id, "TTL expired");
+            self.mdebug(d, &format!("{src} to {group} dropped on {}: TTL expired", ifc.name));
             return Err("TTL expired in transit".into());
         }
         let up = up_ifaces(t, d);
@@ -364,6 +381,13 @@ impl Sim {
         if sent > 0 {
             self.bump(d.id, "multicast forwarded");
         }
+        let outs: Vec<&str> = node.oifs.iter().map(String::as_str).collect();
+        let text = if outs.is_empty() {
+            format!("{src} to {group} arrived on {}, no interface wants it", ifc.name)
+        } else {
+            format!("{src} to {group} arrived on {}, forwarded out {}", ifc.name, outs.join(", "))
+        };
+        self.mdebug(d, &text);
         Ok(())
     }
 
@@ -382,6 +406,10 @@ impl Sim {
     pub(crate) fn pim_unicast_in(&mut self, t: &Topology, d: &Device, ip: &Ipv4) -> Result<(), String> {
         let Ok(msg) = Pim::decode(&ip.payload) else { return Err("malformed PIM message".into()) };
         self.bump(d.id, "PIM messages received");
+        if self.debug_on(d.id, DebugKind::Pim) {
+            let line = format!("{} from {}", msg.describe(), ip.src);
+            self.debug_log(d.id, DebugKind::Pim, &line);
+        }
         let Pim::Register { null: false, data, .. } = msg else { return Ok(()) };
         let inner = Ipv4::decode(&data).map_err(|e| e.to_string())?;
         if !d.pim.routing || !inner.dst.is_multicast() {
