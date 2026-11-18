@@ -253,20 +253,14 @@ pub fn create_button(app: &mut PacketApp, ui: &mut egui::Ui) {
                         if i == sel {
                             p.rect_filled(row, 4.0, ui.visuals().selection.bg_fill);
                         }
-                        p.text(
-                            row.left_center() + vec2(8.0, 0.0),
-                            Align2::LEFT_CENTER,
-                            name,
-                            egui::FontId::proportional(15.0),
-                            ui.visuals().text_color(),
-                        );
+                        p.text(row.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, name, egui::FontId::proportional(15.0), tk.text);
                         if let Some(act) = what.act() {
                             p.text(
                                 row.right_center() - vec2(8.0, 0.0),
                                 Align2::RIGHT_CENTER,
                                 shortcuts::text(act),
                                 egui::FontId::proportional(13.0),
-                                ui.visuals().weak_text_color(),
+                                tk.text.gamma_multiply(0.65),
                             );
                         }
                         if rb.clicked() {

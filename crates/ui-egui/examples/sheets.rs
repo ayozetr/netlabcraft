@@ -431,8 +431,8 @@ fn create_kinds_sheet(dir: &str, dark: bool) {
     cmd(&mut s, "furniture.add", json!({"kind": "rack", "size": 6, "place": closet, "x": 40.0, "y": 30.0}));
     cmd(&mut s, "furniture.add", json!({"kind": "shelf", "size": 2, "place": closet, "x": 400.0, "y": 30.0}));
     cmd(&mut s, "furniture.add", json!({"kind": "table", "place": closet, "x": 400.0, "y": 360.0}));
-    cmd(&mut s, "furniture.add", json!({"kind": "inventory-shelf", "size": 2, "place": closet, "x": 40.0, "y": 420.0}));
-    cmd(&mut s, "furniture.add", json!({"kind": "pegboard", "size": 2, "place": closet, "x": 40.0, "y": 760.0}));
+    cmd(&mut s, "furniture.add", json!({"kind": "inventory-shelf", "size": 2, "place": closet, "x": 40.0, "y": 700.0}));
+    cmd(&mut s, "furniture.add", json!({"kind": "pegboard", "size": 2, "place": closet, "x": 900.0, "y": 700.0}));
     cmd(&mut s, "furniture.add", json!({"kind": "icp", "size": 8, "place": closet, "x": 1250.0, "y": 30.0}));
     cmd(&mut s, "furniture.mount", json!({"device": "SW1", "furniture": "Rack0", "slot": 1}));
     cmd(&mut s, "furniture.mount", json!({"device": "R1", "furniture": "Rack0", "slot": 2}));
@@ -446,7 +446,7 @@ fn create_kinds_sheet(dir: &str, dark: bool) {
     let (p_sw, p_plc) = (port(&s, "SW1", 0), port(&s, "PLC1", 0));
     cmd(&mut s, "furniture.hang", json!({"furniture": "Cable Pegboard0", "device": "SW1", "port": p_sw}));
     cmd(&mut s, "furniture.hang", json!({"furniture": "Cable Pegboard0", "device": "PLC1", "port": p_plc, "peg": 4}));
-    app_sheet(dir, &format!("create-kinds-{suffix}"), s, (1700.0, 1000.0), dark, move |app| {
+    app_sheet(dir, &format!("create-kinds-{suffix}"), s, (1750.0, 1350.0), dark, move |app| {
         app.set_physical(true);
         app.enter_place(closet);
     });
