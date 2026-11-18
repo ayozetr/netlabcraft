@@ -421,7 +421,7 @@ pub(crate) fn window(app: &mut PacketApp, ctx: &egui::Context) {
     let mut done = false;
     let mut prefs = app.ui.prefs.grid.clone();
     let mut picker = app.ui.physical.grid.picker;
-    egui::Window::new(tl("Grid Preferences")).id(egui::Id::new("physical_grid_window")).open(&mut open).collapsible(false).resizable(false).show(
+    egui::Window::new(tl("Grid Preferences")).id(egui::Id::unique("physical_grid_window")).open(&mut open).collapsible(false).resizable(false).show(
         ctx,
         |ui| {
             ui.label(egui::RichText::new(tl("Grid Scale")).strong());
