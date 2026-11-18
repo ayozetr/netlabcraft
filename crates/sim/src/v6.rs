@@ -447,6 +447,10 @@ impl Sim {
                 if !router {
                     return Err("not an IPv6 router (no `ipv6 unicast-routing`)".into());
                 }
+                // `ipv6 nd ra suppress`: the router listens but never advertises on this interface.
+                if conf6(d, ifc).is_some_and(|c| c.nd_suppress) {
+                    return Ok(());
+                }
                 if !ip.src.is_unspecified() {
                     self.learn_nd(t, d, ifc, ip.src, mac.unwrap_or(src_mac));
                 }
@@ -934,5 +938,5 @@ pub(crate) fn router_advert(d: &Device, ifc: &L3If6, mac: MacAddr) -> Icmp6 {
         ifc.addresses.iter().filter(|n| n.prefix == 64).map(|n| PrefixInfo { prefix: n.network().addr, len: 64 }).collect();
     let conf = conf6(d, ifc).cloned().unwrap_or_default();
     let flags = (if conf.nd_managed { RA_MANAGED } else { 0 }) | (if conf.nd_other { RA_OTHER } else { 0 });
-    Icmp6::RouterAdvert { hop_limit: 64, flags, lifetime: 1_800, mac: Some(mac), prefixes }
+    Icmp6::RouterAdvert { hop_limit: 64, flags, lifetime: conf.nd_ra_lifetime.unwrap_or(1_800), mac: Some(mac), prefixes }
 }
