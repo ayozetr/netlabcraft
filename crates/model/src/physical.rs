@@ -191,6 +191,9 @@ pub struct Physical {
     /// Cables hung on the pegs of cable pegboards.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub hangs: Vec<Hang>,
+    /// Wiring closets and containers whose loose items are laid out as a list instead of a grid.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub floor_lists: Vec<u32>,
     /// The closet the user works in (the Home button goes there); none: the first closet.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working: Option<u32>,
@@ -219,6 +222,7 @@ impl Physical {
             && self.patch_wires.is_empty()
             && self.plugs.is_empty()
             && self.hangs.is_empty()
+            && self.floor_lists.is_empty()
             && self.working.is_none()
             && self.scenes.is_empty()
             && !self.ignore_lengths

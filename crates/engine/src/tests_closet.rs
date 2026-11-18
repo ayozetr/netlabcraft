@@ -297,3 +297,72 @@ fn a_device_switched_on_can_trip_the_breaker_of_its_strip() {
     let f = back.fitting(strip as u32).unwrap();
     assert_eq!((f.rating_w, f.tripped), (100, true));
 }
+
+#[test]
+fn a_table_is_resized_in_cells_and_one_undo_takes_it_back() {
+    let (mut s, a, b, c) = lab();
+    let t = s.execute("furniture.add", json!({"kind": "table", "width": 3, "depth": 1})).unwrap();
+    let table = id(&t);
+    let listed = |s: &mut Session| s.execute("closet.list", json!({})).unwrap()["furniture"][0].clone();
+    let v = listed(&mut s);
+    assert_eq!((v["width"].as_u64(), v["depth"].as_u64()), (Some(3), Some(1)));
+    assert!(v.get("side").is_none(), "only a rack has a side");
+    for d in [&a, &b, &c] {
+        s.execute("furniture.mount", json!({"device": d, "furniture": table})).unwrap();
+    }
+    assert!(s.execute("furniture.resize", json!({"furniture": table, "width": 2})).is_err(), "under what stands on it");
+    s.execute("furniture.resize", json!({"furniture": table, "depth": 3})).unwrap();
+    assert_eq!(listed(&mut s)["depth"], 3);
+    s.execute("furniture.resize", json!({"furniture": table, "width": 8, "depth": 6})).unwrap();
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(listed(&mut s)["width"], 3);
+    assert!(s.execute("furniture.resize", json!({"furniture": table})).is_err(), "a width or a depth is required");
+    assert!(s.execute("furniture.resize", json!({"furniture": table, "size": 4})).is_err());
+    assert!(s.execute("furniture.resize", json!({"furniture": table, "width": 9})).is_err());
+    assert!(s.execute("furniture.resize", json!({"furniture": table, "width": "wide"})).is_err());
+    assert!(s.execute("furniture.add", json!({"kind": "table", "width": 1})).is_err());
+    assert!(s.execute("furniture.add", json!({"kind": "shelf", "width": 3})).is_err(), "a shelf has no width");
+    assert_eq!(s.topology.physical.furniture.len(), 1, "a refused add leaves nothing behind");
+}
+
+#[test]
+fn a_rack_is_turned_around_in_one_undo_step() {
+    let (mut s, a, ..) = lab();
+    let rack = id(&s.execute("furniture.add", json!({"kind": "rack"})).unwrap());
+    let shelf = id(&s.execute("furniture.add", json!({"kind": "shelf"})).unwrap());
+    s.execute("furniture.mount", json!({"device": a, "furniture": rack, "slot": 1})).unwrap();
+    let side = |s: &mut Session| s.execute("closet.list", json!({})).unwrap()["furniture"][0]["side"].clone();
+    assert_eq!(side(&mut s), "front");
+    assert_eq!(s.execute("furniture.turn", json!({"furniture": rack})).unwrap()["side"], "back");
+    assert_eq!(side(&mut s), "back");
+    assert_eq!(s.execute("furniture.turn", json!({"furniture": rack, "side": "back"})).unwrap()["side"], "back");
+    assert_eq!(s.execute("furniture.turn", json!({"furniture": rack, "side": "front"})).unwrap()["side"], "front");
+    assert!(s.execute("furniture.turn", json!({"furniture": rack, "side": "sideways"})).is_err());
+    assert!(s.execute("furniture.turn", json!({"furniture": shelf})).is_err(), "only a rack turns");
+    assert!(s.execute("furniture.turn", json!({})).is_err());
+    s.execute("furniture.turn", json!({"furniture": rack})).unwrap();
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(side(&mut s), "front", "one undo step takes the turn back");
+    // The device stands where it stood.
+    assert!(s.topology.mount_of(netlabcraft_model::furniture::Item::Device(s.topology.find(&a).unwrap().id)).is_some());
+}
+
+#[test]
+fn the_loose_devices_of_a_closet_are_a_grid_or_a_list() {
+    let (mut s, ..) = lab();
+    let floor = |s: &mut Session| s.execute("closet.list", json!({})).unwrap()["floor"].clone();
+    assert_eq!(floor(&mut s), "grid");
+    assert_eq!(s.execute("closet.floor", json!({"layout": "list"})).unwrap()["layout"], "list");
+    assert_eq!(floor(&mut s), "list");
+    assert!(s.topology.floor_is_list(3));
+    assert!(s.execute("closet.floor", json!({"layout": "rows"})).is_err());
+    assert!(s.execute("closet.floor", json!({})).is_err());
+    assert!(s.execute("closet.floor", json!({"layout": "list", "place": 1})).is_err(), "a city has no floor");
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(floor(&mut s), "grid", "one undo step");
+    s.execute("closet.floor", json!({"place": 3, "layout": "list"})).unwrap();
+    let saved = netlabcraft_model::file::from_json(&netlabcraft_model::file::to_json(&s.topology).unwrap()).unwrap();
+    assert!(saved.floor_is_list(3), "the choice is part of the lab");
+    s.execute("closet.floor", json!({"layout": "grid"})).unwrap();
+    assert_eq!(floor(&mut s), "grid");
+}

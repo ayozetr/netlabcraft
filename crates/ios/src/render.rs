@@ -3298,6 +3298,9 @@ fn vpn_config(s: &mut String, d: &Device) {
         if let Some(n) = e.lifetime.kilobytes {
             let _ = writeln!(s, " set security-association lifetime kilobytes {n}");
         }
+        if let Some(g) = e.pfs {
+            let _ = writeln!(s, " set pfs group{g}");
+        }
         let _ = writeln!(s, "!");
     }
     for t in &d.tunnels {
@@ -3571,6 +3574,7 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
                 "tunnel (whole packets travel inside a new IP header)"
             };
             let _ = writeln!(s, "  Mode: {mode}");
+            let _ = writeln!(s, "  PFS: {}", pfs_line(d, sa));
             let _ = writeln!(s, "  ESP: {esp}");
             if let Some(line) = ah_half_line(sa) {
                 let _ = writeln!(s, "  {line}");
@@ -3580,6 +3584,20 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
         let _ = writeln!(s);
     }
     s.trim_end().to_string()
+}
+
+/// What `show crypto ipsec sa` says about perfect forward secrecy: the group of the exchange
+/// that gave the keys in use, or what the crypto map entry asks for.
+fn pfs_line(d: &Device, sa: &netlabcraft_sim::vpn::IpsecSa) -> String {
+    let used = sa.v1.as_deref().map(|v| v.pfs).or_else(|| sa.v2.as_deref().map(|v| v.pfs)).unwrap_or(0);
+    let asked = d.crypto.maps.iter().find(|e| e.map == sa.map && e.seq == sa.seq).and_then(|e| e.pfs);
+    match (used, asked) {
+        (0, None) => "no (the IPsec keys come from the IKE keys alone)".to_string(),
+        (0, Some(g)) => format!(
+            "group{g} is configured, but these keys were made without it (the first child SA of an IKEv2 exchange has no key exchange: the next renewal has one)"
+        ),
+        (g, _) => format!("group{g} (a fresh Diffie-Hellman exchange gave these keys)"),
+    }
 }
 
 /// `show crypto isakmp policy`.
@@ -3632,6 +3650,7 @@ pub fn crypto_maps(d: &Device) -> String {
         });
         let _ = writeln!(s, "  Transform set: {ts}");
         let _ = writeln!(s, "  Protects traffic matching: {}", e.acl.as_deref().unwrap_or("nothing (no `match address`)"));
+        let _ = writeln!(s, "  PFS: {}", e.pfs.map_or("off".to_string(), |g| format!("group{g}")));
         let on: Vec<&str> = c.applied.iter().filter(|(_, m)| **m == e.map).map(|(i, _)| i.as_str()).collect();
         let _ = writeln!(s, "  Applied to: {}", if on.is_empty() { "no interface".to_string() } else { on.join(", ") });
     }
