@@ -474,11 +474,12 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
             }
         }
         Act::Note => app.set_tool(Tool::Note),
-        Act::DeleteKey => match app.ui.selected.take() {
-            Some(d) => {
+        Act::DeleteKey => match (app.ui.selected.take(), app.ui.selected_cable) {
+            (Some(d), _) => {
                 app.run("device.remove", json!({"device": d.0}));
             }
-            None => app.set_tool(Tool::Delete),
+            (None, Some(c)) => crate::cable_window::delete(app, c),
+            (None, None) => app.set_tool(Tool::Delete),
         },
         Act::Inspect => app.set_tool(Tool::Inspect),
         Act::SimplePdu => app.set_tool(Tool::Ping),

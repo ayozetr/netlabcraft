@@ -2376,3 +2376,30 @@ furniture	Table	Mesa
 	Backup written to {}	Copia guardada en {}
 	Application size	Tamaño de la aplicación
 	Enter the password first: some tabs are locked.	Escribe antes la contraseña: algunas pestañas están bloqueadas.
+	Up	Activo
+	Down	Inactivo
+	Properties…	Propiedades…
+	Open First Device	Abrir el primer dispositivo
+	Open Second Device	Abrir el segundo dispositivo
+	Show Info	Mostrar información
+	Kind	Tipo
+	First end	Primer extremo
+	Second end	Segundo extremo
+	Status	Estado
+	Why it is down	Por qué está caído
+	Transceivers	Transceptores
+	set by hand	fijada a mano
+	from where the devices stand	según dónde están los dispositivos
+	Both ends single-mode	Ambos extremos monomodo
+	Both ends multi-mode	Ambos extremos multimodo
+	Delete Cable	Eliminar cable
+	Cable Properties	Propiedades del cable
+	single-mode (1310 nm)	monomodo (1310 nm)
+	multi-mode (850 nm)	multimodo (850 nm)
+	{} is switched off or has no power	{} está apagado o sin alimentación
+	{} is shut down	{} está desactivado
+	{} is err-disabled	{} está en err-disabled
+	the two ends are fixed at different speeds	los dos extremos están fijados a velocidades distintas
+	no clock rate on the DCE end	sin velocidad de reloj en el extremo DCE
+	the two ends use different encapsulations	los dos extremos usan encapsulaciones distintas
+	PPP authentication failed (check the usernames and passwords)	falló la autenticación PPP (revisa los usuarios y las contraseñas)
