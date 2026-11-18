@@ -60,6 +60,13 @@ pub fn running_config(d: &Device) -> String {
     if let Some(dn) = &a.domain_name {
         let _ = writeln!(s, "ip domain-name {dn}");
     }
+    for (n, ip) in &a.hosts {
+        let _ = writeln!(s, "ip host {n} {ip}");
+    }
+    if !a.name_servers.is_empty() {
+        let list: Vec<String> = a.name_servers.iter().map(ToString::to_string).collect();
+        let _ = writeln!(s, "ip name-server {}", list.join(" "));
+    }
     for u in &a.users {
         let level = if u.privilege == 1 { String::new() } else { format!(" privilege {}", u.privilege) };
         if u.hashed {
@@ -151,7 +158,14 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, "ip ftp password {}", pw(p));
         }
     }
-    if a.enable_secret.is_some() || a.enable_password.is_some() || a.no_domain_lookup || a.domain_name.is_some() || !a.users.is_empty() {
+    if a.enable_secret.is_some()
+        || a.enable_password.is_some()
+        || a.no_domain_lookup
+        || a.domain_name.is_some()
+        || !a.hosts.is_empty()
+        || !a.name_servers.is_empty()
+        || !a.users.is_empty()
+    {
         let _ = writeln!(s, "!");
     }
     for (x, y) in &d.dhcp_excluded {
@@ -2093,6 +2107,12 @@ pub(crate) fn ipv6_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf) {
     }
     if c.nd_other {
         let _ = writeln!(s, " ipv6 nd other-config-flag");
+    }
+    if c.nd_suppress {
+        let _ = writeln!(s, " ipv6 nd ra suppress all");
+    }
+    if let Some(n) = c.nd_ra_lifetime {
+        let _ = writeln!(s, " ipv6 nd ra lifetime {n}");
     }
     if let Some(f) = &c.filter_in {
         let _ = writeln!(s, " ipv6 traffic-filter {f} in");

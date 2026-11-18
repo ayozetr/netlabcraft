@@ -970,7 +970,7 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         "device.adapter" | "device.power.source" | "phone.configure" | "cloud.map" | "device.psu" => crate::families::run(s, cmd, p),
         "phone.status" | "phone.dial" | "phone.answer" | "phone.hangup" | "softphone.config" | "softphone.status" | "softphone.dial" | "softphone.answer"
         | "softphone.hangup" => crate::voice::run(s, cmd, p),
-        "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
+        "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" | "iot.beacon" => crate::iot::run(s, cmd, p),
         "environment.get" | "environment.set" | "environment.clear" | "environment.keyframe.add" | "environment.keyframe.remove" | "environment.clock"
         | "environment.export" | "environment.import" | "environment.physics" | "environment.create" | "environment.custom"
         | "environment.custom.remove" | "environment.shows" | "environment.defaults" | "environment.settings" => crate::envs::run(s, cmd, p),

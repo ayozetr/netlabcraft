@@ -31,7 +31,12 @@ pub(crate) fn thing_page(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "paired": paired(s, dev),
         "brightness": (thing(dev).map(|t| t.what) == Some("smart led")).then_some(dev.iot.brightness.unwrap_or(100)),
         "colour": (thing(dev).map(|t| t.what) == Some("smart led")).then(|| colour_text(dev.iot.colour)),
-        "frequency": (thing(dev).map(|t| t.what) == Some("signal")).then_some(dev.iot.frequency),
+        "frequency": thing(dev).filter(|t| has_frequency(t.what)).map(|_| dev.iot.frequency),
+        "pairing_code": thing(dev).filter(|t| has_pairing(t.what)).map(|_| format!("{:04}", dev.iot.pairing_code)),
+        "profile": (thing(dev).map(|t| t.what) == Some("bluetooth speaker")).then(|| dev.iot.profile.id()),
+        "tag": (thing(dev).map(|t| t.what) == Some("rfid card")).then(|| format!("{:x}", netlabcraft_model::proximity::announced_id(dev))),
+        "crossing": (thing(dev).map(|t| t.what) == Some("trip")).then_some(dev.iot.crossing),
+        "angle": (thing(dev).map(|t| t.what) == Some("trip")).then_some(dev.iot.angle),
         "second": thing(dev).filter(|t| t.what == "humiture").map(|_| s.sim.iot_second(&s.topology, dev)),
         "variable": thing(dev).filter(|t| t.what == "environment").map(|_| selected_variable(dev)),
         "level": (!is_sensor(dev) && level_range(thing(dev).map_or("", |t| t.what)).is_some()).then(|| s.sim.iot_level(dev)),
@@ -42,6 +47,42 @@ pub(crate) fn thing_page(s: &Session, d: netlabcraft_core::DeviceId) -> Value {
         "image": st.image,
         "message": st.message,
     })
+}
+
+/// Things that have a pitch to play or to listen for.
+fn has_frequency(what: &str) -> bool {
+    matches!(what, "signal" | "speaker" | "bluetooth speaker" | "music player" | "buzzer" | "alarm" | "siren" | "pitch")
+}
+
+/// Things that pair over Bluetooth.
+fn has_pairing(what: &str) -> bool {
+    matches!(what, "bluetooth speaker" | "music player")
+}
+
+/// A typed-in RFID id: a number, or hexadecimal text (`1A2B3C`, `0x1A2B3C`); 0 hands the id back to
+/// the card.
+fn parse_tag(v: &Value) -> Option<u32> {
+    let n = match v {
+        Value::Number(n) => n.as_u64(),
+        Value::String(s) => {
+            let h = s.trim().trim_start_matches("0x").trim_start_matches("0X");
+            if h.is_empty() || h.len() > 8 { None } else { u64::from_str_radix(h, 16).ok() }
+        }
+        _ => None,
+    }?;
+    u32::try_from(n).ok().filter(|n| *n <= netlabcraft_model::iot::MAX_TAG)
+}
+
+/// A pairing code: four digits (`"0042"`, or the number 42).
+fn parse_pairing(v: &Value) -> Option<u16> {
+    let n = match v {
+        Value::Number(n) => n.as_u64(),
+        Value::String(s) if !s.trim().is_empty() && s.trim().len() <= 4 && s.trim().bytes().all(|b| b.is_ascii_digit()) => {
+            s.trim().parse::<u64>().ok()
+        }
+        _ => None,
+    }?;
+    u16::try_from(n).ok().filter(|n| *n <= netlabcraft_model::iot::MAX_PAIRING_CODE)
 }
 
 /// A smart LED's colour as `#rrggbb` (warm white when none is set).
@@ -355,9 +396,50 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 None => None,
                 Some(v) => Some(
                     v.as_u64()
-                        .filter(|v| *v <= u64::from(MAX_FREQUENCY) && what == "signal")
+                        .filter(|v| *v <= u64::from(MAX_FREQUENCY) && has_frequency(what))
                         .and_then(|v| u32::try_from(v).ok())
-                        .ok_or_else(|| bad(format!("`frequency` is 0 to {MAX_FREQUENCY} Hz and only a signal generator has one")))?,
+                        .ok_or_else(|| {
+                            bad(format!(
+                                "`frequency` is 0 to {MAX_FREQUENCY} Hz and only a signal generator, a speaker, a player, a buzzer, an alarm, a siren or a sound detector has one"
+                            ))
+                        })?,
+                ),
+            };
+            let pairing_code = match p.get("pairing_code") {
+                None => None,
+                Some(v) => Some(parse_pairing(v).filter(|_| has_pairing(what)).ok_or_else(|| {
+                    bad("`pairing_code` is four digits (\"0000\" to \"9999\") and only a Bluetooth speaker and a music player have one")
+                })?),
+            };
+            let profile = match p.get("profile") {
+                None => None,
+                Some(v) => Some(
+                    v.as_str()
+                        .and_then(netlabcraft_model::iot::BtProfile::parse)
+                        .filter(|_| what == "bluetooth speaker")
+                        .ok_or_else(|| bad("`profile` is \"a2dp\" (music) or \"headset\" and only a Bluetooth speaker has one"))?,
+                ),
+            };
+            let tag = match p.get("tag") {
+                None => None,
+                Some(v) => Some(
+                    parse_tag(v)
+                        .filter(|_| what == "rfid card")
+                        .ok_or_else(|| bad("`tag` is a number or up to eight hexadecimal digits and only an RFID card has one"))?,
+                ),
+            };
+            let crossing = match p.get("crossing") {
+                None => None,
+                Some(Value::Bool(b)) if what == "trip" => Some(*b),
+                Some(_) => return Err(bad("`crossing` is true or false and only a trip sensor has one")),
+            };
+            let angle = match p.get("angle") {
+                None => None,
+                Some(v) => Some(
+                    v.as_u64()
+                        .filter(|a| *a < 360 && what == "trip")
+                        .and_then(|a| u16::try_from(a).ok())
+                        .ok_or_else(|| bad("`angle` is 0 to 359 degrees and only a trip sensor has one"))?,
                 ),
             };
             s.checkpoint();
@@ -386,6 +468,21 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 if let Some(f) = frequency {
                     dev.iot.frequency = f;
                 }
+                if let Some(c) = pairing_code {
+                    dev.iot.pairing_code = c;
+                }
+                if let Some(pr) = profile {
+                    dev.iot.profile = pr;
+                }
+                if let Some(t) = tag {
+                    dev.iot.tag = t;
+                }
+                if let Some(c) = crossing {
+                    dev.iot.crossing = c;
+                }
+                if let Some(a) = angle {
+                    dev.iot.angle = a;
+                }
             }
             if sets_level {
                 // An RGB LED's red, green and blue make one number, 0xRRGGBB.
@@ -410,6 +507,22 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
             // A new reading goes to the server at once, and the devices hear what it decided.
             s.sim.iot_sync(&s.topology);
             Ok(thing_page(s, d))
+        }
+        "iot.beacon" => {
+            let d = crate::cmd::device_param(s, p, "device")?;
+            if s.topology.device(d).and_then(thing).is_none_or(|x| x.what != "beacon") {
+                return Err(bad("iot.beacon is for a beacon"));
+            }
+            s.sim.env_step(&s.topology);
+            let name = |id| s.topology.device(id).map_or_else(String::new, |x| x.name.clone());
+            let log: Vec<Value> = s
+                .sim
+                .beacon_log(d)
+                .iter()
+                .map(|e| json!({"time_s": e.at_us / 1_000_000, "thing": name(e.thing), "event": if e.heard { "heard" } else { "lost" }}))
+                .collect();
+            let audience: Vec<String> = s.sim.beacon_audience(d).into_iter().map(name).collect();
+            Ok(json!({"device": name(d), "audience": audience, "log": log}))
         }
         "iot.server" | "iot.switch" => {
             let d = crate::cmd::device_param(s, p, "device")?;

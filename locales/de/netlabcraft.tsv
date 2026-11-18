@@ -2417,6 +2417,13 @@ furniture	Table	Tisch
 	PPP authentication failed (check the usernames and passwords)	PPP-Authentifizierung fehlgeschlagen (Benutzernamen und Kennwörter prüfen)
 	Each place has its own physics	Jeder Ort hat seine eigene Physik
 	Parts change the place they stand in by rates, and the place settles back when they stop	Geräte verändern ihren Ort mit einer Rate, und der Ort kehrt zurück, wenn sie anhalten
+	Pairing code:	Kopplungscode:
+	Profile:	Profil:
+	Music (A2DP)	Musik (A2DP)
+	Headset	Headset
+	Card id (hex):	Karten-ID (hex):
+	Report crossings of the wire	Überquerungen des Drahts melden
+	Wire angle (degrees):	Winkel des Drahts (Grad):
 	Custom environment:	Eigene Umgebung:
 	Create Custom Environment	Eigene Umgebung erstellen
 	Defaults:	Vorgaben:
