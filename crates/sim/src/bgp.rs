@@ -1117,6 +1117,8 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 let Some(b) = routers.iter().find(|d| d.id == p.peer) else { continue };
                 let Some(bb) = &b.bgp else { continue };
                 let Some(m) = bb.neighbor(p.local) else { continue };
+                // The receiving end's side of the session: what it presents (`local-as`) is its own.
+                let Some(rp) = an.peerings.get(&(p.peer, p.local)) else { continue };
                 let own = ifs.get(&b.id).map_or(&[][..], Vec::as_slice);
                 let best_refs: Vec<&Path> = best.iter().collect();
                 for (net, attrs) in export_all(a, ab, n, p, base.get(&a.id).map_or(&[][..], Vec::as_slice), &best_refs) {
@@ -1127,7 +1129,7 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                             slot.insert((m.addr, net), attrs.clone());
                         }
                     }
-                    let Some(got) = import(b, m, p, &attrs, from_id, net, own) else { continue };
+                    let Some(got) = import(b, m, rp, &attrs, from_id, net, own) else { continue };
                     let slot = next.entry(b.id).or_default();
                     if slot.len() < MAX_PATHS {
                         slot.insert((m.addr, net), got);
