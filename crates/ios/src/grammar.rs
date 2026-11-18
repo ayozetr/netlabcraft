@@ -793,6 +793,8 @@ pub enum Id {
     IfSpeed,
     IfDuplex,
     IfMdix,
+    IfTransceiver,
+    ShowIntTransceiver,
     IfProxyArp,
     NoIfProxyArp,
     NoIfMdix,
@@ -2301,6 +2303,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowMemory, EXECS, Modes::BOTH, [K("show"), K("memory"), K("statistics")], "Memory in use"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface")], "Layer-3 settings of every interface"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), Rest("<interface>")], "Layer-3 settings of an interface"),
+    spec!(
+        ShowIntTransceiver,
+        EXECS,
+        Modes::SWITCH.or(Modes::CARD),
+        [K("show"), K("interfaces"), K("transceiver")],
+        "Transceiver, loss budget and margin of each fiber port"
+    ),
     spec!(ShowIntStatus, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("status")], "Port state, VLAN and speed"),
     spec!(
         ShowRunInterface,
@@ -4590,6 +4599,14 @@ pub static SPECS: &[Spec] = &[
     spec!(IfProxyArp, IFS, Modes::ROUTER, [K("ip"), K("proxy-arp")], "Answer ARP for hosts that are reached through this router"),
     spec!(NoIfProxyArp, IFS, Modes::ROUTER, [K("no"), K("ip"), K("proxy-arp")], "Answer ARP only for this interface's own address"),
     spec!(NoIfMdix, Modes::IF, Modes::BOTH, [K("no"), K("mdix"), K("auto")], "Expect the right cable type"),
+    spec!(
+        IfTransceiver,
+        Modes::IF,
+        Modes::BOTH,
+        [K("transceiver"), K("type"), Arg("{multi-mode|single-mode}")],
+        "The transceiver in a fiber or combo port (both ends of a link need the same)"
+    ),
+    spec!(IfTransceiver, Modes::IF, Modes::BOTH, [K("no"), K("transceiver"), K("type")], "Put the multi-mode transceiver back"),
     spec!(IfKeepalive, Modes::IF, Modes::BOTH, [K("keepalive")], "Keepalives every 10 seconds again"),
     spec!(
         IfKeepalive,

@@ -131,6 +131,14 @@ pub struct CableLength {
     pub meters: u32,
 }
 
+/// The splices set by hand on a fiber cable (each one costs a little light).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CableSplices {
+    pub a: End,
+    pub b: End,
+    pub count: u32,
+}
+
 /// The physical side of a lab.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct Physical {
@@ -140,6 +148,9 @@ pub struct Physical {
     pub homes: Vec<Home>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lengths: Vec<CableLength>,
+    /// Splices on fiber cables (a cable with none is not listed).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub splices: Vec<CableSplices>,
     /// Racks, shelves and tables standing in wiring closets.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub furniture: Vec<Furniture>,
@@ -173,6 +184,7 @@ impl Physical {
         self.places.is_empty()
             && self.homes.is_empty()
             && self.lengths.is_empty()
+            && self.splices.is_empty()
             && self.furniture.is_empty()
             && self.fittings.is_empty()
             && self.mounts.is_empty()
@@ -207,7 +219,71 @@ pub(crate) fn clean_name(name: &str) -> Option<String> {
 }
 
 fn same_cable(l: &Link, c: &CableLength) -> bool {
-    (l.a == c.a && l.b == c.b) || (l.a == c.b && l.b == c.a)
+    same_ends(l, c.a, c.b)
+}
+
+fn same_ends(l: &Link, a: End, b: End) -> bool {
+    (l.a == a && l.b == b) || (l.a == b && l.b == a)
+}
+
+/// Most splices on one cable.
+pub const MAX_SPLICES: u32 = 50;
+/// Most cables with splices kept.
+pub const MAX_SPLICED: usize = 10_000;
+/// Loss of one mated connector pair, in dB (the ceiling structured-cabling standards allow).
+pub const CONNECTOR_LOSS_DB: f32 = 0.75;
+/// Loss of one fusion splice, in dB.
+pub const SPLICE_LOSS_DB: f32 = 0.3;
+/// Attenuation of multi-mode fiber at 850 nm, in dB a kilometre.
+pub const MULTI_MODE_DB_KM: f32 = 3.0;
+/// Attenuation of single-mode fiber at 1310 nm, in dB a kilometre.
+pub const SINGLE_MODE_DB_KM: f32 = 0.35;
+/// What a short-reach (850 nm) transceiver tolerates between its ends, in dB.
+pub const MULTI_MODE_BUDGET_DB: f32 = 3.56;
+/// What a long-reach (1310 nm) transceiver tolerates between its ends, in dB.
+pub const SINGLE_MODE_BUDGET_DB: f32 = 6.0;
+/// A link with less than this left over works but is flagged as degraded, in dB.
+pub const BUDGET_MARGIN_DB: f32 = 1.0;
+/// Connectors on a cable run: one at each end.
+pub const END_CONNECTORS: u32 = 2;
+
+/// How a fiber link stands against its transceivers' power budget.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BudgetState {
+    /// Margin to spare.
+    Ok,
+    /// It carries traffic, with under [`BUDGET_MARGIN_DB`] to spare.
+    Degraded,
+    /// The loss exceeds the budget: the link is down.
+    Over,
+}
+
+/// The light a fiber link loses (distance, connectors, splices) against what its transceivers tolerate.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FiberBudget {
+    pub meters: u32,
+    pub connectors: u32,
+    pub splices: u32,
+    pub loss_db: f32,
+    pub budget_db: f32,
+}
+
+impl FiberBudget {
+    /// What is left of the budget, in dB (negative when it is exceeded).
+    pub fn margin_db(&self) -> f32 {
+        self.budget_db - self.loss_db
+    }
+
+    pub fn state(&self) -> BudgetState {
+        let margin = self.margin_db();
+        if margin < 0.0 {
+            BudgetState::Over
+        } else if margin < BUDGET_MARGIN_DB {
+            BudgetState::Degraded
+        } else {
+            BudgetState::Ok
+        }
+    }
 }
 
 impl Topology {
@@ -497,12 +573,53 @@ impl Topology {
         Ok(self.cable_length(&l))
     }
 
+    /// The splices on the cable at a link.
+    pub fn splices_on(&self, l: &Link) -> u32 {
+        self.physical.splices.iter().find(|c| same_ends(l, c.a, c.b)).map_or(0, |c| c.count)
+    }
+
+    /// Sets the splices on the cable at `end` (0 clears them); returns the count.
+    pub fn set_splices(&mut self, end: End, count: u32) -> Result<u32> {
+        let l = *self.link_at(end).ok_or_else(|| ModelError::Invalid(format!("{} has no cable", self.end_label(end))))?;
+        if !self.resolved_cable(&l).is_fiber() {
+            return Err(ModelError::Invalid("only a fiber cable has splices".into()));
+        }
+        if count > MAX_SPLICES {
+            return Err(ModelError::Invalid(format!("a cable has 0 to {MAX_SPLICES} splices")));
+        }
+        self.physical.splices.retain(|c| !same_ends(&l, c.a, c.b));
+        if count > 0 {
+            if self.physical.splices.len() >= MAX_SPLICED {
+                return Err(ModelError::Invalid(format!("at most {MAX_SPLICED} cables with splices")));
+            }
+            self.physical.splices.push(CableSplices { a: l.a, b: l.b, count });
+        }
+        Ok(count)
+    }
+
+    /// The loss budget of a fiber cable: the run's length, its two end connectors and its
+    /// splices against what the transceiver at its first end tolerates. `None` for a cable
+    /// that is not fiber.
+    pub fn fiber_budget(&self, l: &Link) -> Option<FiberBudget> {
+        let kind = self.resolved_cable(l);
+        if !kind.is_fiber() {
+            return None;
+        }
+        let meters = self.cable_length(l).meters;
+        let (connectors, splices) = (END_CONNECTORS, self.splices_on(l));
+        let per_km = if kind == crate::cable::Cable::FiberSingle { SINGLE_MODE_DB_KM } else { MULTI_MODE_DB_KM };
+        let loss_db = meters as f32 / 1000.0 * per_km + connectors as f32 * CONNECTOR_LOSS_DB + splices as f32 * SPLICE_LOSS_DB;
+        let budget_db = if self.single_mode_at(l.a) { SINGLE_MODE_BUDGET_DB } else { MULTI_MODE_BUDGET_DB };
+        Some(FiberBudget { meters, connectors, splices, loss_db, budget_db })
+    }
+
     /// Drops what refers to devices or cables that are gone.
     pub(crate) fn prune_physical(&mut self) {
         let devices: BTreeSet<DeviceId> = self.devices.iter().map(|d| d.id).collect();
         self.physical.homes.retain(|h| devices.contains(&h.device));
         let links = &self.links;
         self.physical.lengths.retain(|c| links.iter().any(|l| same_cable(l, c)));
+        self.physical.splices.retain(|c| links.iter().any(|l| same_ends(l, c.a, c.b)));
         self.prune_furniture();
     }
 
@@ -560,6 +677,13 @@ impl Topology {
         ph.lengths.retain(|c| {
             (1..=MAX_CABLE_M).contains(&c.meters)
                 && links.iter().any(|l| same_cable(l, c))
+                && seen.insert(if c.a <= c.b { (c.a, c.b) } else { (c.b, c.a) })
+        });
+        ph.splices.truncate(MAX_SPLICED);
+        let mut seen = BTreeSet::new();
+        ph.splices.retain(|c| {
+            (1..=MAX_SPLICES).contains(&c.count)
+                && links.iter().any(|l| same_ends(l, c.a, c.b))
                 && seen.insert(if c.a <= c.b { (c.a, c.b) } else { (c.b, c.a) })
         });
         self.sanitize_furniture();
@@ -712,5 +836,51 @@ mod tests {
             t.add_place(PlaceKind::City, None, None, 0.0, 0.0).unwrap();
         }
         assert!(t.add_place(PlaceKind::City, None, None, 0.0, 0.0).is_err());
+    }
+
+    #[test]
+    fn a_fiber_link_is_measured_against_its_transceivers_power_budget() {
+        use crate::cable::Cable;
+        let mut t = Topology::new();
+        let a = t.add_model(crate::models::find("Switch-24-SFP").unwrap(), None, 0.0, 0.0).unwrap();
+        let b = t.add_model(crate::models::find("Switch-24-SFP").unwrap(), None, 100.0, 0.0).unwrap();
+        let (ea, eb) = (End { device: a, port: 24 }, End { device: b, port: 24 });
+        t.connect_with(ea, eb, Cable::FiberMulti).unwrap();
+        let l = *t.link_at(ea).unwrap();
+        // 3 m of multi-mode: two connectors, nothing else, well inside the budget.
+        let fb = t.fiber_budget(&l).unwrap();
+        assert_eq!((fb.connectors, fb.splices, fb.state()), (2, 0, BudgetState::Ok));
+        // 550 m (the reach of the cable) leaves under a decibel.
+        t.set_cable_length(ea, Some(550)).unwrap();
+        assert_eq!(t.fiber_budget(&l).unwrap().state(), BudgetState::Degraded);
+        // Two splices at 550 m take it over the budget; clearing them brings it back.
+        assert_eq!(t.set_splices(ea, 2).unwrap(), 2);
+        assert_eq!(t.splices_on(&l), 2);
+        assert_eq!(t.fiber_budget(&l).unwrap().state(), BudgetState::Over);
+        t.set_splices(eb, 0).unwrap();
+        assert!(t.physical.splices.is_empty());
+        // Single-mode over single-mode fiber has a bigger budget and less loss a kilometre.
+        for e in [ea, eb] {
+            t.device_mut(e.device).unwrap().ports[e.port].single_mode = true;
+        }
+        t.links[0].cable = Cable::FiberSingle;
+        let l = *t.link_at(ea).unwrap();
+        t.set_cable_length(ea, Some(5_000)).unwrap();
+        let fb = t.fiber_budget(&l).unwrap();
+        assert_eq!((fb.budget_db, fb.state()), (SINGLE_MODE_BUDGET_DB, BudgetState::Ok));
+        t.set_splices(ea, 3).unwrap();
+        t.set_cable_length(ea, Some(10_000)).unwrap();
+        assert_eq!(t.fiber_budget(&l).unwrap().state(), BudgetState::Degraded);
+        t.set_splices(ea, 4).unwrap();
+        assert_eq!(t.fiber_budget(&l).unwrap().state(), BudgetState::Over);
+        // Refusals: too many, none on copper.
+        assert!(t.set_splices(ea, MAX_SPLICES + 1).is_err());
+        let (c, d) = (t.add_device(DeviceKind::Pc, None, 0.0, 0.0).unwrap(), t.add_device(DeviceKind::Switch, None, 0.0, 0.0).unwrap());
+        t.connect(End { device: c, port: 0 }, End { device: d, port: 0 }).unwrap();
+        assert!(t.set_splices(End { device: c, port: 0 }, 1).is_err());
+        assert!(t.fiber_budget(t.link_at(End { device: c, port: 0 }).unwrap()).is_none());
+        // Removing the cable forgets its splices.
+        t.disconnect(ea).unwrap();
+        assert!(t.physical.splices.is_empty());
     }
 }

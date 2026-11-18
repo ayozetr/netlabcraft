@@ -111,6 +111,8 @@ struct Facts {
     why: Option<String>,
     /// For a fiber cable: whether each end's transceiver is single-mode.
     fiber: Option<(bool, bool)>,
+    /// For a fiber cable: its loss budget.
+    budget: Option<netlabcraft_model::physical::FiberBudget>,
 }
 
 fn facts(app: &PacketApp, end: End) -> Option<Facts> {
@@ -128,6 +130,7 @@ fn facts(app: &PacketApp, end: End) -> Option<Facts> {
         up,
         why: if up { None } else { netlabcraft_sim::link_why_down(t, l) },
         fiber: kind.is_fiber().then(|| (t.single_mode_at(l.a), t.single_mode_at(l.b))),
+        budget: t.fiber_budget(l),
     })
 }
 
@@ -150,6 +153,7 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
     let (mut open, mut delete_it, mut set_length) = (true, false, false);
     let mut open_device = None;
     let mut transceivers = None;
+    let mut splices = None;
     egui::Window::new(tl("Cable Properties")).id(egui::Id::unique("cable_window")).open(&mut open).collapsible(false).resizable(false).show(
         ctx,
         |ui| {
@@ -187,6 +191,23 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
                     });
                     ui.end_row();
                 }
+                if let Some(b) = &f.budget {
+                    use netlabcraft_model::physical::BudgetState;
+                    ui.label(tl("Loss budget"));
+                    let (word, color) = match b.state() {
+                        BudgetState::Ok => (tl("within the budget"), tk.link_up),
+                        BudgetState::Degraded => (tl("degraded: little margin left"), tk.link_blocked),
+                        BudgetState::Over => (tl("over the budget"), tk.link_down),
+                    };
+                    ui.vertical(|ui| {
+                        ui.label(crate::i18n::trf(
+                            "{} dB lost of {} dB ({} connectors, {} splices)",
+                            &[&format!("{:.1}", b.loss_db), &format!("{:.1}", b.budget_db), &b.connectors, &b.splices],
+                        ));
+                        ui.colored_label(color, word);
+                    });
+                    ui.end_row();
+                }
             });
             ui.separator();
             ui.horizontal_wrapped(|ui| {
@@ -198,6 +219,14 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
                 }
                 if ui.button(tl("Cable Length…")).clicked() {
                     set_length = true;
+                }
+                if let Some(b) = &f.budget {
+                    if ui.button(tl("More splices")).clicked() {
+                        splices = Some(b.splices.saturating_add(1));
+                    }
+                    if ui.add_enabled(b.splices > 0, egui::Button::new(tl("Fewer splices"))).clicked() {
+                        splices = Some(b.splices.saturating_sub(1));
+                    }
                 }
                 if f.fiber.is_some() {
                     if ui.button(tl("Both ends single-mode")).clicked() {
@@ -224,6 +253,10 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
             let port = port_name(app, e);
             app.run("port.transceiver", json!({"device": e.device.0, "port": port, "mode": mode}));
         }
+    }
+    if let Some(count) = splices {
+        let port = port_name(app, l.a);
+        app.run("link.splices", json!({"device": l.a.device.0, "port": port, "count": count}));
     }
     if delete_it {
         delete(app, l.a);
