@@ -336,7 +336,10 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
             }
             for a in &nssa_areas {
                 type7.push((*a, *x, *n, *x, !outside));
-                if !outside && let Some(tr) = st.translators.get(a).filter(|tr| flood.contains(*tr)) {
+                if !outside
+                    && !st.nssa_only.contains(&(*x, *n))
+                    && let Some(tr) = st.translators.get(a).filter(|tr| flood.contains(*tr))
+                {
                     type5.push((*tr, *x, *n));
                 }
             }
@@ -438,7 +441,11 @@ pub fn database(t: &Topology, st: &OspfState, me: DeviceId) -> Vec<Lsa> {
                 lsa.type1 = st.external_metrics.get(&(*owner, *net)).is_some_and(|m| m.1);
                 lsa.tag = st.external_tags.get(&(*owner, *net)).copied().unwrap_or(0);
                 // The default route is not translated; the rest is, by the area's border router.
-                lsa.translator = if net.prefix == 0 || !*translated { None } else { st.translators.get(area).and_then(|tr| rid(*tr)) };
+                lsa.translator = if net.prefix == 0 || !*translated || st.nssa_only.contains(&(*owner, *net)) {
+                    None
+                } else {
+                    st.translators.get(area).and_then(|tr| rid(*tr))
+                };
                 // The P bit lets the translator turn it into a type 5 LSA; the forwarding address
                 // is the originating router's own address in the area (none for the default route).
                 lsa.p_bit = lsa.translator.is_some();

@@ -1545,6 +1545,11 @@ pub struct OspfArea {
     /// area's type 7 LSAs into type 5 whether or not it has the highest router ID.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub nssa_translate_always: bool,
+    /// `area N nssa default-information-originate nssa-only`: the default route's type 7 LSA has a
+    /// clear P bit (it is never translated into a type 5 LSA; this simulator never translates a
+    /// default route either way).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nssa_default_only: bool,
     /// `area N range`: the border router advertises these instead of the area's networks
     /// inside them.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
