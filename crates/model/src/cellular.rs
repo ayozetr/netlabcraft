@@ -19,7 +19,7 @@ use std::net::Ipv4Addr;
 use netlabcraft_core::{DeviceId, Ipv4Net};
 use serde::{Deserialize, Serialize};
 
-use crate::physical::{CITY_UNIT_M, PlaceKind};
+use crate::physical::PlaceKind;
 use crate::{Device, DeviceKind, End, Topology, ifname};
 
 /// How far a tower reaches on the logical map, when the lab has no physical layout.
@@ -217,7 +217,7 @@ impl Topology {
             if ct != cd {
                 return None;
             }
-            (((xt - xd).powi(2) + (yt - yd).powi(2)).sqrt() * CITY_UNIT_M, CELL_RANGE_M as f32)
+            (((xt - xd).powi(2) + (yt - yd).powi(2)).sqrt() * self.map_scale(ct), CELL_RANGE_M as f32)
         };
         (dist.is_finite() && dist <= range).then(|| (bars_for(dist / range), dist))
     }

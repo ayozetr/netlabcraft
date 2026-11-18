@@ -1,4 +1,4 @@
-//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":12,"topology":{…}}`.
+//! The `.nlcraft` lab file: UTF-8 JSON, `{"format":"netlabcraft","version":13,"topology":{…}}`.
 //! Readers accept older versions and refuse newer ones; loading always sanitizes.
 
 use serde::{Deserialize, Serialize};
@@ -16,12 +16,13 @@ pub const FORMAT: &str = "netlabcraft";
 /// 8: devices may carry NetFlow settings (`netflow`: a router's export destinations, version and counting interfaces, an end device's collector port).
 /// 10: two fiber cables, `fiber-single-mode` and `fiber-multi-mode` (an older `fiber` cable reads as multi-mode), a port's `single_mode` transceiver, USB cables (`usb` on a `consoles` entry) and octal cables (`octals`).
 /// 11: the lab may carry `environments` (the Environments window: the environment clock and what each place sets). Older files have none.
-/// 12: the physical section may carry containers (a `container` place kind), inventory shelves, cable pegboards and industrial control panels (furniture kinds `inventory-shelf`, `pegboard`, `icp`), cables hung on pegs (`hangs`) and the working closet (`working`). Older files have none and open as before.
+/// 12: the lab may carry `images` (PNG and JPEG pictures, each stored once under the hash of its bytes), a `background` for the logical workspace, and `scenes` in the physical section (the background, icon and size of each place). Older files have none.
+/// 13: the physical section may carry containers (a `container` place kind), inventory shelves, cable pegboards and industrial control panels (furniture kinds `inventory-shelf`, `pegboard`, `icp`), cables hung on pegs (`hangs`) and the working closet (`working`). Older files have none and open as before.
 /// Older files still open (their phones get the port; a drawing with only `color` draws as it always did;
 /// a device without `host_fw` has its firewall off; one without `pppoe` has no account and no session;
 /// one without `vpn_client` or `crypto.ra` has no VPN client settings and no remote-access server;
 /// one without `netflow` exports nothing and runs no collector).
-pub const VERSION: u32 = 12;
+pub const VERSION: u32 = 13;
 pub const EXTENSION: &str = "nlcraft";
 
 /// Largest lab file accepted (hostile input).
@@ -144,7 +145,8 @@ mod tests {
         assert!(from_json(r#"{"format":"netlabcraft","version":10,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":11,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
         assert!(from_json(r#"{"format":"netlabcraft","version":12,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
-        assert!(from_json(r#"{"format":"netlabcraft","version":13,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
+        assert!(from_json(r#"{"format":"netlabcraft","version":13,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_ok());
+        assert!(from_json(r#"{"format":"netlabcraft","version":14,"topology":{"devices":[],"links":[],"next_id":1}}"#).is_err());
     }
 
     #[test]
