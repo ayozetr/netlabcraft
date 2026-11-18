@@ -2446,3 +2446,23 @@ furniture	Table	Tavolo
 	Card id (hex):	Id della scheda (hex):
 	Report crossings of the wire	Segnala gli attraversamenti del filo
 	Wire angle (degrees):	Angolo del filo (gradi):
+	Custom environment:	Ambiente personalizzato:
+	Create Custom Environment	Crea ambiente personalizzato
+	Defaults:	Predefiniti:
+	Replace what this place sets with this environment	Sostituisce ciò che questo luogo imposta con questo ambiente
+	Keyframes joined by:	Fotogrammi chiave uniti da:
+	Straight line	Linea retta
+	Step	Gradino
+	Smooth curve	Curva morbida
+	Variables defined by a formula	Variabili definite da una formula
+	Formula:	Formula:
+	Add Variable	Aggiungi variabile
+	Copy Shows from Parent	Copia la visualizzazione dal luogo superiore
+	Leave out what the place above leaves out	Omette ciò che omette il luogo superiore
+	Show Only Actives	Mostra solo le attive
+	Leave out every variable no place sets	Omette ogni variabile che nessun luogo imposta
+	Desert	Deserto
+	Tropical	Tropicale
+	Arctic	Artico
+	Indoor office	Ufficio interno
+	Greenhouse	Serra

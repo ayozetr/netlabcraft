@@ -258,7 +258,7 @@ impl Iot {
     pub fn sanitize(&mut self) {
         self.value = self.value.clamp(MIN_VALUE, MAX_VALUE);
         self.second = self.second.clamp(MIN_VALUE, MAX_VALUE);
-        if crate::environments::var_by_id(&self.variable).is_none() {
+        if crate::environments::var_by_id(&self.variable).is_none() && !crate::envcustom::valid_custom_id(&self.variable) {
             self.variable.clear();
         }
         self.interval = self.interval.min(MAX_INTERVAL);
@@ -572,7 +572,7 @@ mod tests {
         assert_eq!(room_word("thermostat"), "temperature");
         assert_eq!(room_word("smoke"), "smoke");
         // A file naming a variable that does not exist, or a second reading out of range.
-        let mut i = Iot { variable: "no_such".into(), second: 5_000, ..Iot::default() };
+        let mut i = Iot { variable: "No such variable!".into(), second: 5_000, ..Iot::default() };
         i.sanitize();
         assert_eq!((i.variable.as_str(), i.second), ("", MAX_VALUE));
         let mut i = Iot { variable: "wind_speed".into(), ..Iot::default() };

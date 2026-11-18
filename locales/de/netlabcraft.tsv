@@ -2446,3 +2446,23 @@ furniture	Table	Tisch
 	Card id (hex):	Karten-ID (hex):
 	Report crossings of the wire	Überquerungen des Drahts melden
 	Wire angle (degrees):	Winkel des Drahts (Grad):
+	Custom environment:	Eigene Umgebung:
+	Create Custom Environment	Eigene Umgebung erstellen
+	Defaults:	Vorgaben:
+	Replace what this place sets with this environment	Ersetzt, was dieser Ort festlegt, durch diese Umgebung
+	Keyframes joined by:	Schlüsselbilder verbunden durch:
+	Straight line	Gerade
+	Step	Stufe
+	Smooth curve	Weiche Kurve
+	Variables defined by a formula	Durch eine Formel definierte Variablen
+	Formula:	Formel:
+	Add Variable	Variable hinzufügen
+	Copy Shows from Parent	Anzeige vom übergeordneten Ort kopieren
+	Leave out what the place above leaves out	Lässt weg, was der übergeordnete Ort weglässt
+	Show Only Actives	Nur Aktive anzeigen
+	Leave out every variable no place sets	Lässt jede Variable weg, die kein Ort festlegt
+	Desert	Wüste
+	Tropical	Tropen
+	Arctic	Arktis
+	Indoor office	Büro
+	Greenhouse	Gewächshaus

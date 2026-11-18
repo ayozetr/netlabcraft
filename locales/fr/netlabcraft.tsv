@@ -2446,3 +2446,23 @@ furniture	Table	Table
 	Card id (hex):	Id de la carte (hex) :
 	Report crossings of the wire	Signaler les franchissements du fil
 	Wire angle (degrees):	Angle du fil (degrés) :
+	Custom environment:	Environnement personnalisé :
+	Create Custom Environment	Créer un environnement personnalisé
+	Defaults:	Modèles :
+	Replace what this place sets with this environment	Remplace ce que ce lieu définit par cet environnement
+	Keyframes joined by:	Images clés reliées par :
+	Straight line	Ligne droite
+	Step	Palier
+	Smooth curve	Courbe lisse
+	Variables defined by a formula	Variables définies par une formule
+	Formula:	Formule :
+	Add Variable	Ajouter la variable
+	Copy Shows from Parent	Copier l'affichage du lieu parent
+	Leave out what the place above leaves out	Masque ce que masque le lieu parent
+	Show Only Actives	Afficher seulement les actives
+	Leave out every variable no place sets	Masque toute variable qu'aucun lieu ne définit
+	Desert	Désert
+	Tropical	Tropical
+	Arctic	Arctique
+	Indoor office	Bureau intérieur
+	Greenhouse	Serre

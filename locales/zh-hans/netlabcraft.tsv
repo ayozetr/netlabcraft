@@ -2446,3 +2446,23 @@ furniture	Table	桌子
 	Card id (hex):	卡片编号 (十六进制)：
 	Report crossings of the wire	报告穿越拉线的物体
 	Wire angle (degrees):	拉线角度 (度)：
+	Custom environment:	自定义环境：
+	Create Custom Environment	创建自定义环境
+	Defaults:	预设：
+	Replace what this place sets with this environment	用此环境替换该地点已设置的内容
+	Keyframes joined by:	关键帧连接方式：
+	Straight line	直线
+	Step	阶梯
+	Smooth curve	平滑曲线
+	Variables defined by a formula	由公式定义的变量
+	Formula:	公式：
+	Add Variable	添加变量
+	Copy Shows from Parent	从上级复制显示设置
+	Leave out what the place above leaves out	隐藏上级地点所隐藏的变量
+	Show Only Actives	仅显示已设置项
+	Leave out every variable no place sets	隐藏所有没有地点设置的变量
+	Desert	沙漠
+	Tropical	热带
+	Arctic	北极
+	Indoor office	室内办公室
+	Greenhouse	温室
