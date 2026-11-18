@@ -82,62 +82,67 @@ fn main() {
             other => out = other.to_string(),
         }
     }
-    let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(size.0, size.1)).with_max_steps(12).wgpu().build_ui_state(
-        |ui, app: &mut PacketApp| {
-            netlabcraft_ui_egui::fonts::install(ui.ctx());
-            app.apply_theme(ui.ctx());
-            app.ui(ui);
-        },
-        {
-            let mut app = PacketApp::new(session);
-            app.ui.dark = dark;
-            if let Some(credits) = about {
-                app.ui.show_about = true;
-                app.ui.about_credits = credits;
-            }
-            for c in &consoles {
-                let id = app.session.topology.resolve(c).expect("device");
-                netlabcraft_ui_egui::open_console(&mut app, id);
-                if let Some(which) = &desktop {
-                    netlabcraft_ui_egui::open_desktop_app(&mut app, id, which.as_str());
+    let mut harness = egui_kittest::Harness::builder()
+        .with_size(egui::vec2(size.0, size.1))
+        .with_max_steps(12)
+        .with_accessibility_check(false)
+        .wgpu()
+        .build_ui_state(
+            |ui, app: &mut PacketApp| {
+                netlabcraft_ui_egui::fonts::install(ui.ctx());
+                app.apply_theme(ui.ctx());
+                app.ui(ui);
+            },
+            {
+                let mut app = PacketApp::new(session);
+                app.ui.dark = dark;
+                if let Some(credits) = about {
+                    app.ui.show_about = true;
+                    app.ui.about_credits = credits;
                 }
-                if config {
-                    netlabcraft_ui_egui::open_config_tab(&mut app, id);
+                for c in &consoles {
+                    let id = app.session.topology.resolve(c).expect("device");
+                    netlabcraft_ui_egui::open_console(&mut app, id);
+                    if let Some(which) = &desktop {
+                        netlabcraft_ui_egui::open_desktop_app(&mut app, id, which.as_str());
+                    }
+                    if config {
+                        netlabcraft_ui_egui::open_config_tab(&mut app, id);
+                    }
+                    if physical_tab {
+                        netlabcraft_ui_egui::open_physical_tab(&mut app, id);
+                    }
+                    if services {
+                        netlabcraft_ui_egui::open_services_tab(&mut app, id);
+                    }
+                    if let Some(p) = &page {
+                        netlabcraft_ui_egui::open_services_page(&mut app, id, p);
+                    }
+                    if let Some(u) = &url {
+                        netlabcraft_ui_egui::open_browser(&mut app, id, u);
+                    }
+                    if let Some(t) = &tab {
+                        netlabcraft_ui_egui::open_tab(&mut app, id, t);
+                    }
+                    if let Some(p) = &config_page {
+                        netlabcraft_ui_egui::open_config_page(&mut app, id, p);
+                    }
                 }
-                if physical_tab {
-                    netlabcraft_ui_egui::open_physical_tab(&mut app, id);
+                if let Some(c) = &connections {
+                    netlabcraft_ui_egui::show_connections(&mut app, c.as_deref());
                 }
-                if services {
-                    netlabcraft_ui_egui::open_services_tab(&mut app, id);
+                if let Some(c) = &complex {
+                    let id = app.session.topology.resolve(c).expect("device");
+                    netlabcraft_ui_egui::open_complex_pdu(&mut app, Some(id));
                 }
-                if let Some(p) = &page {
-                    netlabcraft_ui_egui::open_services_page(&mut app, id, p);
+                app.ui.events.selected = event;
+                app.ui.events.info = info;
+                if simulation {
+                    app.ui.mode = netlabcraft_ui_egui::Mode::Simulation;
                 }
-                if let Some(u) = &url {
-                    netlabcraft_ui_egui::open_browser(&mut app, id, u);
-                }
-                if let Some(t) = &tab {
-                    netlabcraft_ui_egui::open_tab(&mut app, id, t);
-                }
-                if let Some(p) = &config_page {
-                    netlabcraft_ui_egui::open_config_page(&mut app, id, p);
-                }
-            }
-            if let Some(c) = &connections {
-                netlabcraft_ui_egui::show_connections(&mut app, c.as_deref());
-            }
-            if let Some(c) = &complex {
-                let id = app.session.topology.resolve(c).expect("device");
-                netlabcraft_ui_egui::open_complex_pdu(&mut app, Some(id));
-            }
-            app.ui.events.selected = event;
-            app.ui.events.info = info;
-            if simulation {
-                app.ui.mode = netlabcraft_ui_egui::Mode::Simulation;
-            }
-            app
-        },
-    );
+                app
+            },
+        );
     harness.run_steps(2);
     if physical {
         // After the first frames, so the view can centre on what it shows.
