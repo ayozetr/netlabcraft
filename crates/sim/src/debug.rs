@@ -101,6 +101,8 @@ pub enum DebugKind {
     CryptoIpsec,
     /// `debug crypto pki`: certificates checked, requests, grants, revocations and lists.
     CryptoPki,
+    /// `debug ip policy`: the route-map decisions of policy-based routing.
+    Policy,
 }
 
 impl DebugKind {
@@ -146,6 +148,7 @@ impl DebugKind {
         DebugKind::CryptoIsakmp,
         DebugKind::CryptoIpsec,
         DebugKind::CryptoPki,
+        DebugKind::Policy,
     ];
 
     /// `(label, name)`: the label starts every message of the topic (`LABEL debug: text`), the
@@ -195,6 +198,7 @@ impl DebugKind {
             DebugKind::CryptoIsakmp => ("ISAKMP", "ISAKMP"),
             DebugKind::CryptoIpsec => ("IPsec", "IPsec"),
             DebugKind::CryptoPki => ("PKI", "PKI"),
+            DebugKind::Policy => ("Policy", "IP policy routing"),
         }
     }
 
