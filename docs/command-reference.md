@@ -365,6 +365,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |
+| `no ip ospf authentication key-chain` | interface, subinterface | router, switch | Stop reading the keys from a key chain |
+| `key chain NAME` | config | router, switch | Create or edit a chain of keys with lifetimes |
+| `no key chain NAME` | config | router, switch | Delete a key chain |
+| `key <0-2147483647>` |  | router, switch | Create or edit a key of the chain |
+| `no key <0-2147483647>` |  | router, switch | Delete a key of the chain |
+| `key-string TEXT` |  | router, switch | The secret the key signs with |
+| `no key-string` |  | router, switch | Forget the key's secret |
+| `accept-lifetime hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>\|infinite\|duration <seconds>}` |  | router, switch | When packets signed with this key are accepted |
+| `send-lifetime hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>\|infinite\|duration <seconds>}` |  | router, switch | When this key signs packets |
+| `no accept-lifetime` |  | router, switch | Accept the key at any time again |
+| `no send-lifetime` |  | router, switch | Sign with the key at any time again |
+| `show key chain` | user, privileged | router, switch | Every key chain, its keys and when they are valid |
+| `show key chain NAME` | user, privileged | router, switch | One key chain |
 | `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [tag <0-4294967295>] [subnets] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
 | `no redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |

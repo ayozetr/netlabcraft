@@ -678,6 +678,15 @@
 	New File	Nouveau fichier
 	New from sample	Nouveau depuis un exemple
 	New Wiring Closet	Nouvelle armoire de câblage
+	Container	Conteneur
+	New Container	Nouveau conteneur
+	Inventory Shelf	Étagère d'inventaire
+	Cable Pegboard	Panneau perforé pour câbles
+	Industrial Control Panel	Panneau de commande industriel
+	{}, {} DIN slots	{}, {} emplacements DIN
+	{}, {} rows of hooks	{}, {} rangées de crochets
+	Hang on a Peg	Accrocher à un crochet
+	Take off the Peg	Décrocher
 	Next Hop	Saut suivant
 	No	Non
 	No adding or removing devices	Impossible d'ajouter ou de retirer des équipements
@@ -2373,15 +2382,7 @@ furniture	Table	Table
 	Backup written to {}	Sauvegarde écrite dans {}
 	Application size	Taille de l'application
 	Enter the password first: some tabs are locked.	Saisissez d'abord le mot de passe : certains onglets sont verrouillés.
-	Container	Conteneur
-	New Container	Nouveau conteneur
-	Inventory Shelf	Étagère d'inventaire
-	Cable Pegboard	Panneau perforé pour câbles
-	Industrial Control Panel	Panneau de commande industriel
-	{}, {} DIN slots	{}, {} emplacements DIN
-	{}, {} rows of hooks	{}, {} rangées de crochets
-	Hang on a Peg	Accrocher à un crochet
-	Take off the Peg	Décrocher
+	Port, {}	Port, {}
 	Up	Actif
 	Down	Inactif
 	Properties…	Propriétés…

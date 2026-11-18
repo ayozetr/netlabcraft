@@ -678,6 +678,15 @@
 	New File	新建文件
 	New from sample	从示例新建
 	New Wiring Closet	新建配线间
+	Container	容器
+	New Container	新建容器
+	Inventory Shelf	库存货架
+	Cable Pegboard	线缆挂板
+	Industrial Control Panel	工业控制面板
+	{}, {} DIN slots	{}，{} 个 DIN 槽位
+	{}, {} rows of hooks	{}，{} 排挂钩
+	Hang on a Peg	挂到挂钩上
+	Take off the Peg	从挂钩上取下
 	Next Hop	下一跳
 	No	否
 	No adding or removing devices	不能添加或移除设备
@@ -2373,15 +2382,7 @@ furniture	Table	桌子
 	Backup written to {}	备份已写入 {}
 	Application size	程序字号
 	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。
-	Container	容器
-	New Container	新建容器
-	Inventory Shelf	库存货架
-	Cable Pegboard	线缆挂板
-	Industrial Control Panel	工业控制面板
-	{}, {} DIN slots	{}，{} 个 DIN 槽位
-	{}, {} rows of hooks	{}，{} 排挂钩
-	Hang on a Peg	挂到挂钩上
-	Take off the Peg	从挂钩上取下
+	Port, {}	端口，{}
 	Up	正常
 	Down	断开
 	Properties…	属性…

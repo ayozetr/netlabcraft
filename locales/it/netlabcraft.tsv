@@ -678,6 +678,15 @@
 	New File	Nuovo file
 	New from sample	Nuovo da esempio
 	New Wiring Closet	Nuovo armadio di cablaggio
+	Container	Container
+	New Container	Nuovo container
+	Inventory Shelf	Scaffale d'inventario
+	Cable Pegboard	Pannello a ganci per cavi
+	Industrial Control Panel	Quadro di controllo industriale
+	{}, {} DIN slots	{}, {} posizioni DIN
+	{}, {} rows of hooks	{}, {} file di ganci
+	Hang on a Peg	Appendi a un gancio
+	Take off the Peg	Stacca dal gancio
 	Next Hop	Next hop
 	No	No
 	No adding or removing devices	Niente aggiunta o rimozione di dispositivi
@@ -2373,15 +2382,7 @@ furniture	Table	Tavolo
 	Backup written to {}	Backup scritto in {}
 	Application size	Dimensione dell'applicazione
 	Enter the password first: some tabs are locked.	Inserisci prima la password: alcune schede sono bloccate.
-	Container	Container
-	New Container	Nuovo container
-	Inventory Shelf	Scaffale d'inventario
-	Cable Pegboard	Pannello a ganci per cavi
-	Industrial Control Panel	Quadro di controllo industriale
-	{}, {} DIN slots	{}, {} posizioni DIN
-	{}, {} rows of hooks	{}, {} file di ganci
-	Hang on a Peg	Appendi a un gancio
-	Take off the Peg	Stacca dal gancio
+	Port, {}	Porta, {}
 	Up	Attivo
 	Down	Inattivo
 	Properties…	Proprietà…
