@@ -38,8 +38,8 @@ pub mod bgp;
 pub mod channel;
 pub mod control;
 pub mod debug;
-pub mod dot1x;
 mod debug_watch;
+pub mod dot1x;
 pub use debug::DebugKind;
 pub mod dhcpsrv;
 pub mod eigrp;
@@ -2860,7 +2860,8 @@ impl Sim {
                     return Err("tagged frame on an access port".into());
                 } else {
                     // Off an access point's radio: the VLAN of the sender's WLAN.
-                    self.dot1x_vlan(d, in_port).unwrap_or_else(|| wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan))
+                    self.dot1x_vlan(d, in_port)
+                        .unwrap_or_else(|| wlan::radio_vlan(t, End { device: d.id, port: in_port }, f.src).unwrap_or(sp.access_vlan))
                 }
             }
             SwitchportMode::Trunk => {
