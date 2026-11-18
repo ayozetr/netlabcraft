@@ -291,7 +291,7 @@ fn requests_wait_for_the_administrator_and_are_granted_by_hand() {
     // A third router's request is rejected, and it is told so.
     let r3 = lab.add(DeviceKind::Router);
     lab.cable(ca, "g0/1", r3, "g0/0");
-    lab.run(ca, "conf t\nint g0/1\nip address 10.0.1.1 255.255.255.0\nno shut\nend");
+    lab.run(ca, "int g0/1\nip address 10.0.1.1 255.255.255.0\nno shut\nend");
     lab.run(
         r3,
         "en\nconf t\nhostname Spare\nint g0/0\nip address 10.0.1.2 255.255.255.0\nno shut\nexit\ncrypto pki trustpoint LAB\nenrollment url http://10.0.1.1\nexit\ncrypto pki authenticate LAB",
