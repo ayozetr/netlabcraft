@@ -1,7 +1,7 @@
 //! IPsec transform sets with no cipher (ESP with null encryption) and transport mode, under
 //! IKEv1 and IKEv2.
 
-use super::{Lab, ping_settled, two_sites};
+use super::{ping_settled, two_sites};
 
 const LAN1: &str = "192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255";
 const LAN2: &str = "192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255";
