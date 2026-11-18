@@ -2419,6 +2419,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::L2NoRecoveryInterval
         | Id::L2ShowErrDisabled
         | Id::L2ShowRecovery
+        | Id::L2DetectCause
+        | Id::L2NoDetectCause
+        | Id::L2ShowErrDetect
         | Id::L2PsecAgingTime
         | Id::L2NoPsecAgingTime
         | Id::L2PsecAgingType

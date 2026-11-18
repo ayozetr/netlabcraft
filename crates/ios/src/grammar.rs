@@ -357,6 +357,9 @@ pub enum Id {
     L2NoRecoveryInterval,
     L2ShowErrDisabled,
     L2ShowRecovery,
+    L2DetectCause,
+    L2NoDetectCause,
+    L2ShowErrDetect,
     MonitorSource,
     MonitorSourceVlan,
     MonitorDestination,
@@ -5502,6 +5505,21 @@ pub static SPECS: &[Spec] = &[
     spec!(L2NoRecoveryInterval, Modes::CONFIG, Modes::SWITCH, [K("no"), K("errdisable"), K("recovery"), K("interval")], "Back to 300 seconds"),
     spec!(L2ShowErrDisabled, EXECS, Modes::SWITCH, [K("show"), K("interfaces"), K("status"), K("err-disabled")], "Err-disabled ports and why"),
     spec!(L2ShowRecovery, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("recovery")], "Which causes recover by themselves, and when"),
+    spec!(
+        L2DetectCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Shut ports for this cause again (detection is on unless turned off)"
+    ),
+    spec!(
+        L2NoDetectCause,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        "Stop shutting ports for this cause: the frame is still dropped, the port stays up"
+    ),
+    spec!(L2ShowErrDetect, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("detect")], "Which causes shut a port"),
     spec!(
         MonitorSource,
         Modes::CONFIG,

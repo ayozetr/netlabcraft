@@ -153,6 +153,10 @@ pub struct SwitchL2 {
     /// `monitor session N …`: port mirroring.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub span: Vec<crate::span::SpanSession>,
+    /// `no errdisable detect cause …`: causes that no longer shut a port (the offending frame is
+    /// still dropped).
+    #[serde(skip_serializing_if = "BTreeSet::is_empty")]
+    pub detect_off: BTreeSet<ErrCause>,
 }
 
 impl Default for SwitchL2 {
@@ -175,6 +179,7 @@ impl Default for SwitchL2 {
             relay_trust_all: false,
             cos_dscp: None,
             span: Vec::new(),
+            detect_off: BTreeSet::new(),
         }
     }
 }

@@ -18,6 +18,7 @@ mod console_depth;
 mod debug_crypto;
 mod debug_framework;
 mod debug_topics;
+mod errdisable_detect;
 mod error_counters;
 mod families;
 mod ike_rsa;
