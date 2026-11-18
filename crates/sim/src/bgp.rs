@@ -818,7 +818,7 @@ fn aggregate_paths(ab: &conf::Bgp, paths: &[Path]) -> Vec<Path> {
 fn damp_params(d: &Device, p: &Path) -> Option<conf::DampParams> {
     let cfg = d.bgp.as_ref()?.dampening.as_ref()?;
     let Some(map) = cfg.route_map.as_deref().filter(|m| d.route_map(m).is_some()) else { return Some(cfg.params) };
-    let seen = policy::Attrs { communities: &p.communities, as_path: &p.as_path, as_set: &p.as_set, tag: 0 };
+    let seen = policy::Attrs { communities: &p.communities, as_path: &p.as_path, as_set: &p.as_set, ..policy::Attrs::default() };
     let sets = policy::apply_with(d, None, Some(map), &Subject { net: p.net, metric: p.med }, &seen)?;
     Some(sets.dampening.unwrap_or(cfg.params))
 }
