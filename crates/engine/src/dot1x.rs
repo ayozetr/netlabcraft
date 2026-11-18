@@ -26,6 +26,7 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
         "aaa.certificate" => Some(certificate(s, p)),
         "dot1x.trust" => Some(trust(s, p)),
         "dot1x.status" => Some(status(s, p)),
+        "dot1x.supplicant" => Some(supplicant(s, p)),
         _ => None,
     }
 }
@@ -176,9 +177,75 @@ pub(crate) fn report_json(r: &netlabcraft_sim::peap::Report) -> Value {
     })
 }
 
+/// The wired port a supplicant is set on: the one named, else the first that has a login,
+/// else the first Ethernet port.
+fn wired_port(s: &Session, d: netlabcraft_core::DeviceId, p: &Value) -> Result<usize> {
+    let dev = s.topology.device(d).ok_or_else(|| bad("no such device"))?;
+    match text(p, "port") {
+        Some(n) => crate::cmd::port_param(s, d, n),
+        None => dev
+            .ports
+            .iter()
+            .position(|x| x.supplicant.is_some())
+            .or_else(|| dev.ports.iter().position(|x| !netlabcraft_model::ifname::is_wireless(&x.name)))
+            .ok_or_else(|| bad(format!("{} has no wired port", dev.name))),
+    }
+}
+
+fn supplicant(s: &mut Session, p: &Value) -> Result<Value> {
+    let d = crate::cmd::device_param(s, p, "device")?;
+    let dev = s.topology.device(d).ok_or_else(|| bad("no such device"))?;
+    if !dev.kind.is_host() {
+        return Err(bad("only a host runs a supplicant"));
+    }
+    let port = wired_port(s, d, p)?;
+    let clear = p.get("clear").and_then(Value::as_bool) == Some(true);
+    let login = if clear {
+        None
+    } else {
+        let user = text(p, "user").ok_or_else(|| bad("`user` (the login name) is required, or `clear`: true"))?;
+        let password = p.get("password").and_then(Value::as_str).unwrap_or_default();
+        let mut l = netlabcraft_model::wlan::WifiLogin { user: user.chars().take(64).collect(), password: password.chars().take(64).collect(), ..Default::default() };
+        // The trust settings stay as they were when only the credentials change.
+        if let Some(old) = s.topology.device(d).and_then(|x| x.ports.get(port)).and_then(|x| x.supplicant.clone()) {
+            l.validate_server = old.validate_server;
+            l.trusted_cas = old.trusted_cas;
+            l.server_name = old.server_name;
+        }
+        if let Some(v) = p.get("validate").and_then(Value::as_bool) {
+            l.validate_server = v;
+        }
+        Some(l)
+    };
+    s.checkpoint();
+    let name = {
+        let x = s.topology.device_mut(d).and_then(|x| x.ports.get_mut(port)).ok_or_else(|| bad("no such port"))?;
+        x.supplicant = login.clone();
+        x.name.clone()
+    };
+    s.sim.forget_dot1x();
+    s.changed();
+    Ok(json!({"port": name, "user": login.map(|l| l.user)}))
+}
+
 fn status(s: &mut Session, p: &Value) -> Result<Value> {
     let d = crate::cmd::device_param(s, p, "device")?;
     let dev = s.topology.device(d).ok_or_else(|| bad("no such device"))?;
+    let named_wired = text(p, "port").is_some_and(|n| crate::cmd::port_param(s, d, n).ok().and_then(|i| dev.ports.get(i)).is_some_and(|x| !netlabcraft_model::ifname::is_wireless(&x.name)));
+    let has_radio = dev.ports.iter().any(|x| netlabcraft_model::ifname::is_wireless(&x.name));
+    if named_wired || (text(p, "port").is_none() && !has_radio) {
+        let port = wired_port(s, d, p)?;
+        let login = s.topology.device(d).and_then(|x| x.ports.get(port)).and_then(|x| x.supplicant.clone());
+        let seen = s.sim.dot1x_supplicant(d, port);
+        return Ok(json!({
+            "wired": true,
+            "login": login.as_ref().map(|l| l.user.clone()),
+            "authenticated": seen.is_some_and(|(r, _, _)| r == Some(true)),
+            "refused": seen.is_some_and(|(r, _, _)| r == Some(false)),
+            "eapol_received": seen.map_or(0, |x| x.1),
+            "eapol_sent": seen.map_or(0, |x| x.2),
+        }));
+    }
     let port = match text(p, "port") {
         Some(n) => crate::cmd::port_param(s, d, n)?,
         None => {
