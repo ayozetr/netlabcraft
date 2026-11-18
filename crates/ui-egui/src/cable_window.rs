@@ -150,66 +150,69 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
     let (mut open, mut delete_it, mut set_length) = (true, false, false);
     let mut open_device = None;
     let mut transceivers = None;
-    egui::Window::new(tl("Cable Properties")).id(egui::Id::unique("cable_window")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
-        egui::Grid::new("cable_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
-            ui.label(tl("Kind"));
-            ui.label(&f.kind);
-            ui.end_row();
-            ui.label(tl("First end"));
-            ui.label(&f.a);
-            ui.end_row();
-            ui.label(tl("Second end"));
-            ui.label(&f.b);
-            ui.end_row();
-            ui.label(tl("Length"));
-            let how = if f.manual { tl("set by hand") } else { tl("from where the devices stand") };
-            ui.label(format!("{} ({how})", physical::length_text(f.meters, metric)));
-            ui.end_row();
-            ui.label(tl("Status"));
-            if f.up {
-                ui.colored_label(tk.link_up, tl("Up"));
-            } else {
-                ui.colored_label(tk.link_down, tl("Down"));
-            }
-            ui.end_row();
-            if let Some(why) = &f.why {
-                ui.label(tl("Why it is down"));
-                ui.colored_label(tk.error, tr_any(why));
+    egui::Window::new(tl("Cable Properties")).id(egui::Id::unique("cable_window")).open(&mut open).collapsible(false).resizable(false).show(
+        ctx,
+        |ui| {
+            egui::Grid::new("cable_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
+                ui.label(tl("Kind"));
+                ui.label(&f.kind);
                 ui.end_row();
-            }
-            if let Some((sa, sb)) = f.fiber {
-                ui.label(tl("Transceivers"));
-                ui.vertical(|ui| {
-                    ui.label(format!("{}: {}", f.a, mode_text(sa)));
-                    ui.label(format!("{}: {}", f.b, mode_text(sb)));
-                });
+                ui.label(tl("First end"));
+                ui.label(&f.a);
                 ui.end_row();
-            }
-        });
-        ui.separator();
-        ui.horizontal_wrapped(|ui| {
-            if ui.button(tl("Open First Device")).clicked() {
-                open_device = Some(l.a.device);
-            }
-            if ui.button(tl("Open Second Device")).clicked() {
-                open_device = Some(l.b.device);
-            }
-            if ui.button(tl("Cable Length…")).clicked() {
-                set_length = true;
-            }
-            if f.fiber.is_some() {
-                if ui.button(tl("Both ends single-mode")).clicked() {
-                    transceivers = Some("single-mode");
+                ui.label(tl("Second end"));
+                ui.label(&f.b);
+                ui.end_row();
+                ui.label(tl("Length"));
+                let how = if f.manual { tl("set by hand") } else { tl("from where the devices stand") };
+                ui.label(format!("{} ({how})", physical::length_text(f.meters, metric)));
+                ui.end_row();
+                ui.label(tl("Status"));
+                if f.up {
+                    ui.colored_label(tk.link_up, tl("Up"));
+                } else {
+                    ui.colored_label(tk.link_down, tl("Down"));
                 }
-                if ui.button(tl("Both ends multi-mode")).clicked() {
-                    transceivers = Some("multi-mode");
+                ui.end_row();
+                if let Some(why) = &f.why {
+                    ui.label(tl("Why it is down"));
+                    ui.colored_label(tk.error, tr_any(why));
+                    ui.end_row();
                 }
-            }
-            if ui.button(tl("Delete Cable")).clicked() {
-                delete_it = true;
-            }
-        });
-    });
+                if let Some((sa, sb)) = f.fiber {
+                    ui.label(tl("Transceivers"));
+                    ui.vertical(|ui| {
+                        ui.label(format!("{}: {}", f.a, mode_text(sa)));
+                        ui.label(format!("{}: {}", f.b, mode_text(sb)));
+                    });
+                    ui.end_row();
+                }
+            });
+            ui.separator();
+            ui.horizontal_wrapped(|ui| {
+                if ui.button(tl("Open First Device")).clicked() {
+                    open_device = Some(l.a.device);
+                }
+                if ui.button(tl("Open Second Device")).clicked() {
+                    open_device = Some(l.b.device);
+                }
+                if ui.button(tl("Cable Length…")).clicked() {
+                    set_length = true;
+                }
+                if f.fiber.is_some() {
+                    if ui.button(tl("Both ends single-mode")).clicked() {
+                        transceivers = Some("single-mode");
+                    }
+                    if ui.button(tl("Both ends multi-mode")).clicked() {
+                        transceivers = Some("multi-mode");
+                    }
+                }
+                if ui.button(tl("Delete Cable")).clicked() {
+                    delete_it = true;
+                }
+            });
+        },
+    );
     if let Some(d) = open_device {
         crate::open_console(app, d);
     }
