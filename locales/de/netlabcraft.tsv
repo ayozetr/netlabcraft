@@ -368,7 +368,7 @@
 	Dialing {}	{} wird angerufen
 	differs	weicht ab
 	Disconnect	Trennen
-	Discover	Discover
+	Discover	Erkennen
 	Display Name	Anzeigename
 	Display name	Anzeigename
 	division by zero	Division durch null
@@ -464,7 +464,7 @@
 	Forward	Vorwärts
 	Four layer-2 switch ports inside the router: VLAN membership and trunks as on a switch, routed through the router's VLAN interfaces	Vier Layer-2-Switch-Ports im Router: VLAN-Zugehörigkeit und Trunks wie bei einem Switch, geroutet über die VLAN-Schnittstellen des Routers
 	Four synchronous serial WAN ports	Vier synchrone serielle WAN-Ports
-	Framing	Framing
+	Framing	Rahmenbildung
 	Freeform	Freihand
 	From	Von
 	From device	Von Gerät
@@ -2556,3 +2556,18 @@ furniture	Table	Tisch
 	Arctic	Arktis
 	Indoor office	Büro
 	Greenhouse	Gewächshaus
+	802.1X certificate	802.1X-Zertifikat
+	802.1X login	802.1X-Anmeldung
+	Generate self-signed	Selbstsigniert erzeugen
+	Issue from {}	Von {} ausstellen
+	No certificate: PEAP uses an anonymous tunnel	Kein Zertifikat: PEAP nutzt einen anonymen Tunnel
+	No trusted CA	Keine vertrauenswürdige CA
+	Presented in PEAP: {} (issued by {})	In PEAP vorgelegt: {} (ausgestellt von {})
+	Remove certificate	Zertifikat entfernen
+	Server certificate: {} (issued by {}), {}	Serverzertifikat: {} (ausgestellt von {}), {}
+	Server name	Servername
+	Trust the CA of	Der CA von vertrauen
+	Trusted CAs: {}	Vertrauenswürdige CAs: {}
+	Validate server certificate	Serverzertifikat prüfen
+	not checked	nicht geprüft
+	trusted	vertrauenswürdig

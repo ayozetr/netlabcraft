@@ -162,7 +162,7 @@
 	Answer network: {}	Rete di risposta: {}
 	any	qualsiasi
 	AP1 offers Aula (WPA2, passphrase clase1234). Open a laptop's Config › Wireless0 to change its network, or move it far from AP1 and watch it drop.	AP1 offre Aula (WPA2, passphrase clase1234). Apri Config › Wireless0 di un laptop per cambiare la sua rete, oppure allontanalo da AP1 e guarda come si disconnette.
-	APN (access point name)	APN (access point name)
+	APN (access point name)	APN (nome del punto di accesso)
 	APN accepted (empty: any)	APN accettato (vuoto: qualsiasi)
 	Application	Applicazione
 	Application: {} connection (no data in this segment).	Applicazione: connessione {} (nessun dato in questo segmento).
@@ -234,7 +234,7 @@
 	Units ({} to {}):	Unità ({} a {}):
 	Levels ({} to {}):	Livelli ({} a {}):
 	Enter a whole number	Inserisci un numero intero
-	Cable Modem	Cable Modem
+	Cable Modem	Modem via cavo
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Cable modem: collega in bridge la porta coassiale (Coaxial0) alla porta Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	cavo troppo lungo: {} m in rame, max 100 m
 	cabled	cablato
@@ -248,7 +248,7 @@
 	Cards are fitted and removed with the device switched off.	Le schede si montano e si rimuovono a dispositivo spento.
 	Cards:	Schede:
 	Carried by SSH: key exchange {}, cipher {}	Trasportato da SSH: scambio di chiavi {}, cifratura {}
-	Cell Tower	Cell Tower
+	Cell Tower	Torre cellulare
 	Cell tower	Cella radio
 	Cell tower: a radio with six sectors (Cellular0-5) that mobile devices in range attach to, and one backhaul port (Ethernet0) cabled to the provider network	Cella radio: una radio con sei settori (Cellular0-5) a cui si agganciano i dispositivi mobili nel raggio, e una porta di backhaul (Ethernet0) collegata alla rete del provider
 	Cell towers, a central office and mobile data	Celle radio, una centrale e dati mobili
@@ -403,8 +403,8 @@
 	Edit the initial network	Modifica la rete iniziale
 	Eight smart things report every few seconds to the home gateway's IoT service, whose rules light the hall when someone moves, sound the siren on smoke and unlock the door on smoke or heat.	Otto oggetti intelligenti riferiscono ogni pochi secondi al servizio IoT del gateway di casa, le cui regole accendono la luce del corridoio quando qualcuno si muove, fanno suonare la sirena in caso di fumo e sbloccano la porta con fumo o calore.
 	Ellipse	Ellisse
-	EMAIL	EMAIL
-	Email	Email
+	EMAIL	E-MAIL
+	Email	E-mail
 	Email address	Indirizzo email
 	empty	vuoto
 	empty: click to fit	vuoto: clic per adattare
@@ -506,10 +506,10 @@
 	Hint	Suggerimento
 	Hint when it fails	Suggerimento in caso di errore
 	Home City	Città di casa
-	Home Gateway	Home Gateway
+	Home Gateway	Gateway domestico
 	Home Internet over cable and DSL	Internet di casa via cavo e DSL
 	Home IoT gateway: Internet port, 4 LAN ports and Wi-Fi with DHCP and NAT like a home router, plus a built-in IoT service that smart things register with	Gateway IoT di casa: porta Internet, 4 porte LAN e Wi-Fi con DHCP e NAT come un router di casa, più un servizio IoT integrato a cui si registrano gli oggetti intelligenti
-	Home Router	Home Router
+	Home Router	Router domestico
 	Home wireless router: Internet port, 4 LAN ports and Wi-Fi, with DHCP and NAT set up	Router wireless di casa: porta Internet, 4 porte LAN e Wi-Fi, con DHCP e NAT già impostati
 	hop limit expired in transit	limite di hop esaurito durante il transito
 	Host ports are always on.	Le porte host sono sempre attive.
@@ -547,7 +547,7 @@
 	Instructions in	Istruzioni in
 	Instructions or notes	Istruzioni o note
 	Inter-VLAN routing on a multilayer switch	Routing inter-VLAN su uno switch multilayer
-	Intercity	Intercity
+	Intercity	Interurbano
 	Intercity: the cities of the lab	Intercity: le città del laboratorio
 	INTERFACE	INTERFACCIA
 	Interface	Interfaccia
@@ -556,7 +556,7 @@
 	Interval	Intervallo
 	IoT	IoT
 	IoT climate: rules close the loop in a room with physics	Clima IoT: le regole chiudono il ciclo in una stanza con fisica
-	IoT Custom	IoT Custom
+	IoT Custom	IoT personalizzato
 	IoT custom cable: click a programmable board and a smart thing.	Cavo IoT custom: fai clic su una scheda programmabile e su un oggetto intelligente.
 	IoT custom cable: joins a programmable board's pin to a smart thing, which the board's program then reads or switches	Cavo IoT custom: collega un pin di una scheda programmabile a un oggetto intelligente, che il programma della scheda poi legge o comanda
 	IoT server:	Server IoT:
@@ -587,7 +587,7 @@
 	Lab Notes	Note del laboratorio
 	LAN	LAN
 	Language	Lingua
-	Laptop	Laptop
+	Laptop	Portatile
 	Laptop with a Wi-Fi card instead of an Ethernet port	Laptop con una scheda Wi-Fi al posto della porta Ethernet
 	Laptop with one Fast Ethernet port	Laptop con una porta Fast Ethernet
 	Last	Ultimo
@@ -804,11 +804,11 @@
 	Objects	Oggetti
 	Obtain the address from the provider (DHCP)	Ottieni l'indirizzo dal provider (DHCP)
 	of	di
-	Off	Off
+	Off	Disattivato
 	off	spento
 	OID	OID
 	OK	OK
-	On	On
+	On	Attivo
 	on	acceso
 	Once	Una volta
 	One routed Fast Ethernet port	Una porta Fast Ethernet instradata
@@ -844,7 +844,7 @@
 	Outgoing port	Porta in uscita
 	Outline	Contorno
 	Outline colour	Colore del contorno
-	Output	Output
+	Output	Uscita
 	Output shows	L'output mostra
 	Outside: {} degrees	Esterno: {} gradi
 	Own call control	Controllo chiamata proprio
@@ -887,7 +887,7 @@
 	Pick devices first: Shift+click them or Shift+drag a box around them.	Scegli prima i dispositivi: Shift+clic su di essi o Shift+trascina un riquadro intorno.
 	Pick up	Rispondi
 	Pin {} wired to	Pin {} collegato a
-	Ping (ICMP echo)	Ping (ICMP echo)
+	Ping (ICMP echo)	Ping (echo ICMP)
 	Ping PC3 from PC1 (`ping 192.168.1.13`), then look at `show mac address-table` on S1.	Fai ping a PC3 da PC1 (`ping 192.168.1.13`), poi guarda `show mac address-table` su S1.
 	Pins	Pin
 	Place name:	Nome del luogo:
@@ -1208,7 +1208,7 @@
 	TCP from port {} to port {}, flags {}, sequence number {}.	TCP dalla porta {} alla porta {}, flag {}, numero di sequenza {}.
 	Telnet	Telnet
 	temperature	temperatura
-	Template (JSON)	Template (JSON)
+	Template (JSON)	Modello (JSON)
 	Ten Wi-Fi things join the home gateway: a thermostat drives a heater and an air conditioner, humidity and carbon monoxide open a window, a soil sensor waters the lawn.	Dieci oggetti Wi-Fi si collegano al gateway di casa: un termostato comanda un riscaldamento e un condizionatore, umidità e monossido di carbonio aprono una finestra, un sensore del suolo irriga il prato.
 	Ten Wi-Fi things joined the Home gateway's network (HomeNetwork), took addresses by DHCP and report to its IoT service every 5 s. Lower Thermo1 below 18: Heater1 heats; raise it above 26: AC1 cools. Humid1 above 70 or CO1 above 50 opens Window1; CO1 above 50 also opens Garage1; Soil1 below 30 waters the lawn. Switch Plug1 by hand on Home > IoT.	Dieci oggetti Wi-Fi si sono collegati alla rete del Home gateway (HomeNetwork), hanno ricevuto indirizzi via DHCP e riferiscono al suo servizio IoT ogni 5 s. Abbassa Thermo1 sotto 18: Heater1 scalda; alzalo sopra 26: AC1 raffredda. Humid1 sopra 70 o CO1 sopra 50 apre Window1; CO1 sopra 50 apre anche Garage1; Soil1 sotto 30 irriga il prato. Accendi Plug1 a mano da Home > IoT.
 	Terminal	Terminal
@@ -1386,7 +1386,7 @@
 	WAN 172.16.0.0/30 over the serial cards	WAN 172.16.0.0/30 sulle schede seriali
 	WAN Emulation	Emulazione WAN
 	watering	irrigazione
-	Web Browser	Web Browser
+	Web Browser	Browser web
 	Webcam	Webcam
 	webcam	webcam
 	What the answer network holds, device by device. Untick what isn't graded, set the points and a hint, then make the checks.	Cosa contiene la rete di risposta, dispositivo per dispositivo. Deseleziona ciò che non viene valutato, imposta i punti e un suggerimento, poi crea le verifiche.
@@ -2218,7 +2218,7 @@ furniture	Table	Tavolo
 	Generic thing for a board's pin: a reading you set by hand (-1000 to 1000)	Oggetto generico per il pin di una scheda: una lettura che imposti a mano (da -1000 a 1000)
 	LED	LED
 	LED wired to a board's pin with an IoT custom cable: lit while the pin is high	LED collegato a un pin di una scheda con un cavo personalizzato IoT: acceso finché il pin è alto
-	Buzzer	Buzzer
+	Buzzer	Cicalino
 	Buzzer wired to a board's pin with an IoT custom cable: sounds while the pin is high	Buzzer collegato a un pin di una scheda con un cavo personalizzato IoT: suona finché il pin è alto
 	Motor	Motore
 	Motor wired to a board's pin with an IoT custom cable: runs while the pin is high	Motore collegato a un pin di una scheda con un cavo personalizzato IoT: gira finché il pin è alto
@@ -2556,3 +2556,18 @@ furniture	Table	Tavolo
 	Arctic	Artico
 	Indoor office	Ufficio interno
 	Greenhouse	Serra
+	802.1X certificate	Certificato 802.1X
+	802.1X login	Accesso 802.1X
+	Generate self-signed	Genera autofirmato
+	Issue from {}	Emetti da {}
+	No certificate: PEAP uses an anonymous tunnel	Nessun certificato: PEAP usa un tunnel anonimo
+	No trusted CA	Nessuna CA attendibile
+	Presented in PEAP: {} (issued by {})	Presentato in PEAP: {} (emesso da {})
+	Remove certificate	Rimuovi il certificato
+	Server certificate: {} (issued by {}), {}	Certificato del server: {} (emesso da {}), {}
+	Server name	Nome del server
+	Trust the CA of	Considera attendibile la CA di
+	Trusted CAs: {}	CA attendibili: {}
+	Validate server certificate	Convalida il certificato del server
+	not checked	non verificato
+	trusted	attendibile
