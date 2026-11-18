@@ -1882,6 +1882,8 @@ event	write request for	Schreibanfrage für
 	Rename…	Umbenennen…
 	Switch Off	Ausschalten
 	Switch On	Einschalten
+	Load {} of {} W	Last {} von {} W
+	Breaker tripped	Sicherung ausgelöst
 	Take off the furniture	Vom Möbelstück nehmen
 	Plug into	Einstecken in
 	Unplug	Ausstecken
@@ -2476,6 +2478,7 @@ furniture	Table	Tisch
 	Why it is down	Grund für den Ausfall
 	Transceivers	Transceiver
 	set by hand	von Hand gesetzt
+	Reach	Reichweite
 	from where the devices stand	nach der Position der Geräte
 	Both ends single-mode	Beide Enden Singlemode
 	Both ends multi-mode	Beide Enden Multimode

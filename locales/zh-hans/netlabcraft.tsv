@@ -1882,6 +1882,8 @@ event	write request for	写请求
 	Rename…	重命名…
 	Switch Off	关闭
 	Switch On	打开
+	Load {} of {} W	负载 {} / {} W
+	Breaker tripped	断路器已跳闸
 	Take off the furniture	从家具上取下
 	Plug into	插入到
 	Unplug	拔出
@@ -2476,6 +2478,7 @@ furniture	Table	桌子
 	Why it is down	断开原因
 	Transceivers	收发器
 	set by hand	手动设置
+	Reach	传输距离
 	from where the devices stand	按设备所在位置计算
 	Both ends single-mode	两端均为单模
 	Both ends multi-mode	两端均为多模

@@ -1882,6 +1882,8 @@ event	write request for	richiesta di scrittura di
 	Rename…	Rinomina…
 	Switch Off	Spegni
 	Switch On	Accendi
+	Load {} of {} W	Carico {} di {} W
+	Breaker tripped	Interruttore scattato
 	Take off the furniture	Togli dal mobile
 	Plug into	Collega a
 	Unplug	Scollega
@@ -2476,6 +2478,7 @@ furniture	Table	Tavolo
 	Why it is down	Perché è inattivo
 	Transceivers	Transceiver
 	set by hand	impostata a mano
+	Reach	Portata
 	from where the devices stand	dalla posizione dei dispositivi
 	Both ends single-mode	Entrambe le estremità monomodali
 	Both ends multi-mode	Entrambe le estremità multimodali

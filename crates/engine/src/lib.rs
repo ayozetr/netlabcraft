@@ -86,6 +86,8 @@ mod tests_pppoe_router;
 #[cfg(test)]
 mod tests_proximity;
 #[cfg(test)]
+mod tests_reach;
+#[cfg(test)]
 mod tests_settings;
 #[cfg(test)]
 mod tests_swroute;

@@ -144,6 +144,8 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
         "patch.unwire" => unwire(s, p),
         "power.plug" | "power.unplug" => plug(s, id, p),
         "power.strip" => strip(s, p),
+        "power.rating" => rating(s, p),
+        "power.load" => load(s, p),
         _ => return None,
     })
 }
@@ -182,6 +184,7 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
                 .collect();
             json!({
                 "id": f.id, "kind": f.kind.id(), "name": f.name, "ports": f.ports, "on": f.on,
+                "rating_w": f.rating_w, "load_w": t.strip_load(f.id), "tripped": f.tripped,
                 "furniture": on.map(|m| m.furniture), "slot": on.map(|m| m.slot.saturating_add(1)), "plugged": plugged,
             })
         })
@@ -388,7 +391,58 @@ fn plug(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
         crate::hardware::set_power(s, d, false);
         s.changed();
     }
+    if let Some(g) = s.topology.plug_of(d) {
+        let tripped = check_breaker(s, g.strip);
+        if tripped && out.is_object() {
+            out["tripped"] = json!(true);
+        }
+    }
     Ok(out)
+}
+
+/// Trips the breaker of a power distribution device that carries more than its rating: the strip
+/// switches off and the devices plugged into it lose power. Whether it tripped.
+pub(crate) fn check_breaker(s: &mut Session, strip: u32) -> bool {
+    if !s.topology.strip_overloaded(strip) {
+        return false;
+    }
+    let devices = s.topology.trip_strip(strip);
+    for d in devices {
+        crate::hardware::set_power(s, d, false);
+    }
+    s.changed();
+    true
+}
+
+fn rating(s: &mut Session, p: &Value) -> Result<Value> {
+    let id = passive_value(s, p, "strip")?;
+    let watts = p.get("watts").and_then(Value::as_u64).and_then(|w| u32::try_from(w).ok()).ok_or_else(|| bad("`watts` (a number) is required"))?;
+    let mut t = s.topology.clone();
+    t.set_strip_rating(id, watts)?;
+    commit(s, t, false);
+    let tripped = check_breaker(s, id);
+    Ok(json!({"rating_w": watts, "load_w": s.topology.strip_load(id), "tripped": tripped}))
+}
+
+fn load(s: &Session, p: &Value) -> Result<Value> {
+    let id = passive_value(s, p, "strip")?;
+    let t = &s.topology;
+    let f = t.fitting(id).ok_or_else(|| EngineError::Failed("no such passive device".into()))?;
+    if f.kind != FittingKind::PowerStrip {
+        return Err(EngineError::Failed(format!("{} has no breaker", f.name)));
+    }
+    let outlets: Vec<Value> = t
+        .plugs_in(id)
+        .iter()
+        .filter_map(|g| {
+            t.device(g.device)
+                .map(|d| json!({"outlet": g.outlet.saturating_add(1), "device": d.name, "watts": d.nominal_watts(), "on": !d.powered_off}))
+        })
+        .collect();
+    Ok(json!({
+        "strip": f.name, "on": f.on, "tripped": f.tripped, "rating_w": f.rating_w,
+        "load_w": t.strip_load(id), "demand_w": t.strip_demand(id), "outlets": outlets,
+    }))
 }
 
 fn strip(s: &mut Session, p: &Value) -> Result<Value> {
@@ -405,6 +459,10 @@ fn strip(s: &mut Session, p: &Value) -> Result<Value> {
     for d in &devices {
         crate::hardware::set_power(s, *d, on);
     }
+    // Everything coming on at once may be more than the breaker carries.
+    let tripped = on && check_breaker(s, id);
     s.changed();
-    Ok(json!({"on": on, "devices": devices.iter().filter_map(|d| s.topology.device(*d).map(|x| x.name.clone())).collect::<Vec<_>>()}))
+    Ok(
+        json!({"on": on && !tripped, "tripped": tripped, "devices": devices.iter().filter_map(|d| s.topology.device(*d).map(|x| x.name.clone())).collect::<Vec<_>>()}),
+    )
 }
