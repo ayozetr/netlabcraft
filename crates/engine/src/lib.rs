@@ -30,11 +30,13 @@ mod families;
 mod hardware;
 pub mod home;
 mod hostapps;
+pub mod images;
 pub mod instructor;
 mod iot;
 mod netconf;
 mod netflow;
 mod pdu;
+mod pictures;
 mod pppoe;
 pub mod settings;
 mod traffic;
@@ -67,6 +69,8 @@ mod tests_lang;
 mod tests_netflow;
 #[cfg(test)]
 mod tests_parts;
+#[cfg(test)]
+mod tests_pictures;
 #[cfg(test)]
 mod tests_pppoe;
 #[cfg(test)]
@@ -220,13 +224,32 @@ impl Session {
     fn print_console_messages(&mut self) {
         for dev in self.sim.console_pending() {
             let msgs = self.sim.take_console(dev);
-            if msgs.is_empty() || self.topology.device(dev).is_none_or(|d| d.kind.is_host()) {
+            let monitor = self.sim.take_monitor(dev);
+            if self.topology.device(dev).is_none_or(|d| d.kind.is_host()) {
                 continue;
             }
-            let con = self.console(dev);
-            let cli = con.cli.clone();
-            let prompt = netlabcraft_ios::prompt(&self.topology, dev, &cli);
-            self.console(dev).append(&format!("\n{}\n{prompt}", msgs.join("\n")));
+            if !msgs.is_empty() {
+                let con = self.console(dev);
+                let cli = con.cli.clone();
+                let prompt = netlabcraft_ios::prompt(&self.topology, dev, &cli);
+                self.console(dev).append(&format!("\n{}\n{prompt}", msgs.join("\n")));
+            }
+            if monitor.is_empty() {
+                continue;
+            }
+            // `terminal monitor`: a console with a remote session open to this device and the
+            // session's monitor on sees the same messages.
+            let watchers: Vec<DeviceId> = self
+                .consoles
+                .iter()
+                .filter(|(_, c)| c.cli.remote.as_ref().is_some_and(|r| r.target == dev && r.cli.monitor))
+                .map(|(id, _)| *id)
+                .collect();
+            for w in watchers {
+                let cli = self.console(w).cli.clone();
+                let prompt = netlabcraft_ios::prompt(&self.topology, w, &cli);
+                self.console(w).append(&format!("\n{}\n{prompt}", monitor.join("\n")));
+            }
         }
     }
 

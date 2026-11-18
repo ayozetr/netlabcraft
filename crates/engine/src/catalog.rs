@@ -842,6 +842,66 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "place.scene.set",
+        "Set place pictures",
+        "",
+        None,
+        r#"{"place"?: number, name or "intercity" (default: the place being viewed), "background"?: {"data": base64 PNG or JPEG | "path": file (desktop and CLI) | "image": id of a picture the lab holds (none: the one there now), "mode"?: "original"|"tiled"|"fit"|"width"|"height", "custom"?: width or height in map units for the last two} or null, "icon"?: {"data" | "path" | "image"} or null, "size"?: {"width", "length"?, "height"? in metres, "scale"? metres per map unit} or null}: what is left out stays, null clears; one undo step. Pictures are checked, stripped of metadata and scaled down to 4096 pixels and 8 MiB; at most 64 pictures and 32 MiB in a lab → {"place", "background", "icon", "size", "scale", "scaled_from"?: [w, h]}"#,
+        true
+    ),
+    c!(
+        "place.background.set",
+        "Set place background",
+        "",
+        None,
+        r#"{"place"?, "data" | "path" | "image", "mode"?: "original"|"tiled"|"fit"|"width"|"height", "custom"?: map units} → as place.scene.set: the picture under the map inside the place (the Intercity map is place 0)"#,
+        true
+    ),
+    c!("place.background.clear", "Clear place background", "", None, r#"{"place"?} → as place.scene.set"#, true),
+    c!(
+        "place.icon.set",
+        "Set place icon",
+        "",
+        None,
+        r#"{"place": a city, building or closet, "data" | "path" | "image"} → as place.scene.set: the picture the place wears on the map above it, clipped to a rounded square"#,
+        true
+    ),
+    c!("place.icon.clear", "Clear place icon", "", None, r#"{"place"} → as place.scene.set"#, true),
+    c!(
+        "place.size.set",
+        "Set place size",
+        "",
+        None,
+        r#"{"place"?, "width": metres (kept when left out), "length"?: metres (default: the proportions of the background), "height"?: metres (default 3), "scale"?: metres per map unit (default: width over the width the background is drawn at)} → as place.scene.set: the scale replaces the built-in one (1 m on a city, 100 m on the Intercity map) for cable lengths, cell tower reach and the Wi-Fi range of devices in the same place"#,
+        true
+    ),
+    c!("place.size.clear", "Clear place size", "", None, r#"{"place"?} → as place.scene.set"#, true),
+    c!(
+        "workspace.background.set",
+        "Set workspace background",
+        "",
+        None,
+        r#"{"data" | "path" | "image", "mode"?: "original"|"tiled"|"fit"|"width"|"height", "custom"?: map units} → {"background": {"image", "mode", "custom", "pixels", "shown"}, "scaled_from"?}: the picture under the logical workspace"#,
+        true
+    ),
+    c!("workspace.background.clear", "Clear workspace background", "", None, r#"{}"#, true),
+    c!(
+        "image.list",
+        "List pictures",
+        "",
+        None,
+        r#"{} → {"images": [{"id", "kind", "w", "h", "bytes"}], "uses": [{"kind": "logical"|"background"|"icon", "place", "place_name", "image"}], "total_bytes", "limits"}"#,
+        false
+    ),
+    c!(
+        "image.remove",
+        "Remove picture",
+        "",
+        None,
+        r#"{"kind": "logical"|"background"|"icon", "place"? (not for logical)} → image.list: stops using the picture there; the picture goes when nothing else uses it"#,
+        true
+    ),
+    c!(
         "device.place",
         "Move to place",
         "",
@@ -971,6 +1031,14 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")"#,
+        false
+    ),
+    c!(
+        "link.info",
+        "Cable information",
+        "",
+        None,
+        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything"#,
         false
     ),
     c!(
