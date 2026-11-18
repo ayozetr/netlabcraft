@@ -941,7 +941,9 @@
 	Reset Activity	重置练习
 	Reset room	重置房间
 	Reset Simulation	重置模拟
-	Resize Shape (not available yet)	调整形状大小（暂不可用）
+	Resize Shape (Alt+R)	调整形状大小（Alt+R）
+	Resize Shape (Alt+R): drawings are in the logical view	调整形状大小（Alt+R）：绘图只在逻辑视图中
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	调整形状大小：单击矩形、椭圆或直线，然后拖动其控制点。按 Esc 停止。
 	Resource Records	资源记录
 	Response headers	响应头
 	RESTCONF (HTTP)	RESTCONF (HTTP)

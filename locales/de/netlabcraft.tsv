@@ -941,7 +941,9 @@
 	Reset Activity	Aktivität zurücksetzen
 	Reset room	Raum zurücksetzen
 	Reset Simulation	Simulation zurücksetzen
-	Resize Shape (not available yet)	Form ändern (noch nicht verfügbar)
+	Resize Shape (Alt+R)	Form ändern (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Form ändern (Alt+R): Zeichnungen gibt es nur in der logischen Ansicht
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Form ändern: Rechteck, Ellipse oder Linie anklicken und dann an den Griffen ziehen. Esc beendet.
 	Resource Records	Resource Records
 	Response headers	Antwort-Header
 	RESTCONF (HTTP)	RESTCONF (HTTP)

@@ -162,7 +162,9 @@
 	Remove the activity	Quitar la actividad
 	Reset Activity	Reiniciar actividad
 	Reset Simulation	Reiniciar simulación
-	Resize Shape (not available yet)	Redimensionar forma (todavía no disponible)
+	Resize Shape (Alt+R)	Redimensionar forma (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Redimensionar forma (Alt+R): los dibujos solo están en la vista lógica
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Redimensionar forma: pulsa un rectángulo, una elipse o una línea y arrastra sus tiradores. Esc para salir.
 	Resource Records	Registros de recursos
 	Routers	Routers
 	Routers and switches with `ntp server <this address>` take this time.	Los routers y switches con `ntp server <esta dirección>` toman esta hora.

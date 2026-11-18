@@ -941,7 +941,9 @@
 	Reset Activity	Reiniciar atividade
 	Reset room	Reiniciar ambiente
 	Reset Simulation	Reiniciar simulação
-	Resize Shape (not available yet)	Redimensionar forma (ainda indisponível)
+	Resize Shape (Alt+R)	Redimensionar forma (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Redimensionar forma (Alt+R): os desenhos só existem na visão lógica
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Redimensionar forma: clique em um retângulo, uma elipse ou uma linha e arraste as alças. Esc para sair.
 	Resource Records	Registros de recurso
 	Response headers	Cabeçalhos da resposta
 	RESTCONF (HTTP)	RESTCONF (HTTP)
