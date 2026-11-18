@@ -52,6 +52,14 @@ pub struct PimIface {
     /// The priority in the designated router election (higher wins; 1 by default).
     #[serde(default = "default_priority")]
     pub dr_priority: u32,
+    /// `ip multicast ttl-threshold N`: packets whose TTL is N or less are not sent out of the
+    /// interface (0: no limit).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub ttl_threshold: u8,
+}
+
+fn is_zero(v: &u8) -> bool {
+    *v == 0
 }
 
 fn default_priority() -> u32 {
@@ -60,7 +68,7 @@ fn default_priority() -> u32 {
 
 impl PimIface {
     pub fn new(mode: PimMode) -> PimIface {
-        PimIface { mode, dr_priority: default_priority() }
+        PimIface { mode, dr_priority: default_priority(), ttl_threshold: 0 }
     }
 }
 

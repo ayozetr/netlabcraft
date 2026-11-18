@@ -7,7 +7,7 @@ use netlabcraft_model::DeviceKind;
 use super::Lab;
 
 /// What crossed the cables, and why each frame was dropped (for a failing assertion).
-fn dump(lab: &Lab) -> String {
+pub(super) fn dump(lab: &Lab) -> String {
     lab.sim
         .trace()
         .iter()
@@ -16,17 +16,17 @@ fn dump(lab: &Lab) -> String {
         .join("\n")
 }
 
-struct Net {
-    lab: Lab,
-    r1: DeviceId,
-    r2: DeviceId,
-    src: DeviceId,
-    rcv: DeviceId,
+pub(super) struct Net {
+    pub(super) lab: Lab,
+    pub(super) r1: DeviceId,
+    pub(super) r2: DeviceId,
+    pub(super) src: DeviceId,
+    pub(super) rcv: DeviceId,
 }
 
 /// SRC (10.1.1.10) - R1 - R2 - RCV (10.2.2.10); R1's loopback 1.1.1.1 is the rendezvous point.
 /// Static routes carry the unicast traffic; `mode` is the PIM mode typed on every link.
-fn net(mode: &str) -> Net {
+pub(super) fn net(mode: &str) -> Net {
     let mut lab = Lab::new();
     let src = lab.add(DeviceKind::Pc);
     let rcv = lab.add(DeviceKind::Pc);
