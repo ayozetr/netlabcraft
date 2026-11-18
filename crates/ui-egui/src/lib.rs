@@ -31,6 +31,7 @@ mod credits;
 pub mod environments;
 mod events;
 pub mod fonts;
+mod front_panel;
 mod hardware;
 mod help;
 mod host_apps;

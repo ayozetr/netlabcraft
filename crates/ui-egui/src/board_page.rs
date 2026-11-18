@@ -200,9 +200,19 @@ pub(crate) fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     p.circle_filled(chip.right_top() + vec2(24.0, 4.0), 5.0, if lit { tk.ok } else { Color32::from_rgb(0x2a, 0x2a, 0x2a) });
     p.text(chip.right_top() + vec2(34.0, 4.0), egui::Align2::LEFT_CENTER, "PWR", egui::FontId::proportional(10.0), Color32::WHITE);
     if sbc {
-        let jack = egui::Rect::from_min_size(rect.right_center() + vec2(-58.0, -10.0), vec2(50.0, 40.0));
-        p.rect_filled(jack, 2.0, Color32::from_rgb(0xb8, 0xbc, 0xc4));
-        p.rect_filled(jack.shrink(8.0), 1.0, Color32::from_rgb(0x1a, 0x1c, 0x20));
+        let cell = egui::Rect::from_min_size(rect.right_center() + vec2(-66.0, -26.0), vec2(56.0, 46.0));
+        let end = netlabcraft_model::End { device: dev.id, port: 0 };
+        let (cabled, up) = (app.session.topology.peer(end).is_some(), netlabcraft_sim::port_up(&app.session.topology, end));
+        let jack = crate::icons_ports::draw_in(&p, crate::icons_ports::Connector::Rj45, cell, false, &tk);
+        let off = crate::icons_ports::off_light(&tk);
+        let link = if up {
+            tk.link_up
+        } else if cabled {
+            tk.port_activity
+        } else {
+            off
+        };
+        crate::icons_ports::lights(&p, jack, link, if up { tk.port_activity } else { off }, 2.5);
     } else {
         let at = rect.right_center() + vec2(-60.0, 0.0);
         let pts: Vec<egui::Pos2> = (0..8).map(|i| at + vec2((i / 2) as f32 * 12.0, if (i + 1) % 4 < 2 { -16.0 } else { 16.0 })).collect();
@@ -214,27 +224,24 @@ pub(crate) fn physical(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let room = rect.width() - 40.0;
     for (i, pin) in pins.iter().enumerate() {
         let x = rect.left() + 20.0 + (i as f32 + 0.5) * room / n;
-        let socket = egui::Rect::from_center_size(egui::pos2(x, rect.top() + 38.0), vec2(14.0, 14.0));
+        let socket = egui::Rect::from_center_size(egui::pos2(x, rect.top() + 38.0), vec2(18.0, 18.0));
         let wired = pin["wired"].as_str();
-        p.rect_filled(socket, 1.0, Color32::from_rgb(0x15, 0x15, 0x18));
-        if wired.is_some() {
-            p.rect_filled(socket.shrink(3.0), 1.0, Color32::from_rgb(0xf2, 0x9a, 0x2e));
-        }
+        crate::icons_ports::draw(&p, crate::icons_ports::Connector::Pin, socket, wired.is_some(), &tk);
         let level = pin["level"].as_i64().unwrap_or(0);
         p.circle_filled(
-            socket.center_bottom() + vec2(0.0, 8.0),
+            socket.center_bottom() + vec2(0.0, 10.0),
             3.0,
             if lit && level != 0 { Color32::from_rgb(0xf6, 0xd3, 0x4a) } else { Color32::from_rgb(0x2a, 0x2a, 0x2a) },
         );
         p.text(
-            socket.center_top() - vec2(0.0, 8.0),
+            socket.center_top() - vec2(0.0, 10.0),
             egui::Align2::CENTER_CENTER,
             pin["pin"].as_str().unwrap_or_default(),
             egui::FontId::proportional(10.0),
             Color32::WHITE,
         );
         if let Some(w) = wired {
-            p.text(socket.center_bottom() + vec2(0.0, 22.0), egui::Align2::CENTER_CENTER, w, egui::FontId::proportional(9.0), Color32::WHITE);
+            p.text(socket.center_bottom() + vec2(0.0, 24.0), egui::Align2::CENTER_CENTER, w, egui::FontId::proportional(9.0), Color32::WHITE);
         }
     }
     ui.label(
