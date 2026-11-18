@@ -1549,6 +1549,10 @@ pub enum Id {
     SrNoVtpPruning,
     SrTrunkPruning,
     SrNoTrunkPruning,
+    ShowDot1x,
+    ShowDot1xAll,
+    ShowDot1xInterface,
+    Dot1xReauth,
 }
 
 use Tok::{Arg, K, Rest};
@@ -7718,6 +7722,72 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(ShowPppoeSummary, EXECS, Modes::ROUTER, [K("show"), K("pppoe"), K("summary")], "PPPoE totals and the ports that answer or dial"),
     spec!(ClearPppoeAll, Modes::EXEC, Modes::ROUTER, [K("clear"), K("pppoe"), K("all")], "End every PPPoE session of this router"),
+    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("dot1x"), K("system-auth-control")], "Turn on 802.1X port access control"),
+    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("dot1x"), K("system-auth-control")], "Turn 802.1X port access control off"),
+    spec!(
+        Knob,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("aaa"), K("authentication"), K("dot1x"), K("default"), Rest("group radius")],
+        "The servers that check 802.1X logins"
+    ),
+    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("aaa"), K("authentication"), K("dot1x"), K("default")], "No method for 802.1X logins"),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("authentication"), K("port-control"), Arg("{auto|force-authorized|force-unauthorized}")],
+        "Whether the host on this port has to log in"
+    ),
+    spec!(NoKnob, Modes::IF, Modes::SWITCH, [K("no"), K("authentication"), K("port-control")], "The port asks for no login"),
+    spec!(Knob, Modes::IF, Modes::SWITCH, [K("dot1x"), K("pae"), K("authenticator")], "This port is the authenticator of the host on it"),
+    spec!(NoKnob, Modes::IF, Modes::SWITCH, [K("no"), K("dot1x"), K("pae"), K("authenticator")], "Not an authenticator port"),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("authentication"), K("event"), K("no-response"), K("action"), K("authorize"), K("vlan"), Arg("<1-4094>")],
+        "The guest VLAN for a host that never answers"
+    ),
+    spec!(
+        NoKnob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("authentication"), K("event"), K("no-response"), K("action"), K("authorize"), K("vlan")],
+        "No guest VLAN"
+    ),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("authentication"), K("event"), K("fail"), K("action"), K("authorize"), K("vlan"), Arg("<1-4094>")],
+        "The VLAN for a host the server refused"
+    ),
+    spec!(
+        NoKnob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("no"), K("authentication"), K("event"), K("fail"), K("action"), K("authorize"), K("vlan")],
+        "No auth-fail VLAN"
+    ),
+    spec!(
+        Knob,
+        Modes::IF,
+        Modes::SWITCH,
+        [K("dot1x"), K("timeout"), K("tx-period"), Arg("<1-65535>")],
+        "Seconds between the switch's identity requests"
+    ),
+    spec!(NoKnob, Modes::IF, Modes::SWITCH, [K("no"), K("dot1x"), K("timeout"), K("tx-period")], "Back to 30 seconds"),
+    spec!(ShowDot1x, EXECS, Modes::SWITCH, [K("show"), K("dot1x")], "Whether 802.1X is on and how many ports it controls"),
+    spec!(ShowDot1xAll, EXECS, Modes::SWITCH, [K("show"), K("dot1x"), K("all")], "Every port 802.1X controls and who is logged in on it"),
+    spec!(ShowDot1xInterface, EXECS, Modes::SWITCH, [K("show"), K("dot1x"), K("interface"), Rest("<interface>")], "One port's 802.1X state"),
+    spec!(
+        Dot1xReauth,
+        Modes::EXEC,
+        Modes::SWITCH,
+        [K("dot1x"), K("re-authenticate"), K("interface"), Rest("<interface>")],
+        "Make the host on a port log in again"
+    ),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
