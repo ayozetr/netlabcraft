@@ -574,7 +574,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Board program",
         "",
         None,
-        r#"{"device": programmable board, "source"?: "program text", "language"?: "boardscript"|"python" (Board SBC)|"javascript" (Board MCU), "run"?: true|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile in its language is refused with its line"#,
+        r#"{"device": programmable board, "source"?: "program text", "language"?: "boardscript"|"python" (Board SBC)|"javascript" (Board MCU), "run"?: true|false, "server"?: "IoT server address for get() and report (empty: none)", "from"?: a host the board is plugged into by a USB cable (refused when it is not, or the cable is down)} → the board's status: run starts it from the top, false stops it; a program that doesn't compile in its language is refused with its line"#,
         true
     ),
     c!(
@@ -1184,7 +1184,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Connect with a cable",
         "Insert",
         None,
-        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "console" | "straight-through" | "cross-over" | "fiber-single-mode" | "fiber-multi-mode" | "phone" | "coaxial" | "serial-dce" | "serial-dte" | "octal" | "iot-custom" | "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)"#,
+        r#"{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) | "console" | "straight-through" | "cross-over" | "fiber-single-mode" | "fiber-multi-mode" | "phone" | "coaxial" | "serial-dce" | "serial-dte" | "octal" | "iot-custom" | "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, or (a data cable) a host's USB port (PC, laptop, server: two each, router and switch: one) to a printer, a board, a USB stick, a tablet or a smartphone, the host's port named `USB1`, `USB2` in `a_port` or `b_port` (default: the first free one) and reaching 5 m, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)"#,
         true
     ),
     c!(
@@ -1192,7 +1192,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Remove cable",
         "Edit",
         None,
-        r#"{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}"#,
+        r#"{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable (a USB device's one port, or "USB1", "USB2" on a host), "Console" on the far device or "Async" on the card's router for an octal cable}"#,
         true
     ),
     c!(
@@ -1200,7 +1200,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "List cables",
         "",
         None,
-        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")"#,
+        r#"{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables and USB data cables "usb"; octal cables "octal")"#,
         false
     ),
     c!(
@@ -1219,6 +1219,42 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)"#,
         true
     ),
+    c!(
+        "usb.list",
+        "List USB cables",
+        "",
+        None,
+        r#"{"device"?: a host or a USB device} → [{"host", "port" (from 1), "device", "model", "kind": "storage" | "printer" | "board" | "phone", "up", "problem", "mounted", "used", "capacity", "files": [{"name", "size"}] (a stick)}]: what is plugged into the USB ports"#,
+        false
+    ),
+    c!(
+        "usb.eject",
+        "Eject a USB stick",
+        "",
+        None,
+        r#"{"device": the stick, "host"?: the host it is plugged into} → {"device", "host", "mounted": false}: it stays plugged in but its files cannot be read or written until `usb.mount`"#,
+        true
+    ),
+    c!("usb.mount", "Mount a USB stick", "", None, r#"{"device": the stick, "host"?} → {"device", "host", "mounted": true}"#, true),
+    c!(
+        "usb.put",
+        "Put a file on a USB stick",
+        "",
+        None,
+        r#"{"device": the stick, "host"?, "name": 1-64 characters, no / \ : * ? " < > |, "text": up to 16 KiB} → {"name", "size", "used", "files"}: replaces a file of that name; at most 32 files and 128 KiB on a stick; refused while the stick is ejected, the cable is down or too long (5 m) or a device is off"#,
+        true
+    ),
+    c!("usb.get", "Read a file of a USB stick", "", None, r#"{"device": the stick, "host"?, "name"} → {"name", "size", "text"}"#, false),
+    c!("usb.delete", "Delete a file of a USB stick", "", None, r#"{"device": the stick, "host"?, "name"}"#, true),
+    c!(
+        "printer.print",
+        "Print a page",
+        "",
+        None,
+        r#"{"from": a host, "printer", "text": up to 4096 characters, "via"?: "usb" | "network" (default: the USB cable between the two when there is one, else the network)} → {"printer", "via", "job"}: over USB the cable must be up; over the network the printer needs an address the host reaches (a ping); the printer keeps its last 20 jobs"#,
+        true
+    ),
+    c!("printer.jobs", "List the jobs of a printer", "", None, r#"{"printer"} → {"printer", "total", "jobs": [{"from", "via", "text"}]}"#, false),
     c!(
         "pc.terminal",
         "Terminal (console cable)",

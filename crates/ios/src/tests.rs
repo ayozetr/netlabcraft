@@ -74,6 +74,7 @@ mod system_commands;
 mod system_show;
 mod track;
 mod troubleshoot;
+mod usb_stick;
 
 struct Lab {
     t: Topology,

@@ -122,7 +122,10 @@ pub fn hint(app: &PacketApp) -> String {
         (Tool::Draw(_), _) => crate::i18n::tl("Drag on the workspace to draw. Drawings sit behind devices; move them with Select.").into(),
         (Tool::Note, _) => crate::i18n::tl("Click the workspace to place a note. Drag notes to move them; double-click to edit.").into(),
         (Tool::Cable(Cable::Console), None) => crate::i18n::tl("Console cable: click a PC (RS-232) and a router or switch (Console).").into(),
-        (Tool::Cable(Cable::Usb), None) => crate::i18n::tl("USB cable: click a PC or laptop (USB) and a router or switch (USB console).").into(),
+        (Tool::Cable(Cable::Usb), None) => crate::i18n::tl(
+            "USB cable: click a PC or laptop (USB) and a router or switch (USB console), or a host and a printer, board or USB stick.",
+        )
+        .into(),
         (Tool::Cable(Cable::Octal), None) => {
             crate::i18n::tl("Octal cable: click a router with an octal card, then a router or switch (Console).").into()
         }
@@ -454,12 +457,22 @@ fn hit_octal(app: &PacketApp, view: &View, p: Pos2) -> Option<CableRef> {
     })
 }
 
+/// The USB data cable under the pointer.
+fn hit_usb(app: &PacketApp, view: &View, p: Pos2) -> Option<CableRef> {
+    let t = &app.session.topology;
+    t.usbs.iter().filter(|c| view.visible(c.host) && view.visible(c.device)).find_map(|c| {
+        let (a, b) = (t.device(c.host)?, t.device(c.device)?);
+        (segment_distance(p, view.screen(a.x, a.y), view.screen(b.x, b.y)) < 6.0).then_some(CableRef::Usb(c.device))
+    })
+}
+
 /// The cable of any kind under the pointer: a network cable first, then console and USB, octal
 /// and IoT custom cables.
 fn hit_cable(app: &PacketApp, view: &View, p: Pos2) -> Option<CableRef> {
     hit_link(app, view, p)
         .map(CableRef::Link)
         .or_else(|| hit_console(app, view, p))
+        .or_else(|| hit_usb(app, view, p))
         .or_else(|| hit_octal(app, view, p))
         .or_else(|| hit_wire(app, view, p))
 }
@@ -845,6 +858,11 @@ fn draw_links(app: &mut PacketApp, painter: &egui::Painter, view: &View, tk: &To
         }
         let stroke = Stroke::new((2.0 * view.zoom).max(1.0), tk.console_cable);
         painter.extend(egui::Shape::dashed_line(&[pa, pb], stroke, 5.0 * view.zoom, 4.0 * view.zoom));
+    }
+    // USB data cables: solid, with the USB trident, from the host to the device.
+    for c in t.usbs.iter().filter(|c| view.visible(c.host) && view.visible(c.device)) {
+        let (Some(a), Some(b)) = (t.device(c.host), t.device(c.device)) else { continue };
+        crate::icons_families::usb_line(painter, view.screen(b.x, b.y), view.screen(a.x, a.y), (2.0 * view.zoom).max(1.0), tk);
     }
     // Octal cables: a fan of strands from the router's card to each console it reaches, the line
     // number beside the middle.
@@ -2115,6 +2133,7 @@ fn console_click(app: &mut PacketApp, d: DeviceId, kind: Cable) {
     let Some(dev) = app.session.topology.device(d) else { return };
     let fits = match kind {
         Cable::Octal => dev.octal_lines() > 0 || dev.has_console(),
+        Cable::Usb => dev.console_port_name().is_some() || dev.usb_host_ports() > 0 || dev.is_usb_device(),
         _ => dev.console_port_name().is_some(),
     };
     if !fits {

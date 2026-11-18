@@ -209,6 +209,8 @@
 	Blue	Azul
 	Board MCU	MCU da placa
 	Board SBC	SBC da placa
+	USB Storage	Pendrive USB
+	USB stick with a small list of files: plug it into a PC, laptop, server, router or switch with a USB cable and copy files to and from it	Pendrive USB com uma pequena lista de arquivos: ligue-o com um cabo USB a um PC, notebook, servidor, roteador ou switch e copie arquivos para ele e dele
 	Board1 runs a BoardScript program (Board1 > Programming): it reads Temp1 on pin A0, switches Fan1 on pin D0 above 28 degrees, blinks Light1 on D1 and reports the reading to the Home gateway's IoT service every 2 s of simulated time. Raise Temp1's reading (Temp1 > IoT), then advance the time. Wire more things with the IoT Custom cable.	O Board1 executa um programa BoardScript (Board1 > Programação): lê o Temp1 no pino A0, liga o Fan1 no pino D0 acima de 28 graus, pisca a Light1 em D1 e reporta a leitura ao serviço IoT do gateway doméstico a cada 2 s de tempo simulado. Aumente a leitura do Temp1 (Temp1 > IoT) e depois avance o tempo. Ligue mais coisas com o cabo IoT Custom.
 	Body (JSON or XML)	Corpo (JSON ou XML)
 	Both router interfaces need their address and `no shutdown`.	As duas interfaces do roteador precisam de endereço e `no shutdown`.
@@ -1872,10 +1874,10 @@ event	write request for	requisição de escrita de
 	Single mode fiber: joins fiber ports whose transceivers are single mode; carries a gigabit signal up to 10 km here	Fibra monomodo: liga portas de fibra cujos transceptores são monomodo; aqui leva um sinal gigabit até 10 km
 	Multi mode fiber: joins fiber ports (SFP uplinks and fiber cards); carries a gigabit signal up to 550 m here	Fibra multimodo: liga portas de fibra (uplinks SFP e placas de fibra); aqui leva um sinal gigabit até 550 m
 	Octal: joins one line of a router's octal card (Card-8A) to the Console port of another router or switch, for reverse-style console access	Octal: liga uma linha da placa octal de um roteador (Card-8A) à porta Console de outro roteador ou switch, para acesso de console reverso
-	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal	USB: da porta USB de um PC ou notebook à porta de console USB de um roteador ou switch, para o Terminal do PC
+	USB: a PC's or laptop's USB port to a router's or switch's USB console port, for the PC's Terminal; or a host's USB port to a printer, a board or a USB stick	USB: da porta USB de um PC ou notebook à porta de console USB de um roteador ou switch, para o Terminal do PC; ou da porta USB de um host a uma impressora, uma placa ou um pendrive USB
 	8-line async card	Placa assíncrona de 8 linhas
 	Eight asynchronous lines for an octal cable: each line reaches the Console port of another router or switch (they are lines, not interfaces)	Oito linhas assíncronas para um cabo octal: cada linha chega à porta Console de outro roteador ou switch (são linhas, não interfaces)
-	USB cable: click a PC or laptop (USB) and a router or switch (USB console).	Cabo USB: clique em um PC ou notebook (USB) e em um roteador ou switch (console USB).
+	USB cable: click a PC or laptop (USB) and a router or switch (USB console), or a host and a printer, board or USB stick.	Cabo USB: clique em um PC ou notebook (USB) e em um roteador ou switch (console USB), ou em um host e uma impressora, uma placa ou um pendrive USB.
 	Octal cable: click a router with an octal card, then a router or switch (Console).	Cabo octal: clique em um roteador com placa octal e depois em um roteador ou switch (Console).
 	{} has no octal card or Console port.	{} não tem placa octal nem porta Console.
 	{} has no USB port.	{} não tem porta USB.
