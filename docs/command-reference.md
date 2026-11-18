@@ -1080,6 +1080,15 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no set origin` |  | router, switch | Leave the origin alone |
 | `ip community-list {standard\|expanded} NAME {permit\|deny} <community>...\|<regular expression>` | config | router, switch | Add a line to a community list |
 | `no ip community-list {standard\|expanded} NAME [{permit\|deny} <community>...\|<regular expression>]` | config | router, switch | Delete a community list, or one line of it |
+| `ip extcommunity-list {standard\|expanded} NAME {permit\|deny} {rt\|soo} <ASN:NN\|A.B.C.D:NN>...\|<regular expression>` | config | router, switch | Add a line to an extended community list |
+| `no ip extcommunity-list {standard\|expanded} NAME [{permit\|deny} {rt\|soo} <ASN:NN\|A.B.C.D:NN>...\|<regular expression>]` | config | router, switch | Delete an extended community list, or one line of it |
+| `show ip extcommunity-list` | user, privileged | router, switch | Every extended community list |
+| `show ip extcommunity-list NAME` | user, privileged | router, switch | One extended community list |
+| `match extcommunity <list> [<list>...]` |  | router, switch | Match paths that extended community lists permit |
+| `no match extcommunity` |  | router, switch | Remove every extended community match |
+| `no match extcommunity <list> [<list>...]` |  | router, switch | Remove these lists from the extended community match |
+| `set extcommunity {rt\|soo} <ASN:NN\|A.B.C.D:NN>... [additive]` |  | router, switch | Give the paths these route targets or site-of-origin values |
+| `no set extcommunity` |  | router, switch | Leave the extended communities alone |
 | `ip as-path access-list <1-500> {permit\|deny} <regular expression>` | config | router, switch | Add a line to an AS-path list |
 | `no ip as-path access-list <1-500> [{permit\|deny} <regular expression>]` | config | router, switch | Delete an AS-path list, or one line of it |
 | `ip bgp-community new-format` | config | router, switch | Show communities as AA:NN instead of one number |
@@ -1097,9 +1106,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `set community {none \| <community>... [additive]}` |  | router, switch | Give the paths these communities |
 | `no set community` |  | router, switch | Leave the communities alone |
 | `neighbor A.B.C.D\|NAME send-community` |  | router, switch | Send the communities a path carries to this neighbour |
-| `neighbor A.B.C.D\|NAME send-community {both\|standard}` |  | router, switch | Send the communities a path carries to this neighbour |
+| `neighbor A.B.C.D\|NAME send-community {both\|standard\|extended}` |  | router, switch | Send the standard, the extended or both kinds of communities a path carries to this neighbour |
 | `no neighbor A.B.C.D\|NAME send-community` |  | router, switch | Stop sending communities to this neighbour |
-| `no neighbor A.B.C.D\|NAME send-community {both\|standard}` |  | router, switch | Stop sending communities to this neighbour |
+| `no neighbor A.B.C.D\|NAME send-community {both\|standard\|extended}` |  | router, switch | Stop sending this kind of communities to this neighbour |
 | `neighbor A.B.C.D\|NAME timers <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time for this neighbour (seconds) |
 | `no neighbor A.B.C.D\|NAME timers` |  | router, switch | Keepalive 60 and hold time 180 again |
 | `neighbor A.B.C.D\|NAME filter-list <1-500> {in\|out}` |  | router, switch | Filter this neighbour's paths with an AS-path list |

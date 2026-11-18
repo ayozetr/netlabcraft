@@ -360,15 +360,22 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborSendCommunity | Id::NoBgpNeighborSendCommunity => {
-            if arg(1).eq_ignore_ascii_case("extended") {
-                return Ok(EXTENDED_NOT_SIMULATED.to_string());
-            }
-            if !arg(1).is_empty() && !matches!(arg(1).to_ascii_lowercase().as_str(), "both" | "standard") {
-                return Err("% Say both, standard or extended".into());
-            }
             let on = id == Id::BgpNeighborSendCommunity;
+            // Which kinds the line touches: without a word, `send-community` is the standard
+            // communities and `no send-community` ends both.
+            let (standard, extended) = match (on, arg(1).to_ascii_lowercase().as_str()) {
+                (true, "" | "standard") | (false, "standard") => (true, false),
+                (_, "extended") => (false, true),
+                (true, "both") | (false, "" | "both") => (true, true),
+                _ => return Err("% Say both, standard or extended".into()),
+            };
             edit(process(c)?, arg(0), |n| {
-                n.send_community = on;
+                if standard {
+                    n.send_community = on;
+                }
+                if extended {
+                    n.send_extended = on;
+                }
                 Ok(())
             })?;
             Ok(String::new())
@@ -712,10 +719,6 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
     }
 }
 
-/// What the console says after `send-community extended`: the setting is not kept, because no path
-/// carries an extended community here.
-const EXTENDED_NOT_SIMULATED: &str =
-    "Accepted: extended communities are not simulated, so the neighbour is sent none (standard ones still need send-community).";
 /// What the console says after it keeps a setting that changes nothing in the simulation.
 const KEPT: &str = "Accepted: kept in the configuration; it does not change what the simulator does.";
 
@@ -725,6 +728,7 @@ const PROCESS_ON: &[&str] = &["bgp fast-external-fallover", "bgp client-to-clien
 const PROCESS_ACTS: &[&str] = &[
     "bgp bestpath as-path multipath-relax",
     "bgp bestpath med missing-as-worst",
+    "bgp deterministic-med",
     "bgp fast-external-fallover",
     "bgp client-to-client reflection",
     "bgp default ipv4-unicast",
@@ -853,8 +857,13 @@ fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor, pw: &dyn Fn(&str) ->
     if let Some((k, h)) = n.timers.filter(|t| base.timers != Some(*t)) {
         v.push(format!("neighbor {who} timers {k} {h}"));
     }
-    if n.send_community && !base.send_community {
-        v.push(format!("neighbor {who} send-community"));
+    if (n.send_community && !base.send_community) || (n.send_extended && !base.send_extended) {
+        let word = match (n.send_community, n.send_extended) {
+            (true, true) => " both",
+            (false, true) => " extended",
+            _ => "",
+        };
+        v.push(format!("neighbor {who} send-community{word}"));
     }
     if n.route_reflector_client && !base.route_reflector_client {
         v.push(format!("neighbor {who} route-reflector-client"));
@@ -1376,6 +1385,13 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
                 p.communities.iter().map(|c| community_text(*c, d.bgp_community_new_format)).collect::<Vec<_>>().join(" ")
             );
         }
+        if !p.ext_communities.is_empty() {
+            let _ = writeln!(
+                s,
+                "    extended communities: {}",
+                p.ext_communities.iter().map(|c| netlabcraft_wire::bgp::ext_text(*c)).collect::<Vec<_>>().join(" ")
+            );
+        }
         if p.multi {
             let _ = writeln!(s, "    shares the load with the best path (maximum-paths)");
         }
@@ -1506,8 +1522,11 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
             let _ = writeln!(s, "  Hold time {} s, keepalive every {} s", n.hold_secs, n.keepalive_secs);
         }
         let mut options = Vec::new();
-        if conf.is_some_and(|c| c.send_community) {
-            options.push("send-community".to_string());
+        match conf.map(|c| (c.send_community, c.send_extended)) {
+            Some((true, true)) => options.push("send-community both".to_string()),
+            Some((true, false)) => options.push("send-community".to_string()),
+            Some((false, true)) => options.push("send-community extended".to_string()),
+            _ => {}
         }
         if let Some((k, h)) = conf.and_then(|c| c.timers) {
             options.push(format!("timers {k} {h}"));

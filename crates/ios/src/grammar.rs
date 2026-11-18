@@ -1120,6 +1120,13 @@ pub enum Id {
     // ---- BGP communities, AS-path lists, aggregation and timers (exec/bgp.rs, exec/policy.rs) ----
     CommunityListLine,
     NoCommunityList,
+    ExtCommunityListLine,
+    NoExtCommunityList,
+    ShowIpExtCommunityList,
+    RmMatchExtCommunity,
+    NoRmMatchExtCommunity,
+    RmSetExtCommunity,
+    NoRmSetExtCommunity,
     AsPathListLine,
     NoAsPathList,
     BgpCommunityNewFormat,
@@ -4098,6 +4105,50 @@ pub static SPECS: &[Spec] = &[
         "Delete a community list, or one line of it"
     ),
     spec!(
+        ExtCommunityListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("extcommunity-list"), Rest("{standard|expanded} NAME {permit|deny} {rt|soo} <ASN:NN|A.B.C.D:NN>...|<regular expression>")],
+        "Add a line to an extended community list"
+    ),
+    spec!(
+        NoExtCommunityList,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [
+            K("no"),
+            K("ip"),
+            K("extcommunity-list"),
+            Rest("{standard|expanded} NAME [{permit|deny} {rt|soo} <ASN:NN|A.B.C.D:NN>...|<regular expression>]")
+        ],
+        "Delete an extended community list, or one line of it"
+    ),
+    spec!(ShowIpExtCommunityList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("extcommunity-list")], "Every extended community list"),
+    spec!(ShowIpExtCommunityList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("extcommunity-list"), Arg("NAME")], "One extended community list"),
+    spec!(
+        RmMatchExtCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("extcommunity"), Rest("<list> [<list>...]")],
+        "Match paths that extended community lists permit"
+    ),
+    spec!(NoRmMatchExtCommunity, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("extcommunity")], "Remove every extended community match"),
+    spec!(
+        NoRmMatchExtCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("match"), K("extcommunity"), Rest("<list> [<list>...]")],
+        "Remove these lists from the extended community match"
+    ),
+    spec!(
+        RmSetExtCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("extcommunity"), Rest("{rt|soo} <ASN:NN|A.B.C.D:NN>... [additive]")],
+        "Give the paths these route targets or site-of-origin values"
+    ),
+    spec!(NoRmSetExtCommunity, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("extcommunity")], "Leave the extended communities alone"),
+    spec!(
         AsPathListLine,
         Modes::CONFIG,
         Modes::BOTH,
@@ -4178,8 +4229,8 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard}")],
-        "Send the communities a path carries to this neighbour"
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard|extended}")],
+        "Send the standard, the extended or both kinds of communities a path carries to this neighbour"
     ),
     spec!(
         NoBgpNeighborSendCommunity,
@@ -4192,8 +4243,8 @@ pub static SPECS: &[Spec] = &[
         NoBgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard}")],
-        "Stop sending communities to this neighbour"
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard|extended}")],
+        "Stop sending this kind of communities to this neighbour"
     ),
     spec!(
         BgpNeighborTimers,
