@@ -284,6 +284,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
 | `show interfaces` | user, privileged | router, switch, firewall | Interface details |
 | `show interfaces trunk` | user, privileged | switch | Trunk ports |
+| `show interfaces switchport` | user, privileged | switch | Switchport settings of every port |
 | `show interfaces <interface>` | user, privileged | router, switch, firewall | One interface's details |
 | `show vlan` | user, privileged | switch | VLAN database |
 | `show vlan brief` | user, privileged | switch | VLAN database |
@@ -585,6 +586,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no clock rate` | interface | router | Remove the clock rate |
 | `show controllers <interface>` | user, privileged | router, switch | Cable type at an interface (DCE or DTE) |
 | `show clock` | user, privileged | router, switch | The device's date and time |
+| `show clock detail` | user, privileged | router, switch | The date and time, where it came from and the uptime |
 | `clock set hh:mm:ss <day> <month> <year>` | privileged | router, switch | Set the date and time |
 | `show flash:` | user, privileged | router, switch | Files in flash memory |
 | `show flash` | user, privileged | router, switch | Files in flash memory |
@@ -644,6 +646,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show lldp entry *` | user, privileged | router, switch | LLDP neighbours with everything they advertise |
 | `show processes` | user, privileged | router, switch | What the device is busy with |
 | `show processes cpu` | user, privileged | router, switch | What the device is busy with |
+| `show processes cpu sorted` | user, privileged | router, switch | Tasks ordered by run time |
+| `show processes cpu history` | user, privileged | router, switch | Processor use over time |
+| `show processes memory` | user, privileged | router, switch | Memory held by each task |
 | `show memory` | user, privileged | router, switch | Memory in use |
 | `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
@@ -1687,6 +1692,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show tech-support` | privileged | router, switch | Everything for a support request |
 | `show boot` | user, privileged | router, switch | What the device starts from |
 | `show environment` | user, privileged | router, switch | Power and temperature |
+| `show environment all` | user, privileged | router, switch | Power and temperature |
+| `show environment power` | user, privileged | router, switch | Power supplies |
+| `show environment temperature` | user, privileged | router, switch | Temperatures and fans |
 | `show inventory` | user, privileged | router, switch | Hardware |
 | `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |

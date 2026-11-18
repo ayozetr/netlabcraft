@@ -65,6 +65,7 @@ mod stp_views;
 mod sweep;
 mod swroute;
 mod system_commands;
+mod system_show;
 mod track;
 mod troubleshoot;
 
