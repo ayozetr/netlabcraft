@@ -1032,6 +1032,17 @@ pub enum Id {
     ShowIpBgpReceived,
     ShowIpBgpRegexp,
     ShowIpBgpFilterList,
+    BgpOption,
+    NoBgpOption,
+    BgpNeighborOption,
+    NoBgpNeighborOption,
+    BgpNeighborActivate,
+    NoBgpNeighborActivate,
+    BgpAddressFamily,
+    BgpExitAddressFamily,
+    BgpAddressFamilyOther,
+    BgpNeighborDistribute,
+    NoBgpNeighborDistribute,
     BgpPeerGroup,
     NoBgpPeerGroup,
     BgpNeighborPeerGroup,
@@ -3820,6 +3831,252 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("show"), K("ip"), K("bgp"), K("filter-list"), Arg("<1-500>")],
         "The paths an AS-path list permits"
+    ),
+    spec!(
+        BgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("bestpath"), K("as-path"), K("multipath-relax")],
+        "Let paths from different neighbouring ASes share the load"
+    ),
+    spec!(
+        NoBgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("bestpath"), K("as-path"), K("multipath-relax")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("bestpath"), K("compare-routerid")],
+        "Prefer the lowest router id between equal external paths"
+    ),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("bestpath"), K("compare-routerid")], "Return this setting to its default"),
+    spec!(
+        BgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("bestpath"), K("med"), K("missing-as-worst")],
+        "Count a path without a MED as the worst one"
+    ),
+    spec!(
+        NoBgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("bestpath"), K("med"), K("missing-as-worst")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("bestpath"), K("med"), K("confed")],
+        "Compare the MED between member ASes of a confederation"
+    ),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("bestpath"), K("med"), K("confed")], "Return this setting to its default"),
+    spec!(BgpOption, Modes::BGP, Modes::BOTH, [K("bgp"), K("deterministic-med")], "Choose among the paths of one neighbouring AS first"),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("deterministic-med")], "Return this setting to its default"),
+    spec!(BgpOption, Modes::BGP, Modes::BOTH, [K("bgp"), K("fast-external-fallover")], "End a direct external session when its link goes down (on)"),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("fast-external-fallover")], "Turn this off (it is on by default)"),
+    spec!(
+        BgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("client-to-client"), K("reflection")],
+        "Pass a route reflector client path to the other clients (on)"
+    ),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("client-to-client"), K("reflection")], "Turn this off (it is on by default)"),
+    spec!(
+        BgpOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("default"), K("ipv4-unicast")],
+        "Exchange IPv4 routes with every neighbour without activating it (on)"
+    ),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("default"), K("ipv4-unicast")], "Turn this off (it is on by default)"),
+    spec!(BgpOption, Modes::BGP, Modes::BOTH, [K("synchronization")], "Wait for an IGP route before using an internal path"),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("synchronization")], "Return this setting to its default"),
+    spec!(BgpOption, Modes::BGP, Modes::BOTH, [K("auto-summary")], "Summarise networks at their classful boundary"),
+    spec!(NoBgpOption, Modes::BGP, Modes::BOTH, [K("no"), K("auto-summary")], "Return this setting to its default"),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("version"), Arg("<4-4>")],
+        "The BGP version the session speaks"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("version")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("advertisement-interval"), Arg("<0-600>")],
+        "Seconds between the updates sent to this neighbour"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("advertisement-interval")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("maximum-prefix"), Arg("<1-4294967295>")],
+        "Most prefixes this neighbour may send"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("maximum-prefix")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("maximum-prefix"), Arg("<1-4294967295>"), Rest("[threshold] [restart <minutes>] [warning-only]")],
+        "Most prefixes this neighbour may send, with its options"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("maximum-prefix")],
+        "Return this setting to its default"
+    ),
+    spec!(BgpNeighborOption, Modes::BGP, Modes::BOTH, [K("neighbor"), Arg("A.B.C.D|NAME"), K("allowas-in")], "Accept paths that contain this AS"),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("allowas-in")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("allowas-in"), Arg("<1-10>")],
+        "Accept paths that contain this AS up to this many times"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("allowas-in")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("as-override")],
+        "Replace the neighbour AS in the paths sent to it with this one"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("as-override")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("ttl-security"), K("hops"), Arg("<1-254>")],
+        "Accept only packets from at most this many hops away"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("ttl-security"), K("hops")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("disable-connected-check")],
+        "Let a loopback-to-loopback external session come up"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("disable-connected-check")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("transport"), K("connection-mode"), Arg("{active|passive}")],
+        "Open the session or wait for the neighbour to"
+    ),
+    spec!(
+        NoBgpNeighborOption,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("transport"), K("connection-mode"), Arg("{active|passive}")],
+        "Return this setting to its default"
+    ),
+    spec!(
+        BgpNeighborActivate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("activate")],
+        "Exchange IPv4 routes with this neighbour"
+    ),
+    spec!(
+        NoBgpNeighborActivate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("activate")],
+        "Stop exchanging IPv4 routes with this neighbour"
+    ),
+    spec!(
+        BgpAddressFamily,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv4")],
+        "Configure the IPv4 unicast address family (its commands apply to the process)"
+    ),
+    spec!(
+        BgpAddressFamily,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv4"), K("unicast")],
+        "Configure the IPv4 unicast address family (its commands apply to the process)"
+    ),
+    spec!(BgpExitAddressFamily, Modes::BGP, Modes::BOTH, [K("exit-address-family")], "Leave the address family"),
+    spec!(BgpAddressFamilyOther, Modes::BGP, Modes::BOTH, [K("address-family"), Rest("<other address family>")], "Only IPv4 unicast is simulated"),
+    spec!(
+        BgpNeighborDistribute,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("distribute-list"), Arg("<1-99>|NAME"), Arg("{in|out}")],
+        "Filter the prefixes of this neighbour with a standard access list"
+    ),
+    spec!(
+        NoBgpNeighborDistribute,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("distribute-list"), Arg("<1-99>|NAME"), Arg("{in|out}")],
+        "Stop filtering this neighbour's prefixes with the list"
     ),
     spec!(Bandwidth, Modes::IF, Modes::BOTH, [K("bandwidth"), Arg("<1-10000000>")], "The bandwidth EIGRP's metric uses (kbit/s)"),
     spec!(NoBandwidth, Modes::IF, Modes::BOTH, [K("no"), K("bandwidth")], "Bandwidth from the port's speed again"),
