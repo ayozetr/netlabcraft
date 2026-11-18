@@ -275,6 +275,9 @@ pub fn running_config(d: &Device) -> String {
         if p.mdix_off {
             let _ = writeln!(s, " no mdix auto");
         }
+        if p.single_mode {
+            let _ = writeln!(s, " transceiver type single-mode");
+        }
         match p.keepalive {
             Some(0) => {
                 let _ = writeln!(s, " no keepalive");
@@ -544,6 +547,9 @@ pub fn running_config(d: &Device) -> String {
         }
         if let Some(n) = o.maximum_paths {
             let _ = writeln!(s, " maximum-paths {n}");
+        }
+        if let Some((a, b, c)) = o.spf_throttle {
+            let _ = writeln!(s, " timers throttle spf {a} {b} {c}");
         }
         for (n, a) in &o.areas {
             if a.stub {
@@ -2340,6 +2346,40 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
 }
 
 /// `show interfaces status` (switches).
+pub fn interface_transceivers(t: &Topology, d: &Device) -> String {
+    use netlabcraft_model::cable::Medium;
+    use netlabcraft_model::physical::BudgetState;
+    let mut s = format!("{:<10} {:<20} {:<10} {:<8} {:<8} {:<8} {}\n", "Port", "Transceiver", "Length", "Loss", "Budget", "Margin", "State");
+    let mut any = false;
+    for (i, p) in d.ports.iter().enumerate() {
+        if !matches!(d.port_medium(i), Some(Medium::Fiber | Medium::Combo)) {
+            continue;
+        }
+        any = true;
+        let end = End { device: d.id, port: i };
+        let kind = if p.single_mode { "single-mode 1310 nm" } else { "multi-mode 850 nm" };
+        let cols = match t.link_at(end).and_then(|l| t.fiber_budget(l)) {
+            Some(b) => (
+                format!("{} m", b.meters),
+                format!("{:.1} dB", b.loss_db),
+                format!("{:.1} dB", b.budget_db),
+                format!("{:.1} dB", b.margin_db()),
+                match b.state() {
+                    BudgetState::Ok => "ok",
+                    BudgetState::Degraded => "degraded",
+                    BudgetState::Over => "over budget",
+                },
+            ),
+            None => ("-".to_string(), "-".to_string(), "-".to_string(), "-".to_string(), "no fiber cable"),
+        };
+        let _ = writeln!(s, "{:<10} {:<20} {:<10} {:<8} {:<8} {:<8} {}", ifname::short(&p.name), kind, cols.0, cols.1, cols.2, cols.3, cols.4);
+    }
+    if !any {
+        s.push_str("No fiber or combo ports on this device\n");
+    }
+    s
+}
+
 pub fn interface_status(t: &Topology, d: &Device, only: Option<usize>) -> String {
     let mut s = format!("{:<10} {:<18} {:<13} {:<8} {:<7} {:<6} {}\n", "Port", "Description", "State", "VLAN", "Duplex", "Speed", "Type");
     for (i, p) in d.ports.iter().enumerate() {
@@ -2928,7 +2968,7 @@ pub fn ipv6_access_lists(sim: &Sim, d: &Device) -> String {
 }
 
 /// `show ip ospf`.
-pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
+pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState, spf: Option<&netlabcraft_sim::DevState>, now_us: u64) -> String {
     let Some(o) = &d.ospf else { return "OSPF is not running here.".into() };
     let mut areas: std::collections::BTreeSet<u32> = o.networks.iter().map(|n| n.area).collect();
     areas.extend(st.segments.iter().filter(|((dev, _), _)| *dev == d.id).map(|(_, seg)| seg.area));
@@ -2980,7 +3020,23 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String
         let up = st.virtual_links.get(&d.id).map_or(0, |l| l.iter().filter(|v| v.up).count());
         let _ = writeln!(s, "  {links} virtual link{} configured, {up} up (show ip ospf virtual-links)", if links == 1 { "" } else { "s" });
     }
-    let _ = write!(s, "  Routes are computed at once (no SPF timers)");
+    let (start, hold, max) = o.spf_throttle.unwrap_or((
+        netlabcraft_sim::ospf_lsdb::SPF_START_MS,
+        netlabcraft_sim::ospf_lsdb::SPF_HOLD_MS,
+        netlabcraft_sim::ospf_lsdb::SPF_MAX_MS,
+    ));
+    let _ = writeln!(s, "  SPF throttle: wait {start} ms after a change, hold {hold} ms between runs, at most {max} ms");
+    let runs = spf.map_or(0, |x| x.spf_runs);
+    match spf.and_then(|x| x.spf_last_us) {
+        Some(last) => {
+            let ago = now_us.saturating_sub(last) / 1_000_000;
+            let hold_now = spf.map_or(hold, |x| x.spf_hold_ms.max(hold));
+            let _ = write!(s, "  SPF ran {runs} time{}, the last {ago} s ago (hold interval now {hold_now} ms)", if runs == 1 { "" } else { "s" });
+        }
+        None => {
+            let _ = write!(s, "  SPF has not run yet");
+        }
+    }
     s
 }
 

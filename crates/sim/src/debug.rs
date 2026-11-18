@@ -33,6 +33,12 @@ pub enum DebugKind {
     OspfAdj,
     /// `debug ip ospf events`: interface, DR election, SPF and timer events.
     OspfEvents,
+    /// `debug ip ospf lsa-generation`: the LSAs this router originates and flushes.
+    OspfLsa,
+    /// `debug ip ospf flood`: LSAs sent and received in updates.
+    OspfFlood,
+    /// `debug ip ospf packet`: every OSPF packet this router hears.
+    OspfPacket,
     /// `debug eigrp packets`: the EIGRP packets this router hears.
     Eigrp,
     /// `debug eigrp fsm`: route computations (feasible successors).
@@ -104,6 +110,9 @@ impl DebugKind {
         DebugKind::OspfHello,
         DebugKind::OspfAdj,
         DebugKind::OspfEvents,
+        DebugKind::OspfLsa,
+        DebugKind::OspfFlood,
+        DebugKind::OspfPacket,
         DebugKind::Eigrp,
         DebugKind::EigrpFsm,
         DebugKind::EigrpNeighbors,
@@ -149,6 +158,9 @@ impl DebugKind {
             DebugKind::OspfHello => ("OSPF hello", "OSPF hellos"),
             DebugKind::OspfAdj => ("OSPF adjacency", "OSPF adjacencies"),
             DebugKind::OspfEvents => ("OSPF event", "OSPF events"),
+            DebugKind::OspfLsa => ("OSPF LSA", "OSPF LSA generation"),
+            DebugKind::OspfFlood => ("OSPF flood", "OSPF flooding"),
+            DebugKind::OspfPacket => ("OSPF packet", "OSPF packets"),
             DebugKind::Eigrp => ("EIGRP", "EIGRP"),
             DebugKind::EigrpFsm => ("EIGRP route", "EIGRP route computations"),
             DebugKind::EigrpNeighbors => ("EIGRP neighbour", "EIGRP neighbours"),

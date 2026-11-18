@@ -1062,8 +1062,16 @@ pub static CATALOG: &[CommandInfo] = &[
         "Cable information",
         "",
         None,
-        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything"#,
+        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}, "budget": null | {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" | "degraded" | "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)"#,
         false
+    ),
+    c!(
+        "link.splices",
+        "Fiber splices",
+        "",
+        None,
+        r#"{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)"#,
+        true
     ),
     c!(
         "pc.terminal",

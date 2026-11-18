@@ -494,6 +494,9 @@ pub enum Id {
     NoAreaAuth,
     OspfRedistribute,
     NoOspfRedistribute,
+    OspfTimersThrottleSpf,
+    NoOspfTimersThrottleSpf,
+    ShowIpOspfMaxage,
     RipRedistribute,
     NoRipRedistribute,
     EigrpRedistribute,
@@ -793,6 +796,8 @@ pub enum Id {
     IfSpeed,
     IfDuplex,
     IfMdix,
+    IfTransceiver,
+    ShowIntTransceiver,
     IfProxyArp,
     NoIfProxyArp,
     NoIfMdix,
@@ -1723,6 +1728,27 @@ pub static SPECS: &[Spec] = &[
         "Remove a message-digest key"
     ),
     spec!(
+        ShowIpOspfMaxage,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("maxage-database")],
+        "LSAs this router still holds at MaxAge, withdrawn by their originator"
+    ),
+    spec!(
+        OspfTimersThrottleSpf,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("timers"), K("throttle"), K("spf"), Arg("<0-600000>"), Arg("<0-600000>"), Arg("<0-600000>")],
+        "Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to"
+    ),
+    spec!(
+        NoOspfTimersThrottleSpf,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("timers"), K("throttle"), K("spf")],
+        "The default SPF delays again (50, 200 and 5000 ms)"
+    ),
+    spec!(
         IpOspfKeyChain,
         OSPF_IFS,
         Modes::BOTH,
@@ -2312,6 +2338,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowMemory, EXECS, Modes::BOTH, [K("show"), K("memory"), K("statistics")], "Memory in use"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface")], "Layer-3 settings of every interface"),
     spec!(ShowIpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), Rest("<interface>")], "Layer-3 settings of an interface"),
+    spec!(
+        ShowIntTransceiver,
+        EXECS,
+        Modes::SWITCH.or(Modes::CARD),
+        [K("show"), K("interfaces"), K("transceiver")],
+        "Transceiver, loss budget and margin of each fiber port"
+    ),
     spec!(ShowIntStatus, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("status")], "Port state, VLAN and speed"),
     spec!(
         ShowRunInterface,
@@ -2432,14 +2465,14 @@ pub static SPECS: &[Spec] = &[
         DebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
-        "Report OSPF: hellos heard, adjacency states, or events"
+        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
+        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
+        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
         "Stop one kind of OSPF report"
     ),
     spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),
@@ -4847,6 +4880,14 @@ pub static SPECS: &[Spec] = &[
     spec!(IfProxyArp, IFS, Modes::ROUTER, [K("ip"), K("proxy-arp")], "Answer ARP for hosts that are reached through this router"),
     spec!(NoIfProxyArp, IFS, Modes::ROUTER, [K("no"), K("ip"), K("proxy-arp")], "Answer ARP only for this interface's own address"),
     spec!(NoIfMdix, Modes::IF, Modes::BOTH, [K("no"), K("mdix"), K("auto")], "Expect the right cable type"),
+    spec!(
+        IfTransceiver,
+        Modes::IF,
+        Modes::BOTH,
+        [K("transceiver"), K("type"), Arg("{multi-mode|single-mode}")],
+        "The transceiver in a fiber or combo port (both ends of a link need the same)"
+    ),
+    spec!(IfTransceiver, Modes::IF, Modes::BOTH, [K("no"), K("transceiver"), K("type")], "Put the multi-mode transceiver back"),
     spec!(IfKeepalive, Modes::IF, Modes::BOTH, [K("keepalive")], "Keepalives every 10 seconds again"),
     spec!(
         IfKeepalive,
