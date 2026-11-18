@@ -58,6 +58,7 @@ pub mod mgmt;
 pub mod netflow;
 pub mod ospf;
 pub mod ospf6;
+pub mod ospf_flood;
 pub mod ospf_lsdb;
 pub mod parts;
 pub mod pdu;
@@ -1225,9 +1226,8 @@ pub struct Sim {
     last_ra_flags: u8,
     /// Control frames (BPDUs, hellos, updates) are queued up to this time.
     ctl_until: u64,
-    /// OSPF adjacencies already announced on the wire: (router, interface, neighbour's router
-    /// ID). A new one gets its database exchange.
-    ospf_adjacent: std::collections::BTreeSet<(DeviceId, String, Ipv4Addr)>,
+    /// OSPF's neighbour state machines, databases and flooding on the wire.
+    ospf_rt: ospf_flood::Runtime,
     /// Server files FTP changed, for the lab to apply (see [`Sim::take_ftp_changes`]).
     ftp_changes: Vec<(DeviceId, String, Option<String>)>,
     /// FTP data connections: (server, data port) → the client's port.
@@ -1653,6 +1653,7 @@ impl Sim {
         self.flush_traps(t);
         self.voice_tick(t);
         self.bgp_refresh(t);
+        self.ospf_sync(t);
         self.schedule_control(t, deadline);
         self.schedule_beacons(t, deadline);
         let mut count = 0usize;
@@ -1710,6 +1711,12 @@ impl Sim {
                         x.hold_done |= x.holddown_until <= h;
                     }
                 }
+                continue;
+            }
+            // OSPF's hellos, retransmissions, refreshes and ageing.
+            if let Some(h) = self.ospf_next_expiry().filter(|h| *h <= deadline && next.is_none_or(|q| *h <= q)) {
+                self.now = self.now.max(h);
+                self.ospf_fire(t);
                 continue;
             }
             // So is a VRRP group's master down interval.
@@ -3002,7 +3009,8 @@ impl Sim {
         let udp_port = if ip.protocol == PROTO_UDP { Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| u.dst_port) } else { None };
         let rip = udp_port == Some(netlabcraft_wire::control::RIP_PORT);
         let hsrp = udp_port == Some(netlabcraft_wire::control::HSRP_PORT);
-        if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) {
+        let ospf_unicast = ip.protocol == netlabcraft_wire::control::PROTO_OSPF && ip.dst == ifc.net.addr;
+        if (ip.dst.octets()[..3] == [224, 0, 0]) || (rip && ip.dst == Ipv4Addr::BROADCAST) || ospf_unicast {
             if d.kind.is_host() {
                 return Ok(());
             }
@@ -3050,6 +3058,9 @@ impl Sim {
                     return Ok(());
                 }
                 self.st(d.id).ospf_seq.insert(key, seq);
+            }
+            if ip.protocol == netlabcraft_wire::control::PROTO_OSPF && d.ospf.is_some() {
+                self.ospf_rx(t, d, ifc, &ip);
             }
             if (debug.1 || debug.2 || debug.3)
                 && ip.protocol == netlabcraft_wire::control::PROTO_OSPF

@@ -385,6 +385,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf hello-interval` | interface, subinterface | router, switch | Hellos every 10 seconds again |
 | `ip ospf dead-interval <1-65535>` | interface, subinterface | router, switch | Silence before a neighbour is dropped |
 | `no ip ospf dead-interval` | interface, subinterface | router, switch | Four hello intervals again |
+| `ip ospf retransmit-interval <1-65535>` | interface, subinterface | router, switch | Seconds before an unacknowledged update is sent again (5) |
+| `no ip ospf retransmit-interval` | interface, subinterface | router, switch | Five seconds again |
+| `ip ospf transmit-delay <1-65535>` | interface, subinterface | router, switch | Seconds added to the age of every LSA sent (1) |
+| `no ip ospf transmit-delay` | interface, subinterface | router, switch | One second again |
 | `ip ospf network {point-to-point\|broadcast}` | interface, subinterface | router, switch | Link type: point-to-point elects no DR |
 | `no ip ospf network` | interface, subinterface | router, switch | The link type its medium has |
 | `ip ospf authentication` | interface, subinterface | router, switch | Authenticate OSPF packets here with a clear-text password |
@@ -690,8 +694,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
-| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Stop one kind of OSPF report |
+| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet\|retransmission` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again |
+| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet\|retransmission` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |

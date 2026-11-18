@@ -492,6 +492,16 @@ pub(super) fn ospf_if_command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             each_ospf_if(c, |e| e.dead = Some(s))
         }
         Id::NoIpOspfDead => each_ospf_if(c, |e| e.dead = None),
+        Id::IpOspfRetransmit => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.retransmit = Some(s))
+        }
+        Id::NoIpOspfRetransmit => each_ospf_if(c, |e| e.retransmit = None),
+        Id::IpOspfTransmitDelay => {
+            let s = secs(arg(0))?;
+            each_ospf_if(c, |e| e.transmit_delay = Some(s))
+        }
+        Id::NoIpOspfTransmitDelay => each_ospf_if(c, |e| e.transmit_delay = None),
         Id::IpOspfAuth => {
             let kind = auth_kind_word(arg(0), true)?;
             each_ospf_if(c, |e| e.auth = Some(kind))
@@ -832,7 +842,12 @@ pub(super) fn ospf_neighbor_detail(c: &mut Ctx) -> R {
         let prio = peer.zip(their_if.as_ref()).and_then(|(p, i)| p.ospf_if.get(i).and_then(|x| x.priority)).unwrap_or(1);
         let (hello, dead) = netlabcraft_sim::ospf::timers(&d, &n.iface);
         let _ = writeln!(s, "Neighbour {} ({name}), interface address {}", n.router_id, n.address);
-        let _ = writeln!(s, "    On {}, area {}, state FULL, role {role}", n.iface, seg.map_or(0, |g| g.area));
+        let state = c.sim.ospf_neighbor_state(d.id, &n.iface, n.router_id).map_or("FULL", netlabcraft_sim::ospf_flood::NbrState::word);
+        let _ = writeln!(s, "    On {}, area {}, state {state}, role {role}", n.iface, seg.map_or(0, |g| g.area));
+        if let Some(r) = c.sim.ospf_neighbor(d.id, &n.iface, n.router_id) {
+            let (req, rxmt) = r.pending();
+            let _ = writeln!(s, "    {req} LSAs in the request list, {rxmt} in the retransmission list, {} packets sent again", r.rxmt_sent);
+        }
         let _ = writeln!(s, "    Priority {prio}; segment DR {}, BDR {}", show_addr(seg.and_then(|g| g.dr)), show_addr(seg.and_then(|g| g.bdr)));
         let _ = writeln!(s, "    Hello every {hello} s, declared dead after {dead} s of silence");
     }

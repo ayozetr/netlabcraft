@@ -1358,11 +1358,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
-            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet"]
+            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet", "retransmission"]
                 .into_iter()
                 .find(|w| !what.is_empty() && w.starts_with(what.as_str()));
             if !what.is_empty() && pick.is_none() {
-                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood or packet".into());
+                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood, packet or retransmission".into());
             }
             let on = spec.id == Id::DebugIpOspf;
             let (kinds, note): (&[DebugKind], &str) = match pick {
@@ -1371,6 +1371,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Some("lsa-generation") => (&[DebugKind::OspfLsa], "the LSAs this router originates and flushes are reported"),
                 Some("flood") => (&[DebugKind::OspfFlood], "the LSAs sent and received in updates are reported"),
                 Some("packet") => (&[DebugKind::OspfPacket], "every OSPF packet this router hears is reported"),
+                Some("retransmission") => (&[DebugKind::OspfRxmt], "updates and descriptions sent again are reported"),
                 Some(_) => (&[DebugKind::OspfHello], "the hellos this router hears are reported"),
                 None => (
                     &[
@@ -1380,6 +1381,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                         DebugKind::OspfLsa,
                         DebugKind::OspfFlood,
                         DebugKind::OspfPacket,
+                        DebugKind::OspfRxmt,
                     ],
                     "all of it",
                 ),
@@ -1390,7 +1392,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on {
                 format!("OSPF debugging is on: {note}.")
             } else {
-                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood and packet"))
+                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood, packet and retransmission"))
             })
         }
         Id::ShowClock => {
@@ -2175,6 +2177,10 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoIpOspfHello
         | Id::IpOspfDead
         | Id::NoIpOspfDead
+        | Id::IpOspfRetransmit
+        | Id::NoIpOspfRetransmit
+        | Id::IpOspfTransmitDelay
+        | Id::NoIpOspfTransmitDelay
         | Id::IpOspfNetwork
         | Id::NoIpOspfNetwork
         | Id::IpOspfAuth
@@ -4616,7 +4622,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }
         Id::ShowOspfNeighbor => {
             let st = c.sim.ospf_state(c.t);
-            let all = render::ospf_neighbors(c.t, c.d()?, &st);
+            let all = render::ospf_neighbors(c.t, c.d()?, &st, &*c.sim);
             let want = arg(0).trim();
             if want.is_empty() {
                 return Ok(all);

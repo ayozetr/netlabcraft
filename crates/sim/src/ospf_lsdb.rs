@@ -646,6 +646,7 @@ impl crate::Sim {
         let list: Vec<Lsa> = all.into_values().collect();
         let events = restamp(&mut self.lsa_stamps, self.now, &list);
         self.ospf_report(t, &st, &events, &holders);
+        self.ospf_originate(t, &st);
         for (d, digest) in digests {
             if self.ospf_db_hash.get(&d) != Some(&digest) {
                 self.ospf_db_hash.insert(d, digest);
@@ -734,7 +735,7 @@ impl crate::Sim {
     /// afresh, by the priorities and router IDs configured now.
     pub fn clear_ospf(&mut self) {
         self.ospf = None;
-        self.ospf_adjacent.clear();
+        self.ospf_rt_clear();
         // The process starts over: every router originates its LSAs afresh and runs SPF again.
         self.lsa_stamps.clear();
         self.ospf_db_hash.clear();

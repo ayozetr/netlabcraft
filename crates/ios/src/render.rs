@@ -1513,7 +1513,7 @@ pub fn stp_blocked(t: &Topology, d: &Device, trees: &[(VlanId, netlabcraft_sim::
 }
 
 /// `show ip ospf neighbor`.
-pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
+pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::OspfState, sim: &netlabcraft_sim::Sim) -> String {
     if d.ospf.is_none() {
         return "OSPF is not running on this router.".into();
     }
@@ -1526,12 +1526,15 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
     let mut s = format!("{:<16} {:<10} {:<16} {:<22} Device\n", "Neighbour ID", "State", "Address", "Interface");
     for n in list {
         let name = t.device(n.device).map_or("?".to_string(), |x| x.name.clone());
-        let state = match st.segments.get(&(d.id, n.iface.clone())) {
-            Some(seg) if seg.dr.is_none() => "FULL/P2P",
-            Some(seg) if seg.dr == Some(n.address) => "FULL/DR",
-            Some(seg) if seg.bdr == Some(n.address) => "FULL/BDR",
-            _ => "FULL/OTHER",
+        let role = match st.segments.get(&(d.id, n.iface.clone())) {
+            Some(seg) if seg.dr.is_none() => "P2P",
+            Some(seg) if seg.dr == Some(n.address) => "DR",
+            Some(seg) if seg.bdr == Some(n.address) => "BDR",
+            _ => "OTHER",
         };
+        // Before any packet has gone over the adjacency it is shown as converged.
+        let word = sim.ospf_neighbor_state(d.id, &n.iface, n.router_id).map_or("FULL", netlabcraft_sim::ospf_flood::NbrState::word);
+        let state = format!("{word}/{role}");
         let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
     }
     // A virtual link that is up is a neighbour too, across its transit area.
@@ -1906,6 +1909,12 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         }
         if let Some(h) = o.dead {
             let _ = writeln!(s, " ip ospf dead-interval {h}");
+        }
+        if let Some(h) = o.retransmit {
+            let _ = writeln!(s, " ip ospf retransmit-interval {h}");
+        }
+        if let Some(h) = o.transmit_delay {
+            let _ = writeln!(s, " ip ospf transmit-delay {h}");
         }
         if o.p2p {
             s.push_str(" ip ospf network point-to-point\n");
