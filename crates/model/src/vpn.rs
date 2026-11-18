@@ -346,6 +346,10 @@ pub struct Ikev2Profile {
     /// `lifetime SECONDS`: how long an IKE SA made under this profile lives (a day otherwise).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub lifetime: Option<u32>,
+    /// `pki trustpoint NAME`: the trustpoint whose certificate signs this profile's IKE_AUTH
+    /// (the first usable trustpoint when none is named).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub trustpoint: Option<String>,
 }
 
 /// The IKE SA lifetime when a profile sets none, and the range it accepts.
@@ -353,6 +357,16 @@ pub const DEFAULT_IKE_SECONDS: u32 = 86_400;
 pub const IKE_SECONDS: std::ops::RangeInclusive<u32> = 120..=86_400;
 
 impl Ikev2Profile {
+    /// `authentication local rsa-sig`: this router signs IKE_AUTH with a certificate.
+    pub fn rsa_local(&self) -> bool {
+        self.auth_local.as_deref() == Some("rsa-sig")
+    }
+
+    /// `authentication remote rsa-sig`: the peer must sign IKE_AUTH with a certificate.
+    pub fn rsa_remote(&self) -> bool {
+        self.auth_remote.as_deref() == Some("rsa-sig")
+    }
+
     /// The lifetime an IKE SA made under this profile gets, in seconds.
     pub fn ike_lifetime(&self) -> u32 {
         self.lifetime.filter(|s| IKE_SECONDS.contains(s)).unwrap_or(DEFAULT_IKE_SECONDS)
@@ -434,6 +448,7 @@ impl Ikev2 {
         }
         for p in &mut self.profiles {
             p.remote.truncate(MAX_CRYPTO);
+            p.trustpoint = p.trustpoint.take().map(|t| t.chars().take(64).collect());
         }
     }
 }

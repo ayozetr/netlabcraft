@@ -121,6 +121,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                     auth_remote: None,
                     keyring: None,
                     lifetime: None,
+                    trustpoint: None,
                 },
                 "IKEv2 profiles",
             )?;
@@ -264,8 +265,8 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         }
         Id::Ikev2AuthLocal | Id::Ikev2AuthRemote => {
             let m = arg(0).to_ascii_lowercase();
-            if m != "pre-share" {
-                return Err("% Only pre-share authentication is simulated".into());
+            if m != "pre-share" && m != "rsa-sig" {
+                return Err("% Only pre-share and rsa-sig authentication are simulated".into());
             }
             let p = profile(c)?;
             if id == Id::Ikev2AuthLocal {
@@ -274,6 +275,12 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 p.auth_remote = Some(m);
             }
             Ok(String::new())
+        }
+        Id::Ikev2ProfilePki => {
+            let n = name_ok(&arg(0))?;
+            let note = if c.d()?.pki.trustpoint(&n).is_some() { String::new() } else { format!("Note: trustpoint {n} does not exist yet") };
+            profile(c)?.trustpoint = Some(n);
+            Ok(note)
         }
         Id::Ikev2ProfileKeyring => {
             let k = name_ok(&arg(0))?;
@@ -386,6 +393,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
         if let Some(k) = &p.keyring {
             let _ = writeln!(s, " keyring local {k}");
         }
+        if let Some(t) = &p.trustpoint {
+            let _ = writeln!(s, " pki trustpoint {t}");
+        }
         if let Some(l) = p.lifetime {
             let _ = writeln!(s, " lifetime {l}");
         }
@@ -425,6 +435,9 @@ pub(crate) fn ikev2_sas(sim: &Sim, d: &Device) -> String {
         }
         if let Some(p) = &v2.profile {
             let _ = writeln!(s, "  Profile: {p}");
+        }
+        if !v2.peer_cert.is_empty() {
+            let _ = writeln!(s, "  Peer authenticated with the certificate of {}", v2.peer_cert);
         }
         if sa.phase == IkePhase::Established {
             let esp = match v2.esp_suite {
@@ -484,6 +497,9 @@ pub(crate) fn profiles(d: &Device) -> String {
             p.auth_remote.as_deref().unwrap_or("not set")
         );
         let _ = writeln!(s, "  Keyring: {}", p.keyring.as_deref().unwrap_or("none"));
+        if p.rsa_local() || p.rsa_remote() {
+            let _ = writeln!(s, "  Trustpoint: {}", p.trustpoint.as_deref().unwrap_or("the first with a certificate"));
+        }
         let _ = writeln!(s, "  IKE SA lifetime: {} seconds{}", p.ike_lifetime(), if p.lifetime.is_none() { " (the default)" } else { "" });
     }
     s.trim_end().to_string()

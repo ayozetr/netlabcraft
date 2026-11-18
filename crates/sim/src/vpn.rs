@@ -536,23 +536,50 @@ fn local_check(d: &Device, e: &CryptoMapEntry) -> Result<(Ipv4Addr, String), Str
     let peer = e.peer.ok_or_else(|| format!("crypto map {} {} has no peer (`set peer`)", e.map, e.seq))?;
     let ts_name = e.transform_set.as_deref().ok_or_else(|| format!("crypto map {} {} has no transform set", e.map, e.seq))?;
     d.crypto.transform_set(ts_name).ok_or_else(|| format!("transform set {ts_name} does not exist"))?;
-    let key = d.crypto.key_for(peer).ok_or_else(|| format!("no ISAKMP key for peer {peer}"))?;
-    Ok((peer, key.to_string()))
+    // With RSA signatures there is no key to share: the certificates stand in for it.
+    let key = match d.crypto.key_for(peer) {
+        Some(k) => k.to_string(),
+        None if d.crypto.policies.iter().any(|p| p.authentication == "rsa-sig") => String::new(),
+        None => return Err(format!("no ISAKMP key for peer {peer}")),
+    };
+    Ok((peer, key))
 }
 
 /// Main mode messages 1 and 2: an ISAKMP policy both routers have (when both have some).
 fn policy_check(a: &Device, b: &Device) -> Result<(), String> {
     if !a.crypto.policies.is_empty() && !b.crypto.policies.is_empty() {
         let agreed = a.crypto.policies.iter().find(|x| b.crypto.policies.iter().any(|y| x.agrees(y))).ok_or("no ISAKMP policy matches the peer's")?;
-        if agreed.authentication != "pre-share" {
-            return Err("the matching ISAKMP policy does not use pre-shared keys".into());
+        if !["pre-share", "rsa-sig"].contains(&agreed.authentication.as_str()) {
+            return Err(format!("the matching ISAKMP policy uses {}, which the simulator does not run", agreed.authentication));
         }
+    }
+    Ok(())
+}
+
+/// Whether the ISAKMP policy two routers agree on authenticates with RSA signatures.
+fn agreed_rsa(a: &Device, b: &Device) -> bool {
+    a.crypto.policies.iter().find(|x| b.crypto.policies.iter().any(|y| x.agrees(y))).is_some_and(|p| p.authentication == "rsa-sig")
+}
+
+/// Main mode with signatures, from both configurations (no clock): both routers hold a
+/// certificate with its key pair, and each trusts the authority that signed the other's.
+fn cert_check(a: &Device, b: &Device) -> Result<(), String> {
+    let mine = crate::pki::ike_certificate(a).ok_or("this router has no certificate with its key pair for RSA signatures (`crypto pki enroll`)")?;
+    let theirs = crate::pki::ike_certificate(b).ok_or("the peer has no certificate with its key pair for RSA signatures")?;
+    if !crate::pki::trusts(a, &theirs) {
+        return Err(format!("this router does not trust the authority that signed the peer's certificate ({})", theirs.issuer.text()));
+    }
+    if !crate::pki::trusts(b, &mine) {
+        return Err(format!("the peer does not trust the authority that signed this router's certificate ({})", mine.issuer.text()));
     }
     Ok(())
 }
 
 /// Main mode message 5: both routers hold the same pre-shared key for each other.
 fn auth_check(a: &Device, a_addr: Ipv4Addr, b: &Device, b_addr: Ipv4Addr) -> Result<(), String> {
+    if agreed_rsa(a, b) {
+        return cert_check(a, b);
+    }
     let key = a.crypto.key_for(b_addr).ok_or_else(|| format!("no ISAKMP key for peer {b_addr}"))?;
     let theirs = b.crypto.key_for(a_addr).ok_or_else(|| format!("the peer has no ISAKMP key for {a_addr}"))?;
     if theirs != key {
@@ -623,7 +650,11 @@ fn policy_transform(number: u8, p: Option<&netlabcraft_model::vpn::IsakmpPolicy>
         "sha512" => 6,
         _ => 2,
     };
-    let auth = if p.is_none_or(|p| p.authentication == "pre-share") { 1 } else { 3 };
+    let auth = match p.map_or("pre-share", |p| p.authentication.as_str()) {
+        "pre-share" => 1,
+        "rsa-encr" => 4,
+        _ => 3,
+    };
     let life = p.and_then(|p| p.lifetime).unwrap_or(86_400);
     attrs.extend([(2, hash), (3, auth), (4, u16::from(p.map_or(1, |p| p.group))), (11, 1), (12, u16::try_from(life).unwrap_or(u16::MAX))]);
     Transform { number, id: 1, attrs }
@@ -744,6 +775,30 @@ fn esp_transform(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Transform
 
 fn id_payload(a: Ipv4Addr) -> Payload {
     Payload::Id { kind: 1, protocol: 17, port: ike::ISAKMP_PORT, data: a.octets().to_vec() }
+}
+
+/// What follows the identity in main mode message 5 (initiator) or 6: a HASH for a pre-shared
+/// key; for RSA signatures this router's certificate and its signature of the same hash.
+fn p1_auth(d: &Device, v1: &V1State, initiator: bool, ic: &[u8; 8], rc: &[u8; 8], id: &Payload) -> Result<Vec<Payload>, String> {
+    let hash = v1.hash_p1(initiator, ic, rc, &id.body());
+    if !v1.rsa() {
+        return Ok(vec![Payload::Hash(hash)]);
+    }
+    let me = crate::pki::ike_identity(d, None).ok_or("this router has no certificate with its key pair to sign with (`crypto pki enroll`)")?;
+    let sig = me.sign(&hash).ok_or("the key pair is too small to sign with")?;
+    Ok(vec![Payload::cert(me.cert.der()), Payload::signature(&sig)])
+}
+
+/// Checks main mode message 5 (`from_initiator`) or 6: the HASH, or the certificate chain and
+/// the signature of the same hash. The subject of the peer's certificate (empty with a key).
+fn p1_check(d: &Device, now: i64, v1: &V1State, from_initiator: bool, ic: &[u8; 8], rc: &[u8; 8], list: &[Payload]) -> Result<String, String> {
+    let id = list.iter().find(|p| matches!(p, Payload::Id { .. })).map(Payload::body).ok_or(crate::ikev1::OPEN_FAILED)?;
+    let want = v1.hash_p1(from_initiator, ic, rc, &id);
+    if !v1.rsa() {
+        return if crate::ikev1::hash_of(list) == Some(&want[..]) { Ok(String::new()) } else { Err(crate::ikev1::OPEN_FAILED.to_string()) };
+    }
+    let sig = ike::sig_of(list).ok_or("the message carries no signature")?;
+    crate::pki::verify_peer(d, now, &ike::certs_of(list), &want, sig).map(|c| c.subject.text())
 }
 
 /// Whether a packet is ISAKMP (UDP port 500), which crypto maps never protect.
@@ -1187,6 +1242,7 @@ impl Sim {
         }
         let other = owner(t, d, peer);
         let now = self.now;
+        let clock = self.clock(d.id).0;
         let cur = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned().unwrap_or_default();
         let my_key = d.crypto.key_for(peer).unwrap_or_default().to_string();
         // The crypto map entry towards this peer, on the interface it reached.
@@ -1298,43 +1354,57 @@ impl Sim {
                     return Ok(());
                 }
                 let id = id_payload(local);
-                let hash = v1.hash_p1(true, &ic, &rc, &id.body());
-                let out = v1.seal(ic, rc, ike::EXCH_MAIN, 0, &[id, Payload::Hash(hash)], false);
+                let mut payloads = vec![id.clone()];
+                match p1_auth(d, &v1, true, &ic, &rc, &id) {
+                    Ok(rest) => payloads.extend(rest),
+                    Err(why) => {
+                        self.ike_fail(d, peer, format!("{why}; main mode message 5 not sent"));
+                        return Ok(());
+                    }
+                }
+                let out = v1.seal(ic, rc, ike::EXCH_MAIN, 0, &payloads, false);
                 self.set_v1(d, peer, v1, IkePhase::Main(5));
                 self.ike_send(t, d, local, peer, &out);
             }
             // Responder: message 5 must decrypt with the keys and carry the right HASH_I.
             (ike::EXCH_MAIN, false, IkePhase::Main(4)) => {
                 let opened = v1.open(&m, false);
-                let verdict = opened.and_then(|list| {
-                    let id = list.iter().find(|p| matches!(p, Payload::Id { .. })).map(Payload::body).ok_or(crate::ikev1::OPEN_FAILED)?;
-                    let want = v1.hash_p1(true, &ic, &rc, &id);
-                    if crate::ikev1::hash_of(&list) == Some(&want[..]) { Ok(()) } else { Err(crate::ikev1::OPEN_FAILED.to_string()) }
-                });
-                if let Err(e) = verdict {
-                    // The configurations say why, when the peer is known.
-                    let why = other.and_then(|o| auth_check(o, peer, d, local).err()).unwrap_or_else(|| format!("main mode message 5 {e}"));
-                    self.ike_fail(d, peer, format!("{why}; main mode message 5 failed authentication"));
-                    self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::AUTHENTICATION_FAILED));
-                    return Ok(());
+                let verdict = opened.and_then(|list| p1_check(d, clock, &v1, true, &ic, &rc, &list));
+                match verdict {
+                    Ok(subject) => v1.peer_cert = subject,
+                    Err(e) => {
+                        // The configurations say why, when the peer is known.
+                        let own = if v1.rsa() { e } else { format!("main mode message 5 {e}") };
+                        let why = other.and_then(|o| auth_check(o, peer, d, local).err()).unwrap_or(own);
+                        self.ike_fail(d, peer, format!("{why}; main mode message 5 failed authentication"));
+                        self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::AUTHENTICATION_FAILED));
+                        return Ok(());
+                    }
                 }
                 let id = id_payload(local);
-                let hash = v1.hash_p1(false, &ic, &rc, &id.body());
-                let out = v1.seal(ic, rc, ike::EXCH_MAIN, 0, &[id, Payload::Hash(hash)], false);
+                let mut payloads = vec![id.clone()];
+                match p1_auth(d, &v1, false, &ic, &rc, &id) {
+                    Ok(rest) => payloads.extend(rest),
+                    Err(why) => {
+                        self.ike_fail(d, peer, format!("{why}; main mode message 6 not sent"));
+                        self.ike_send(t, d, local, peer, &refuse(&m, rc, ike::AUTHENTICATION_FAILED));
+                        return Ok(());
+                    }
+                }
+                let out = v1.seal(ic, rc, ike::EXCH_MAIN, 0, &payloads, false);
                 self.set_v1(d, peer, v1, IkePhase::Main(6));
                 self.ike_send(t, d, local, peer, &out);
             }
             // Initiator: main mode done (message 6, HASH_R checked); quick mode message 1
             // proposes ESP.
             (ike::EXCH_MAIN, true, IkePhase::Main(5)) => {
-                let ok = v1.open(&m, false).is_ok_and(|list| {
-                    list.iter()
-                        .find(|p| matches!(p, Payload::Id { .. }))
-                        .is_some_and(|id| crate::ikev1::hash_of(&list) == Some(&v1.hash_p1(false, &ic, &rc, &id.body())[..]))
-                });
-                if !ok {
-                    self.ike_fail(d, peer, format!("main mode message 6 {}", crate::ikev1::OPEN_FAILED));
-                    return Ok(());
+                match v1.open(&m, false).and_then(|list| p1_check(d, clock, &v1, false, &ic, &rc, &list)) {
+                    Ok(subject) => v1.peer_cert = subject,
+                    Err(e) => {
+                        let why = if v1.rsa() { e } else { format!("main mode message 6 {e}") };
+                        self.ike_fail(d, peer, why);
+                        return Ok(());
+                    }
                 }
                 if cur.p1_only {
                     // Only the ISAKMP SA is being renewed: the IPsec SAs stay as they are.
@@ -1469,7 +1539,7 @@ impl Sim {
         }
         let offered: Vec<Transform> = m.proposal().map(|p| p.transforms.clone()).unwrap_or_default();
         let mine: Vec<(Transform, bool)> =
-            d.crypto.policies.iter().map(|p| (policy_transform(0, Some(p)), p.authentication == "pre-share")).collect();
+            d.crypto.policies.iter().map(|p| (policy_transform(0, Some(p)), ["pre-share", "rsa-sig"].contains(&p.authentication.as_str()))).collect();
         let chosen = if mine.is_empty() {
             offered.iter().find(|t| crate::ikev1::pre_shared(t)).cloned()
         } else {

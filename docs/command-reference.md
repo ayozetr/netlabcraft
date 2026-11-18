@@ -1438,8 +1438,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `pre-shared-key [local\|remote] KEY` |  | router | The key shared with the peer |
 | `match identity remote address A.B.C.D [MASK]` |  | router | Peers this profile is for |
 | `identity local address A.B.C.D` |  | router | The identity this router presents |
-| `authentication local pre-share` |  | router | How this router proves who it is |
-| `authentication remote pre-share` |  | router | How the peer proves who it is |
+| `authentication local {pre-share\|rsa-sig}` |  | router | How this router proves who it is |
+| `authentication remote {pre-share\|rsa-sig}` |  | router | How the peer proves who it is |
+| `pki trustpoint NAME` |  | router | The trustpoint whose certificate signs this router's IKE_AUTH |
 | `keyring local NAME` |  | router | The keyring holding the keys |
 | `lifetime <120-86400>` |  | router | Seconds before the IKE SA is replaced |
 | `no lifetime` |  | router | Back to the default IKE SA lifetime |
