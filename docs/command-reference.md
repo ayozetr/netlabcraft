@@ -254,6 +254,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `end` | config, interface, subinterface, vlan, object | router, switch, firewall | Return to privileged mode |
 | `configure terminal` | privileged | router, switch, firewall | Configure from the terminal |
 | `ping A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Send echo requests |
+| `ping` | user, privileged | router, switch, firewall | Send echo requests, asking for the options one question at a time |
 | `ping A.B.C.D\|X:X::X [repeat <1-1000>] [size <36-18024>] [source A.B.C.D\|INTERFACE] [timeout <0-3600>]` | user, privileged | router, switch, firewall | Send echo requests with options |
 | `show ip traffic` | user, privileged | router, switch | IPv4 packets counted by what happened to them |
 | `show tcp brief` | user, privileged | router, switch | TCP connections to and from this device |
@@ -261,6 +262,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `history size <0-256>` |  | router, switch | How many commands a session remembers |
 | `no history size` |  | router, switch | Remember the default number of commands |
 | `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Trace the route to a destination |
+| `traceroute` | user, privileged | router, switch, firewall | Trace the route to a destination, asking for the options one question at a time |
 | `show running-config` | privileged | router, switch, firewall | Current configuration |
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |
@@ -1717,6 +1719,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no errdisable recovery interval` | config | switch | Back to 300 seconds |
 | `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
 | `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
+| `errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Shut ports for this cause again (detection is on unless turned off) |
+| `no errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Stop shutting ports for this cause: the frame is still dropped, the port stays up |
+| `show errdisable detect` | user, privileged | switch | Which causes shut a port |
 | `monitor session <1-66> source interface <interfaces> [both\|rx\|tx]` | config | switch | Copy the frames that enter or leave these ports (ranges such as `fa0/1 - 3, fa0/5` work) to the session's destination |
 | `monitor session <1-66> source vlan <1-4094>[,-] [both\|rx\|tx]` | config | switch | Copy the frames of these VLANs, on every port, to the session's destination |
 | `monitor session <1-66> destination interface <interface>` | config | switch | The port that receives the copies: it forwards no other traffic |
