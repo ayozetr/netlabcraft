@@ -109,6 +109,7 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 74 | [JavaScript on a microcontroller board](74-javascript-on-a-microcontroller.md) | IoT follow-up | a `loop` function the board calls again and again, `delay`, `console.log`, template literals, the subset's limits |
 | 81 | [Multiple spanning tree: regions and one tree per group of VLANs](81-mst-regions.md) | CCNA 2 follow-up | `spanning-tree mode mst`, `spanning-tree mst configuration` with `name`, `revision` and `instance N vlan`, `spanning-tree mst N root primary`, `show spanning-tree mst`, a region boundary |
 | 75 | [Reverse Telnet through an octal card](75-reverse-telnet-through-an-octal-card.md) | CCNA 3 follow-up | `Card-8A`, the octal cable, `line 1 8`, `transport input telnet`, `modem inout`, `telnet <address> 2001`, `show line`, `show users`, the escape sequence, `clear line`, the console password |
+| 77 | [IP SLA and a tracked default route that fails over](77-ip-sla-tracked-default-route.md) | CCNA 3 | `ip sla`, `icmp-echo`, `ip sla schedule`, `track N ip sla`, `ip route … track`, a floating static route |
 
 ## Running the scripts
 
