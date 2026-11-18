@@ -138,7 +138,11 @@ impl Sim {
                     self.debug_log(d.id, DebugKind::Snmp, &format!("request from {} with an unknown community: no answer is sent", ip.src));
                     return Some(Err(format!("SNMP community `{}` not known here", req.community)));
                 };
-                self.debug_log(d.id, DebugKind::Snmp, &format!("request from {} accepted ({} access)", ip.src, if *rw { "read-write" } else { "read-only" }));
+                self.debug_log(
+                    d.id,
+                    DebugKind::Snmp,
+                    &format!("request from {} accepted ({} access)", ip.src, if *rw { "read-write" } else { "read-only" }),
+                );
                 let answer = self.snmp_answer(t, d, &req, *rw);
                 self.udp_out(t, d, me, ip.src, SNMP_PORT, u.src_port, answer.encode())
             }
