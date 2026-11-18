@@ -568,6 +568,22 @@ impl Certificate {
         &self.der
     }
 
+    /// The DER of its subject name (what an IKEv1 certificate request names an authority by).
+    pub fn subject_der(&self) -> &[u8] {
+        &self.subject_raw
+    }
+
+    /// The DER of its issuer name.
+    pub fn issuer_der(&self) -> &[u8] {
+        &self.issuer_raw
+    }
+
+    /// SHA-1 of its DER SubjectPublicKeyInfo: how an IKEv2 certificate request names an
+    /// authority (RFC 7296 §3.7).
+    pub fn key_hash(&self) -> [u8; 20] {
+        crate::sha1::sha1(&encode_spki(&self.key))
+    }
+
     /// The hash of its signature algorithm.
     pub fn hash(&self) -> SigHash {
         self.hash

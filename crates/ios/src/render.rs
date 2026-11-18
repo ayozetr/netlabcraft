@@ -711,6 +711,7 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    crate::exec::sla::running_config(&mut s, d);
     for dn in &d.default_networks {
         let _ = writeln!(s, "ip default-network {dn}");
     }

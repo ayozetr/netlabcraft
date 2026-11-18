@@ -23,3 +23,34 @@ fn an_object_settles_after_the_command_that_made_it() {
     let out = cli(&mut s, &name, "show track 1");
     assert!(out.contains("State is Down") && out.contains("last change"), "{out}");
 }
+
+#[test]
+fn an_ip_sla_probe_is_sent_after_the_command_and_the_object_follows_it() {
+    let mut s = Session::new();
+    s.execute("file.new", json!({"sample": "two-subnets"})).unwrap();
+    let router = s.topology.devices.iter().find(|d| d.kind == DeviceKind::Router).unwrap();
+    let name = router.name.clone();
+    // An address of the router itself answers at once, whatever the cabling.
+    let own = router.ports.iter().find_map(|p| p.ip).unwrap().addr;
+    let lines = [
+        "en".to_string(),
+        "conf t".into(),
+        "ip sla 1".into(),
+        format!("icmp-echo {own}"),
+        "frequency 5".into(),
+        "exit".into(),
+        "ip sla schedule 1 life forever start-time now".into(),
+        "track 1 ip sla 1 state".into(),
+        "end".into(),
+    ];
+    for l in &lines {
+        assert!(!cli(&mut s, &name, l).starts_with("% "), "{l}");
+    }
+    let stats = cli(&mut s, &name, "show ip sla statistics 1");
+    assert!(stats.contains("1 sent, 1 answered") && stats.contains("Latest outcome: OK"), "{stats}");
+    assert!(cli(&mut s, &name, "show track 1").contains("State is Up"));
+    // Time passes: the next command that runs after it sends the next probe.
+    s.execute("sim.advance", json!({"seconds": 12})).unwrap();
+    let stats = cli(&mut s, &name, "show ip sla statistics 1");
+    assert!(!stats.contains("1 sent"), "more than one probe was sent after twelve seconds at 5 s: {stats}");
+}
