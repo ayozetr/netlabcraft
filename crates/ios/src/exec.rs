@@ -2212,6 +2212,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::Ikev2IdentityLocal
         | Id::Ikev2AuthLocal
         | Id::Ikev2AuthRemote
+        | Id::Ikev2ProfilePki
         | Id::Ikev2ProfileKeyring
         | Id::Ikev2ProfileLifetime
         | Id::NoIkev2ProfileLifetime
@@ -4175,7 +4176,18 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoBgpPeerGroup
         | Id::BgpNeighborPeerGroup
         | Id::NoBgpNeighborPeerGroup
+        | Id::BgpNeighborDistribute
+        | Id::NoBgpNeighborDistribute
         | Id::ShowIpBgpPeerGroup => bgp::command(&mut c, spec.id, &args),
+        Id::BgpOption
+        | Id::NoBgpOption
+        | Id::BgpNeighborOption
+        | Id::NoBgpNeighborOption
+        | Id::BgpNeighborActivate
+        | Id::NoBgpNeighborActivate
+        | Id::BgpAddressFamily
+        | Id::BgpExitAddressFamily
+        | Id::BgpAddressFamilyOther => bgp::option_command(&mut c, spec, &args),
         Id::FlowExportDestination
         | Id::NoFlowExportDestination
         | Id::FlowExportVersion

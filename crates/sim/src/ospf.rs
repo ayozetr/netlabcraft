@@ -1102,7 +1102,8 @@ pub fn fingerprint(t: &Topology) -> u64 {
                 d.ospf, d.rip, d.eigrp, d.routes, d.access.users, d.ospf_if, d.eigrp_if, d.ip_routing, d.bgp
             )
             .hash(&mut h);
-            if !d.route_maps.is_empty() || !d.prefix_lists.is_empty() {
+            let distributes = d.bgp.as_ref().is_some_and(|b| b.neighbors.iter().any(|n| n.distribute_in.is_some() || n.distribute_out.is_some()));
+            if !d.route_maps.is_empty() || !d.prefix_lists.is_empty() || distributes {
                 // Policy decides what is redistributed and what BGP accepts, so edits count.
                 format!("{:?}{:?}{:?}", d.prefix_lists, d.route_maps, d.acls).hash(&mut h);
             }

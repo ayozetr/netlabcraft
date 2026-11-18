@@ -144,7 +144,6 @@
 	address or device name	地址或设备名称
 	Address pool (network/prefix)	地址池（网络/前缀）
 	Address {} · gateway {}	地址 {} · 网关 {}
-	Adds a place to the map shown; drag it into position	在显示的地图上添加一个地点；将其拖到合适位置
 	After a delay	延迟后
 	Agent address	代理地址
 	Agents and scripts drive NetLabCraft through	代理和脚本通过以下方式控制 NetLabCraft
@@ -691,6 +690,29 @@
 	New File	新建文件
 	New from sample	从示例新建
 	New Wiring Closet	新建配线间
+	Create New…	新建…
+	Create New City	新建城市
+	Create New Building	新建建筑
+	Create New Closet	新建配线间
+	Create New Generic Container	新建通用容器
+	Create New Rack	新建机架
+	Create New Table	新建桌子
+	Create New Shelf	新建货架
+	Create New Inventory Shelf	新建库存货架
+	Create New Cable Pegboard	新建线缆挂板
+	Create New Industrial Control Panel (ICP)	新建工业控制面板 (ICP)
+	Switch to the Physical view first.	请先切换到物理视图。
+	Go to the Intercity map to create a city.	请到城际地图上新建城市。
+	Open a city first.	请先打开一个城市。
+	Open a building first.	请先打开一栋建筑。
+	Open a city or a building first.	请先打开一个城市或一栋建筑。
+	Open a wiring closet or a container first.	请先打开一个配线间或容器。
+	No wiring closet yet: create one with +	还没有配线间：用 + 新建一个
+	Go to Working Closet	转到工作配线间
+	Go to Working Closet ({})	转到工作配线间 ({})
+	Added {}.	已添加 {}。
+	Set as Working Closet	设为工作配线间
+	New Generic Container	新建通用容器
 	Container	容器
 	New Container	新建容器
 	Inventory Shelf	库存货架
@@ -1841,7 +1863,6 @@ event	write request for	写请求
 	Selection	选择
 	Show Event List	显示事件列表
 	Simulation Back	模拟后退
-	{} is not available at this level of the Physical view.	{} 在物理视图的此层级不可用。
 	Automatically Choose Connection Type	自动选择连接类型
 	Single Mode Fiber	单模光纤
 	Multi Mode Fiber	多模光纤
@@ -2446,3 +2467,23 @@ furniture	Table	桌子
 	Card id (hex):	卡片编号 (十六进制)：
 	Report crossings of the wire	报告穿越拉线的物体
 	Wire angle (degrees):	拉线角度 (度)：
+	Custom environment:	自定义环境：
+	Create Custom Environment	创建自定义环境
+	Defaults:	预设：
+	Replace what this place sets with this environment	用此环境替换该地点已设置的内容
+	Keyframes joined by:	关键帧连接方式：
+	Straight line	直线
+	Step	阶梯
+	Smooth curve	平滑曲线
+	Variables defined by a formula	由公式定义的变量
+	Formula:	公式：
+	Add Variable	添加变量
+	Copy Shows from Parent	从上级复制显示设置
+	Leave out what the place above leaves out	隐藏上级地点所隐藏的变量
+	Show Only Actives	仅显示已设置项
+	Leave out every variable no place sets	隐藏所有没有地点设置的变量
+	Desert	沙漠
+	Tropical	热带
+	Arctic	北极
+	Indoor office	室内办公室
+	Greenhouse	温室
