@@ -62,6 +62,8 @@ mod tests_hostapps;
 #[cfg(test)]
 mod tests_instructor;
 #[cfg(test)]
+mod tests_lang;
+#[cfg(test)]
 mod tests_netflow;
 #[cfg(test)]
 mod tests_parts;
