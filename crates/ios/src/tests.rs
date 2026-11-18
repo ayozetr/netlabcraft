@@ -53,6 +53,7 @@ mod route_summary;
 mod route_tags;
 mod routing;
 mod security;
+mod shallow_settings;
 mod span;
 mod stp_views;
 mod sweep;
