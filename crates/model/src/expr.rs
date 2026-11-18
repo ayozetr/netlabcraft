@@ -508,7 +508,7 @@ mod tests {
     #[test]
     fn hostile_formulas_are_bounded() {
         assert!(parse(&"1+".repeat(300)).unwrap_err().contains("at most"));
-        assert!(parse(&format!("{}1{}", "(".repeat(100), ")".repeat(100))).unwrap_err().contains("deeper"));
+        assert!(parse(&format!("{}1{}", "(".repeat(50), ")".repeat(50))).unwrap_err().contains("deeper"));
         assert!(parse(&format!("{}1", "-".repeat(150))).unwrap_err().contains("deeper"));
         assert!(parse(&format!("{}1", "not ".repeat(40))).is_err());
         assert!(parse(&"1+1".repeat(40)).unwrap_err().contains("parts"));

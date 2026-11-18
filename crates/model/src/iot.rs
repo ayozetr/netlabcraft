@@ -514,7 +514,7 @@ mod tests {
         assert_eq!(room_word("thermostat"), "temperature");
         assert_eq!(room_word("smoke"), "smoke");
         // A file naming a variable that does not exist, or a second reading out of range.
-        let mut i = Iot { variable: "no_such".into(), second: 5_000, ..Iot::default() };
+        let mut i = Iot { variable: "No such variable!".into(), second: 5_000, ..Iot::default() };
         i.sanitize();
         assert_eq!((i.variable.as_str(), i.second), ("", MAX_VALUE));
         let mut i = Iot { variable: "wind_speed".into(), ..Iot::default() };

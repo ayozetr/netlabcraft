@@ -355,6 +355,18 @@ impl Topology {
 
     /// Repairs the custom parts of a hostile file's environments.
     pub(crate) fn sanitize_custom_environments(&mut self) {
+        self.sanitize_custom_places();
+        // A sensor that reads a custom variable no place defines reads its own number again.
+        let defined: std::collections::BTreeSet<String> =
+            self.environments.places.iter().flat_map(|e| e.custom.iter().map(|c| c.id.clone())).collect();
+        for d in &mut self.devices {
+            if !d.iot.variable.is_empty() && var_by_id(&d.iot.variable).is_none() && !defined.contains(&d.iot.variable) {
+                d.iot.variable.clear();
+            }
+        }
+    }
+
+    fn sanitize_custom_places(&mut self) {
         for e in &mut self.environments.places {
             e.name = e.name.chars().filter(|c| !c.is_control()).take(MAX_NAME).collect();
             let mut seen: Vec<String> = Vec::new();
