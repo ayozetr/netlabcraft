@@ -251,6 +251,38 @@ mod t {
     }
 
     #[test]
+    fn tab_to_a_port_and_enter_cable_two_ports_from_the_keyboard() {
+        let mut h = bare();
+        h.run_steps(2);
+        let label = |h: &Harness<'static, PacketApp>, device: usize| {
+            let t = &h.state().session.topology;
+            let e = netlabcraft_model::End { device: t.devices[device].id, port: 0 };
+            format!("Port, {}", t.end_label(e))
+        };
+        let enter = |h: &mut Harness<'static, PacketApp>| {
+            h.input_mut().events.push(egui::Event::Key {
+                key: egui::Key::Enter,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: egui::Modifiers::NONE,
+            });
+            h.run_steps(3);
+        };
+        let (first, second) = (label(&h, 0), label(&h, 1));
+        h.get_by_label(&first).focus();
+        h.run_steps(2);
+        enter(&mut h);
+        assert!(h.state().ui.physical.closet.wire.is_some(), "Enter on the first port starts the cable");
+        assert!(h.state().session.topology.links.is_empty());
+        h.get_by_label(&second).focus();
+        h.run_steps(2);
+        enter(&mut h);
+        assert_eq!(h.state().session.topology.links.len(), 1, "Enter on the second port finishes it");
+        assert!(h.state().ui.physical.closet.wire.is_none());
+    }
+
+    #[test]
     fn esc_and_right_click_drop_a_cable_being_made() {
         let mut h = bare();
         h.state_mut().set_tool(Tool::Cable(netlabcraft_model::cable::Cable::Auto));

@@ -70,6 +70,40 @@ pub fn show(unix: i64, set: bool) -> String {
     s
 }
 
+/// `14:05:00 Oct 30 2026`: a time of the clock as `accept-lifetime` and `clock set` read it.
+pub fn stamp(unix: i64) -> String {
+    let days = unix.div_euclid(86_400);
+    let secs = unix.rem_euclid(86_400);
+    let (y, m, d) = civil_from_days(days);
+    let mon = MONTHS.get((m - 1) as usize).unwrap_or(&"");
+    format!("{:02}:{:02}:{:02} {mon} {d} {y}", secs / 3_600, secs / 60 % 60, secs % 60)
+}
+
+/// The words of an `accept-lifetime` or `send-lifetime`: a start (`hh:mm:ss Month day year`),
+/// then an end of the same form, `infinite`, or `duration SECONDS`.
+pub fn parse_lifetime(args: &str) -> Result<netlabcraft_model::keychain::Lifetime, String> {
+    let w: Vec<&str> = args.split_whitespace().collect();
+    let usage = "% Usage: hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year> | infinite | duration <seconds>}";
+    let (Some(start), Some(rest)) = (w.get(..4), w.get(4..)) else { return Err(usage.into()) };
+    let start = parse_set(&start.join(" "))?;
+    let end = match rest {
+        ["infinite"] => None,
+        ["duration", n] => {
+            let n: i64 = n.parse().ok().filter(|n| (1..=2_147_483_646).contains(n)).ok_or("% The duration is 1-2147483646 seconds")?;
+            Some(start.saturating_add(n))
+        }
+        r if r.len() == 4 => {
+            let end = parse_set(&r.join(" "))?;
+            if end <= start {
+                return Err("% The lifetime must end after it starts".into());
+            }
+            Some(end)
+        }
+        _ => return Err(usage.into()),
+    };
+    Ok(netlabcraft_model::keychain::Lifetime { start, end })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -39,6 +39,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "logging host {a}");
     }
     crate::exec::netflow::running_config(&mut s, d);
+    crate::exec::keychain::config_lines(&mut s, d);
     let before = s.len();
     crate::exec::mgmt::running_config(&mut s, d);
     if !d.ntp_servers.is_empty() || !d.log_hosts.is_empty() || s.len() != before {
@@ -1874,6 +1875,9 @@ pub(crate) fn ospf_if_lines(s: &mut String, d: &Device, name: &str) {
         for (id, k) in &o.md5_keys {
             let _ = writeln!(s, " ip ospf message-digest-key {id} md5 {k}");
         }
+        if let Some(chain) = &o.key_chain {
+            let _ = writeln!(s, " ip ospf authentication key-chain {chain}");
+        }
     }
 }
 
@@ -3068,10 +3072,19 @@ pub fn ospf_interface(d: &Device, st: &netlabcraft_sim::ospf::OspfState, typed: 
         let auth = match netlabcraft_sim::ospf::auth_kind(d, &ifc) {
             netlabcraft_model::OspfAuthKind::Null => "none".to_string(),
             netlabcraft_model::OspfAuthKind::Simple => "clear-text password".to_string(),
-            netlabcraft_model::OspfAuthKind::Md5 => match d.ospf_if.get(&name).and_then(|o| o.md5_keys.keys().next_back()) {
-                Some(k) => format!("message digest, signing with key {k}"),
-                None => "message digest, no key configured".to_string(),
-            },
+            netlabcraft_model::OspfAuthKind::Md5 => {
+                let keys = netlabcraft_sim::ospf::md5_sign_keys(d, &name, netlabcraft_sim::ospf::analysis_clock(d));
+                let chain = d.ospf_if.get(&name).and_then(|o| o.key_chain.as_deref());
+                match (keys.first(), chain) {
+                    (Some((k, _)), Some(c)) => format!("message digest, key chain {c}, signing with key {k}"),
+                    (Some((k, _)), None) if keys.len() > 1 => {
+                        format!("message digest, signing with key {k} (and {} older key{})", keys.len() - 1, if keys.len() == 2 { "" } else { "s" })
+                    }
+                    (Some((k, _)), None) => format!("message digest, signing with key {k}"),
+                    (None, Some(c)) => format!("message digest, key chain {c} has no key that signs now"),
+                    (None, None) => "message digest, no key configured".to_string(),
+                }
+            }
         };
         let _ = writeln!(s, "  Authentication: {auth}");
     }
