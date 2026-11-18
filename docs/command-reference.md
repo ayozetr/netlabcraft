@@ -182,7 +182,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) \| "console" \| "straight-through" \| "cross-over" \| "fiber-single-mode" \| "fiber-multi-mode" \| "phone" \| "coaxial" \| "serial-dce" \| "serial-dte" \| "octal" \| "iot-custom" \| "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}` |
 | `link.list` | List cables |  |  | `{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")` |
-| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything` |
+| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
+| `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
 | `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
 | `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |
@@ -573,6 +574,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
 | `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
+| `show interfaces transceiver` | user, privileged | switch | Transceiver, loss budget and margin of each fiber port |
 | `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
 | `show logging` | user, privileged | router, switch, firewall | The logging buffer |
@@ -1443,6 +1445,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip proxy-arp` | interface, subinterface | router | Answer ARP for hosts that are reached through this router |
 | `no ip proxy-arp` | interface, subinterface | router | Answer ARP only for this interface's own address |
 | `no mdix auto` | interface | router, switch | Expect the right cable type |
+| `transceiver type {multi-mode\|single-mode}` | interface | router, switch | The transceiver in a fiber or combo port (both ends of a link need the same) |
+| `no transceiver type` | interface | router, switch | Put the multi-mode transceiver back |
 | `keepalive` | interface | router, switch | Keepalives every 10 seconds again |
 | `keepalive <1-32767>` | interface | router, switch | Seconds between keepalives (shown by `show interfaces`; the simulator sends none) |
 | `no keepalive` | interface | router, switch | No keepalives |

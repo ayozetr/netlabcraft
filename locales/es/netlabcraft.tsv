@@ -669,6 +669,14 @@
 	Open Device	Abrir dispositivo
 	Move to	Mover a
 	Cable Length…	Longitud del cable…
+	Loss budget	Presupuesto de pérdidas
+	within the budget	dentro del presupuesto
+	degraded: little margin left	degradado: queda poco margen
+	over the budget	por encima del presupuesto
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdidos de {} dB ({} conectores, {} empalmes)
+	More splices	Más empalmes
+	Fewer splices	Menos empalmes
+	fiber loses {} dB, over the {} dB the transceivers tolerate	la fibra pierde {} dB, más de los {} dB que toleran los transceptores
 	Resize…	Cambiar tamaño…
 	Resize	Cambiar tamaño
 	Units ({} to {}):	Unidades ({} a {}):

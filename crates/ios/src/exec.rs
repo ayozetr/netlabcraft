@@ -1167,6 +1167,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, c.sim, d, Some(r)))
         }
+        Id::ShowIntTransceiver => Ok(render::interface_transceivers(c.t, c.d()?)),
         Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?, None)),
         Id::ShowIpInterface => {
             let only = match args.first().map(|a| a.trim()).filter(|a| !a.is_empty()) {
@@ -3469,6 +3470,33 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let off = spec.id == Id::NoIfProxyArp;
             c.each_if(|p, _| {
                 p.proxy_arp_off = off;
+                Ok(())
+            })
+        }
+        Id::IfTransceiver => {
+            let removed = line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("no"));
+            let single = if removed {
+                false
+            } else {
+                match arg(0).to_ascii_lowercase().as_str() {
+                    "single-mode" => true,
+                    "multi-mode" => false,
+                    _ => return Err("% multi-mode or single-mode".into()),
+                }
+            };
+            let ifs = match &c.cli.mode {
+                Mode::Iface(ifs) => ifs.clone(),
+                _ => return Err("% Not in interface mode".into()),
+            };
+            let d = c.d()?;
+            for r in &ifs {
+                if !matches!(d.port_medium(r.port), Some(netlabcraft_model::cable::Medium::Fiber | netlabcraft_model::cable::Medium::Combo)) {
+                    let name = d.ports.get(r.port).map_or(String::new(), |p| p.name.clone());
+                    return Err(format!("% {name} takes no transceiver: only fiber and combo ports do"));
+                }
+            }
+            c.each_if(|p, _| {
+                p.single_mode = single;
                 Ok(())
             })
         }
