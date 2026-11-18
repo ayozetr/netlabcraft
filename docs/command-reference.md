@@ -273,6 +273,26 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
 | `clear mac address-table` | privileged | switch | Forget learned MAC addresses |
 | `clear arp-cache` | privileged | router | Forget ARP entries |
+| `show mac-address-table` | user, privileged | switch | Learned MAC addresses |
+| `show mac-address-table dynamic` | user, privileged | switch | Learned MAC addresses |
+| `clear mac-address-table dynamic` | privileged | switch | Forget learned MAC addresses |
+| `clear arp` | privileged | router | Forget ARP entries |
+| `show derived-config` | privileged | router, switch, firewall | Current configuration (the same text as running-config) |
+| `write terminal` | privileged | router, switch, firewall | Show the current configuration |
+| `write erase` | privileged | router, switch, firewall | Delete the saved configuration |
+| `erase nvram:` | privileged | router, switch, firewall | Delete the saved configuration |
+| `configure memory` | privileged | router, switch | Merge the saved configuration into the running one |
+| `show terminal` | user, privileged | router, switch | Terminal length, width and history of this session |
+| `show line` | user, privileged | router, switch | How the console and the remote login lines are set up |
+| `show cdp interface` | user, privileged | router, switch | CDP timers on each interface that sends them |
+| `show mac address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `show mac-address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `more system:running-config\|nvram:startup-config` | privileged | router, switch | Show the running or the saved configuration |
+| `pwd` | privileged | router, switch | The file system commands work in |
+| `show snmp community` | user, privileged | router, switch | SNMP communities and what they may do |
+| `show snmp host` | user, privileged | router, switch | The managers that get SNMP notifications |
+| `show snmp group` | user, privileged | router, switch | SNMPv3 groups |
+| `show snmp user` | user, privileged | router, switch | SNMPv3 users |
 | `hostname WORD` | config | router, switch, firewall | Set the device name |
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
