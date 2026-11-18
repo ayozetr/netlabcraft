@@ -6,6 +6,16 @@ use netlabcraft_model::DeviceKind;
 
 use super::Lab;
 
+/// What crossed the cables, and why each frame was dropped (for a failing assertion).
+fn dump(lab: &Lab) -> String {
+    lab.sim
+        .trace()
+        .iter()
+        .map(|e| format!("{:?} -> {:?}: {} [{}]", e.from.device, e.to.device, e.summary, e.dropped.clone().unwrap_or_default()))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 struct Net {
     lab: Lab,
     r1: DeviceId,
@@ -85,7 +95,7 @@ fn a_receiver_builds_the_shared_tree_and_data_follows_the_source_tree() {
     assert!(m1.contains("(*, 239.1.1.1)") && m1.contains("GigabitEthernet0/1, Forward/Sparse") && m1.contains("Incoming interface: Null"), "{m1}");
     // The source sends: every member answers.
     let ping = n.lab.run(n.src, "ping -n 1 239.1.1.1");
-    assert!(ping.contains("reply from 10.2.2.10"), "{ping}");
+    assert!(ping.contains("reply from 10.2.2.10"), "{ping}\n{}", dump(&n.lab));
     let m1 = n.lab.run(n.r1, "show ip mroute");
     assert!(m1.contains("(10.1.1.10, 239.1.1.1)") && m1.contains("the source is on this link"), "{m1}");
     let m2 = n.lab.run(n.r2, "show ip mroute 239.1.1.1");
@@ -139,7 +149,7 @@ fn dense_mode_floods_where_there_are_receivers() {
     let mut n = net("dense-mode");
     n.lab.run(n.rcv, "igmp join 239.5.5.5");
     let ping = n.lab.run(n.src, "ping -n 1 239.5.5.5");
-    assert!(ping.contains("reply from 10.2.2.10"), "{ping}");
+    assert!(ping.contains("reply from 10.2.2.10"), "{ping}\n{}", dump(&n.lab));
     let m2 = n.lab.run(n.r2, "show ip mroute");
     assert!(m2.contains("(10.1.1.10, 239.5.5.5)") && m2.contains("Forward/Dense"), "{m2}");
     assert!(!m2.contains("(*, 239.5.5.5)"), "{m2}");
@@ -151,7 +161,7 @@ fn a_router_interface_can_join_a_group() {
     let mut n = net("sparse-mode");
     n.lab.run(n.r2, "conf t\ninterface g0/0\nip igmp join-group 239.9.9.9\nend");
     let ping = n.lab.run(n.src, "ping -n 1 239.9.9.9");
-    assert!(ping.contains("reply from 10.0.12.2"), "{ping}");
+    assert!(ping.contains("reply from 10.0.12.2"), "{ping}\n{}", dump(&n.lab));
     assert!(n.lab.run(n.r2, "show ip igmp groups").contains("this router"));
     assert!(n.lab.run(n.r2, "show running-config").contains(" ip igmp join-group 239.9.9.9"));
 }
