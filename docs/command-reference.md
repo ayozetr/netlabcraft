@@ -252,6 +252,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `end` | config, interface, subinterface, vlan, object | router, switch, firewall | Return to privileged mode |
 | `configure terminal` | privileged | router, switch, firewall | Configure from the terminal |
 | `ping A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Send echo requests |
+| `ping` | user, privileged | router, switch, firewall | Ask for the options of an echo test one question at a time |
 | `ping A.B.C.D\|X:X::X [repeat <1-1000>] [size <36-18024>] [source A.B.C.D\|INTERFACE] [timeout <0-3600>]` | user, privileged | router, switch, firewall | Send echo requests with options |
 | `show ip traffic` | user, privileged | router, switch | IPv4 packets counted by what happened to them |
 | `show tcp brief` | user, privileged | router, switch | TCP connections to and from this device |
@@ -259,6 +260,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `history size <0-256>` |  | router, switch | How many commands a session remembers |
 | `no history size` |  | router, switch | Remember the default number of commands |
 | `traceroute A.B.C.D\|X:X::X` | user, privileged | router, switch, firewall | Trace the route to a destination |
+| `traceroute` | user, privileged | router, switch, firewall | Ask for the options of a trace one question at a time |
 | `show running-config` | privileged | router, switch, firewall | Current configuration |
 | `show startup-config` | privileged | router, switch, firewall | Saved configuration |
 | `show ip interface brief` | user, privileged | router, switch | Interface addresses and status |

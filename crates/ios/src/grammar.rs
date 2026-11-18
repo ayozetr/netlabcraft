@@ -249,6 +249,8 @@ pub enum Id {
     NoKnob,
     // ---- small commands found missing by the sweep (exec/sweep.rs) ----
     More,
+    PingDialog,
+    TracerouteDialog,
     Pwd,
     ShowCdpInterface,
     ShowLine,
@@ -1447,6 +1449,7 @@ pub static SPECS: &[Spec] = &[
     spec!(End, Modes::CONFIG.or(SUBMODES), BOTH_FW, [K("end")], "Return to privileged mode"),
     spec!(ConfigureTerminal, Modes::EXEC, BOTH_FW, [K("configure"), K("terminal")], "Configure from the terminal"),
     spec!(Ping, EXECS, BOTH_FW, [K("ping"), Arg("A.B.C.D|X:X::X")], "Send echo requests"),
+    spec!(PingDialog, EXECS, BOTH_FW, [K("ping")], "Ask for the options of an echo test one question at a time"),
     spec!(
         PingRepeat,
         EXECS,
@@ -1460,6 +1463,7 @@ pub static SPECS: &[Spec] = &[
     spec!(HistorySize, Modes::LINE, Modes::BOTH, [K("history"), K("size"), Arg("<0-256>")], "How many commands a session remembers"),
     spec!(NoHistorySize, Modes::LINE, Modes::BOTH, [K("no"), K("history"), K("size")], "Remember the default number of commands"),
     spec!(Traceroute, EXECS, BOTH_FW, [K("traceroute"), Arg("A.B.C.D|X:X::X")], "Trace the route to a destination"),
+    spec!(TracerouteDialog, EXECS, BOTH_FW, [K("traceroute")], "Ask for the options of a trace one question at a time"),
     spec!(ShowRun, Modes::EXEC, BOTH_FW, [K("show"), K("running-config")], "Current configuration"),
     spec!(ShowStartup, Modes::EXEC, BOTH_FW, [K("show"), K("startup-config")], "Saved configuration"),
     spec!(ShowIpIntBrief, EXECS, Modes::BOTH, [K("show"), K("ip"), K("interface"), K("brief")], "Interface addresses and status"),
