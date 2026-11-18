@@ -2370,6 +2370,7 @@ furniture	Table	桌子
 	Backup written to {}	备份已写入 {}
 	Application size	程序字号
 	Enter the password first: some tabs are locked.	请先输入密码：部分标签页已锁定。
+	Port, {}	端口，{}
 	Up	正常
 	Down	断开
 	Properties…	属性…

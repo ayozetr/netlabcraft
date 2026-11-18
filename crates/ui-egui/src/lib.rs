@@ -187,6 +187,21 @@ fn clean_geometry(g: NativeGeometry) -> Option<NativeGeometry> {
     Some(([w, h], pos.filter(|p| ok(p[0], -32768.0, 32768.0) && ok(p[1], -32768.0, 32768.0))))
 }
 
+/// Least of a native window that stays on the screen, in points: enough to grab its title bar.
+const VISIBLE_MIN: f32 = 120.0;
+
+/// A remembered geometry moved onto the screen it will open on: no larger than the screen, and
+/// positioned so that at least [`VISIBLE_MIN`] points of it (and its whole title bar) are
+/// inside. A screen that is gone (a monitor unplugged since the last session) would otherwise
+/// leave the window where nobody can reach it. With no screen size known the geometry is kept.
+pub(crate) fn place_on_screen(g: NativeGeometry, screen: Option<[f32; 2]>) -> NativeGeometry {
+    let Some([sw, sh]) = screen.filter(|s| s[0].is_finite() && s[1].is_finite() && s[0] >= VISIBLE_MIN && s[1] >= VISIBLE_MIN) else { return g };
+    let ([w, h], pos) = g;
+    let size = [w.min(sw), h.min(sh)];
+    let pos = pos.map(|[x, y]| [x.clamp(VISIBLE_MIN - size[0], sw - VISIBLE_MIN), y.clamp(0.0, sh - VISIBLE_MIN)]);
+    (size, pos)
+}
+
 /// The remembered native-window geometries as text, one line per device: `W H X Y NAME`, with
 /// `-` for an unknown position. The desktop shell keeps it between sessions.
 pub fn native_geometry_to_text(map: &BTreeMap<String, NativeGeometry>) -> String {
@@ -1465,11 +1480,15 @@ impl PacketApp {
         let tk = theme::tokens(self.ui.dark);
         ui.horizontal(|ui| {
             let physical = self.session.physical;
-            if pill(ui, Glyph::Logical, "Logical", !physical).clicked() && physical {
-                self.set_physical(false);
-            }
-            if pill(ui, Glyph::Physical, "Physical", physical).clicked() && !physical {
-                self.set_physical(true);
+            // "Hide the Physical tab" also hides the switch between the workspaces, unless the
+            // lab is already in the Physical workspace (it must be possible to get back).
+            if !self.ui.prefs.hide_physical_tab || physical {
+                if pill(ui, Glyph::Logical, "Logical", !physical).clicked() && physical {
+                    self.set_physical(false);
+                }
+                if pill(ui, Glyph::Physical, "Physical", physical).clicked() && !physical {
+                    self.set_physical(true);
+                }
             }
             if physical && let Some(kind) = physical::child_kind(self) {
                 let label = physical::new_label(kind);
