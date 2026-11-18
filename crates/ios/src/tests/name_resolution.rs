@@ -74,3 +74,23 @@ fn name_settings_survive_a_save_and_a_reload() {
     assert!(run.contains("ip host WEB 10.0.0.2\n") && run.contains("ip name-server 10.0.0.2\n"), "{run}");
     assert!(lab.run(r, "ping WEB").contains("static"));
 }
+
+#[test]
+fn telnet_and_connect_take_a_host_name() {
+    let mut lab = Lab::new();
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    lab.cable(r1, "g0/0", r2, "g0/0");
+    lab.run(r1, "en\nconf t\nint g0/0\nip add 10.0.0.1 255.255.255.0\nno shut\nip host CORE 10.0.0.2\nend");
+    lab.run(r2, "en\nconf t\nint g0/0\nip add 10.0.0.2 255.255.255.0\nno shut\nline vty 0 4\npassword remote\nlogin\nend");
+    let out = lab.try_run(r1, "telnet CORE");
+    assert!(out.starts_with("Translating \"CORE\"...static [OK]\n") && out.contains("Open"), "{out}");
+    assert_eq!(lab.prompt(r1), "Password: ");
+    assert_eq!(lab.try_run(r1, "remote"), "");
+    lab.run(r1, "exit");
+    let again = lab.try_run(r1, "connect core");
+    assert!(again.contains("Translating") && again.contains("Open"), "{again}");
+    lab.run(r1, "exit");
+    assert!(lab.try_run(r1, "telnet NOPE").starts_with("% Unrecognized host"));
+    assert!(lab.try_run(r1, "ssh -l admin NOPE").starts_with("% Unrecognized host"));
+}
