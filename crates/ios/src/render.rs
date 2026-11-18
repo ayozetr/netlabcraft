@@ -558,10 +558,11 @@ pub fn running_config(d: &Device) -> String {
             if a.nssa {
                 let _ = writeln!(
                     s,
-                    " area {n} nssa{}{}{}",
+                    " area {n} nssa{}{}{}{}",
                     if a.no_summary { " no-summary" } else { "" },
                     if a.nssa_no_redist { " no-redistribution" } else { "" },
-                    if a.nssa_default { " default-information-originate" } else { "" }
+                    if a.nssa_default { " default-information-originate" } else { "" },
+                    if a.nssa_translate_always { " translate type7 always" } else { "" }
                 );
             }
             if let Some(cost) = a.default_cost {
@@ -1515,6 +1516,11 @@ pub fn ospf_neighbors(t: &Topology, d: &Device, st: &netlabcraft_sim::ospf::Ospf
             _ => "FULL/OTHER",
         };
         let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", n.router_id.to_string(), state, n.address.to_string(), ifname::short(&n.iface));
+    }
+    // A virtual link that is up is a neighbour too, across its transit area.
+    for (k, v) in st.virtual_links.get(&d.id).into_iter().flatten().filter(|v| v.up).enumerate() {
+        let name = v.peer.and_then(|p| t.device(p)).map_or("?".to_string(), |x| x.name.clone());
+        let _ = writeln!(s, "{:<16} {:<10} {:<16} {:<22} {name}", v.peer_id.to_string(), "FULL/ -", "-", format!("OSPF_VL{k} (area {})", v.area));
     }
     for (iface, addr) in st.type_mismatch.get(&d.id).into_iter().flatten() {
         let _ = writeln!(
@@ -3003,6 +3009,9 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState, spf: Opti
             if conf.nssa_no_redist {
                 line.push_str(", keeps its own redistributed routes out of the area (no-redistribution)");
             }
+            if conf.nssa_translate_always {
+                line.push_str(", translates type 7 LSAs into type 5 whether or not it is elected (translate type7 always)");
+            }
             if let Some(c) = conf.default_cost {
                 line.push_str(&format!(", default route cost {c}"));
             }
@@ -3549,6 +3558,12 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
                 Some(suite) => format!("{} (real ciphers)", suite.describe()),
                 None => "the simulator's stand-in cipher (the transform set has no cipher)".to_string(),
             };
+            let mode = if netlabcraft_sim::vpn::peer_uses_transport(d, sa.peer) {
+                "transport (the packet's own IP header stays and only its payload is protected: traffic between this router and its peer)"
+            } else {
+                "tunnel (whole packets travel inside a new IP header)"
+            };
+            let _ = writeln!(s, "  Mode: {mode}");
             let _ = writeln!(s, "  ESP: {esp}");
             if let Some(line) = ah_half_line(sa) {
                 let _ = writeln!(s, "  {line}");
