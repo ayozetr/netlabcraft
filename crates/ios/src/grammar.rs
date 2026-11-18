@@ -1035,6 +1035,8 @@ pub enum Id {
     BgpMaximumPathsIbgp,
     NoBgpMaximumPathsIbgp,
     ShowIpBgpReceived,
+    ShowIpBgpAdvertised,
+    ShowIpBgpNeighborRoutes,
     ShowIpBgpRegexp,
     ShowIpBgpFilterList,
     BgpOption,
@@ -3868,6 +3870,20 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D"), K("received-routes")],
         "What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound)"
+    ),
+    spec!(
+        ShowIpBgpAdvertised,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D"), K("advertised-routes")],
+        "What this router sends a neighbour after the outbound policy"
+    ),
+    spec!(
+        ShowIpBgpNeighborRoutes,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D"), K("routes")],
+        "The paths accepted from a neighbour after the inbound policy"
     ),
     spec!(
         ShowIpBgpRegexp,

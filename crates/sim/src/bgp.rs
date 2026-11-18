@@ -1064,6 +1064,9 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
     };
     let mut rib: RibIn = BTreeMap::new();
     let mut raw: RibRaw = BTreeMap::new();
+    // Sessions a `maximum-prefix` limit ended. Once ended a session stays down for this run: the
+    // sender is not told to stop, so it would otherwise flap in step with the rounds.
+    let mut hit: BTreeSet<SessKey> = BTreeSet::new();
     for _ in 0..MAX_ROUNDS {
         let mut next: RibIn = BTreeMap::new();
         let mut next_raw: RibRaw = BTreeMap::new();
@@ -1073,6 +1076,9 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
             let from_id = rids.get(&a.id).copied().unwrap_or(Ipv4Addr::UNSPECIFIED);
             for n in &ab.neighbors {
                 let Some(p) = live(an, settled, &(a.id, n.addr)) else { continue };
+                if hit.contains(&(a.id, n.addr)) || hit.contains(&(p.peer, p.local)) {
+                    continue;
+                }
                 let Some(b) = routers.iter().find(|d| d.id == p.peer) else { continue };
                 let Some(bb) = &b.bgp else { continue };
                 let Some(m) = bb.neighbor(p.local) else { continue };
@@ -1095,6 +1101,25 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
             }
         }
         raw = next_raw;
+        // A neighbour that sent more prefixes than its limit allows ends the session (unless the
+        // limit only warns): what it sent is dropped.
+        let mut over: Vec<SessKey> = Vec::new();
+        for b in &routers {
+            let Some(bb) = &b.bgp else { continue };
+            for m in &bb.neighbors {
+                let Some((limit, false)) = conf::max_prefix(m) else { continue };
+                let count = next.get(&b.id).map_or(0, |s| s.keys().filter(|(a, _)| *a == m.addr).count());
+                if u64::try_from(count).unwrap_or(u64::MAX) > u64::from(limit) {
+                    over.push((b.id, m.addr));
+                }
+            }
+        }
+        for (dev, addr) in &over {
+            if let Some(s) = next.get_mut(dev) {
+                s.retain(|(a, _), _| a != addr);
+            }
+        }
+        hit.extend(over);
         if next == rib {
             break;
         }
@@ -1135,7 +1160,8 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
         for n in &ab.neighbors {
             let key = (d.id, n.addr);
             let peering = an.peerings.get(&key);
-            let active = live(an, settled, &key);
+            let cut = hit.contains(&key) || peering.is_some_and(|p| hit.contains(&(p.peer, p.local)));
+            let active = if cut { None } else { live(an, settled, &key) };
             let sent = match active {
                 Some(p) => {
                     let list = export_all(d, ab, n, p, base.get(&d.id).map_or(&[][..], Vec::as_slice), &best_paths);
@@ -1155,6 +1181,8 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 SessionState::Idle
             } else if active.is_some() {
                 SessionState::Established
+            } else if cut {
+                SessionState::Idle
             } else if peering.is_some() {
                 SessionState::Connect
             } else if an.errors.contains_key(&key) {
@@ -1170,6 +1198,11 @@ pub fn compute(t: &Topology, base: &BTreeMap<DeviceId, Vec<RouteEntry>>, an: &An
                 Some("no remote AS configured".to_string())
             } else if an.auth_failed.contains(&key) {
                 Some(AUTH_FAILED.to_string())
+            } else if hit.contains(&key) {
+                let limit = conf::max_prefix(n).map_or(0, |m| m.0);
+                Some(format!("Prefix limit exceeded: the neighbour sent more than {limit} prefixes"))
+            } else if cut {
+                Some("The neighbour ended the session: it received more prefixes than its limit allows".to_string())
             } else {
                 an.errors.get(&key).cloned()
             };

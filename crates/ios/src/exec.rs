@@ -4331,6 +4331,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::BgpMaximumPathsIbgp
         | Id::NoBgpMaximumPathsIbgp
         | Id::ShowIpBgpReceived
+        | Id::ShowIpBgpAdvertised
+        | Id::ShowIpBgpNeighborRoutes
         | Id::ShowIpBgpRegexp
         | Id::ShowIpBgpFilterList
         | Id::BgpPeerGroup

@@ -607,6 +607,10 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             let view = c.sim.bgp_state(c.t);
             received_routes(c.d()?, &view, arg(0))
         }
+        Id::ShowIpBgpAdvertised | Id::ShowIpBgpNeighborRoutes => {
+            let view = c.sim.bgp_state(c.t);
+            neighbor_table(c.d()?, &view, arg(0), id == Id::ShowIpBgpAdvertised)
+        }
         Id::ShowIpBgpRegexp | Id::ShowIpBgpFilterList => {
             let view = c.sim.bgp_state(c.t);
             let d = c.d()?;
@@ -752,7 +756,8 @@ pub(super) fn option_command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
                 }
                 Ok(())
             })?;
-            Ok(if no { String::new() } else { KEPT.to_string() })
+            // The prefix limit ends the session when it is passed (`warning-only` aside).
+            Ok(if no || key == "maximum-prefix" { String::new() } else { KEPT.to_string() })
         }
         Id::BgpNeighborActivate | Id::NoBgpNeighborActivate => {
             let on = spec.id == Id::BgpNeighborActivate;
@@ -1185,6 +1190,63 @@ fn received_routes(d: &Device, v: &BgpView, addr: &str) -> Result<String, String
             at.next_hop.to_string(),
             at.med.unwrap_or(0),
             path_text(&at.confed_path, &at.as_path, &at.as_set, at.origin)
+        );
+    }
+    Ok(s.trim_end().to_string())
+}
+
+fn attr_rows(s: &mut String, list: &[(Ipv4Net, netlabcraft_wire::bgp::PathAttrs)]) {
+    let _ = writeln!(s, "{:<18} {:<16} {:>6} {:>6}  Path", "Network", "Next hop", "Metric", "LocPrf");
+    for (net, at) in list {
+        let lp = at.local_pref.map_or("-".to_string(), |l| l.to_string());
+        let _ = writeln!(
+            s,
+            "{:<18} {:<16} {:>6} {lp:>6}  {}",
+            net.to_string(),
+            at.next_hop.to_string(),
+            at.med.unwrap_or(0),
+            path_text(&at.confed_path, &at.as_path, &at.as_set, at.origin)
+        );
+    }
+}
+
+/// `show ip bgp neighbors A.B.C.D advertised-routes|routes`: what this router sends the neighbour
+/// after the outbound policy, or the paths it accepted from the neighbour after the inbound one.
+fn neighbor_table(d: &Device, v: &BgpView, addr: &str, advertised: bool) -> Result<String, String> {
+    let a = address(addr)?;
+    let (Some(r), Some(b)) = (running(d, v), d.bgp.as_ref()) else { return Ok(not_running()) };
+    if b.neighbor(a).is_none() {
+        return Err(format!("% No neighbour {a}"));
+    }
+    let head = format!("BGP router id {}, local AS {}\n", r.router_id, r.asn);
+    if advertised {
+        let Some(list) = r.adv.get(&a) else {
+            return Ok(format!("{head}Nothing is advertised to {a}: the session is not Established"));
+        };
+        if list.is_empty() {
+            return Ok(format!("{head}(nothing is advertised to {a})"));
+        }
+        let mut s = format!("{head}Advertised to {a}, after the outbound policy:\n\n");
+        attr_rows(&mut s, list);
+        return Ok(s.trim_end().to_string());
+    }
+    let paths: Vec<&Path> = r.paths.iter().filter(|p| p.from == Some(a)).collect();
+    if paths.is_empty() {
+        return Ok(format!("{head}(no paths accepted from {a})"));
+    }
+    let mut s = format!("{head}Accepted from {a}, after the inbound policy:\n\n");
+    let _ = writeln!(s, "{:<2} {:<18} {:<16} {:>6} {:>6} {:>6}  Path", "", "Network", "Next hop", "Metric", "LocPrf", "Weight");
+    for p in paths {
+        let _ = writeln!(
+            s,
+            "{:<2} {:<18} {:<16} {:>6} {:>6} {:>6}  {}",
+            if p.best { "*>" } else { "* " },
+            p.net.to_string(),
+            p.next_hop.to_string(),
+            p.med,
+            p.local_pref,
+            p.weight,
+            path_text(&p.confed_path, &p.as_path, &p.as_set, p.origin)
         );
     }
     Ok(s.trim_end().to_string())
