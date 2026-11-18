@@ -1003,7 +1003,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "List a wiring closet",
         "",
         None,
-        r#"{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "width", "depth" (tables, in cells), "side" (racks: front or back), "items": [{"device" | "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "floor": "grid" | "list", "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}"#,
+        r#"{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "width", "depth" (tables, in cells), "side" (racks: front or back), "items": [{"device" | "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "floor": "grid" | "list", "wires": [{"a", "b"}], "backbones": [{"a", "to", "place"}] (cables to ports in other places), "paths": [{"a", "b"}] (devices cabled through patch panels)}; a building lists the wall mounts on its rooms' walls and the hosts that stand in it"#,
         false
     ),
     c!(
@@ -1080,7 +1080,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Add a passive device",
         "",
         None,
-        r#"{"kind": "copper-patch-panel" | "fiber-patch-panel" | "copper-wall-mount" | "fiber-wall-mount" | "power-strip", "name"?, "place"?, "ports"?: ports or outlets (panels 4-48, wall mounts 1-4, power strip 2-16), "furniture"?, "slot"?, "units"?} → {"id", "name", "kind", "ports", "place"}"#,
+        r#"{"kind": "copper-patch-panel" | "fiber-patch-panel" | "copper-wall-mount" | "fiber-wall-mount" | "power-strip", "name"?, "place"?: a wiring closet or container, or for a wall mount a building (a room's wall), "ports"?: ports or outlets (panels 4-48, wall mounts 1-4, power strip 2-16), "furniture"?, "slot"?, "units"?} → {"id", "name", "kind", "ports", "place"}"#,
         true
     ),
     c!("passive.rename", "Rename a passive device", "", None, r#"{"passive": name or number, "name"}"#, true),
@@ -1097,8 +1097,32 @@ pub static CATALOG: &[CommandInfo] = &[
         "Patch wire",
         "",
         None,
-        r#"{"a", "b"}, each {"panel": passive name, "port": from 1} or {"device": name, "port": "Fa0/1"}: a patch cord joins two panel or wall-mount ports, a drop joins one to a free device port of the same medium (copper or fiber), all in one closet; a drop at each end of a cord is a patch path and cables the two devices (an automatic cable) → {"cables": [the ends cabled]}"#,
+        r#"{"a", "b"}, each {"panel": passive name, "port": from 1} or {"device": name, "port": "Fa0/1"}: a patch cord joins two panel or wall-mount ports, a drop joins one to a free device port of the same medium (copper or fiber), all in one place (a cord to another place is a backbone: `backbone.add`); a drop at each end of a cord is a patch path and cables the two devices (an automatic cable) → {"cables": [the ends cabled]}"#,
         true
+    ),
+    c!(
+        "backbone.add",
+        "Add a backbone cable",
+        "",
+        None,
+        r#"{"a", "b"}, each {"panel": passive name, "port": from 1}: a patch panel or wall mount port in one place to one in another place (closet to closet, building to building, a room's wall mount to a closet's panel); copper joins copper and fiber joins fiber; a drop at each end is a patch path and cables the two devices, each standing in its own place (an automatic cable, checked for reach like any cable) → {"cables": [the ends cabled], "from": place, "to": place}"#,
+        true
+    ),
+    c!(
+        "backbone.remove",
+        "Remove a backbone cable",
+        "",
+        None,
+        r#"{"a", "b"?}: the backbone between the two ports, or with no `b` the one at `a` (the drops and patch cords stay); a cable the backbone's path carried is unplugged"#,
+        true
+    ),
+    c!(
+        "backbone.list",
+        "List the backbone cables",
+        "",
+        None,
+        r#"{} → [{"a", "b", "from", "to", "cable": [the two devices] | null}]: every backbone of the lab, with the places its ends stand in and the cable it carries once a drop stands at each end"#,
+        false
     ),
     c!(
         "patch.unwire",

@@ -1906,6 +1906,12 @@ event	write request for	requisição de escrita de
 	{} (rear)	{} (traseira)
 	{}, {} levels	{}, {} níveis
 	{}, on {}	{}, em {}
+	to {}	para {}
+	Backbone	Backbone
+	Backbone to	Backbone para
+	Remove Backbone	Remover backbone
+	No panel or wall mount with a free port in another place.	Nenhum painel ou tomada de parede com uma porta livre em outro lugar.
+	{} in {} to {} in {}	{} em {} para {} em {}
 	Other devices	Outros dispositivos
 	Rack	Rack
 	Shelf	Prateleira

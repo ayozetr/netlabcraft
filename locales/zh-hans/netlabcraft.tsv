@@ -1906,6 +1906,12 @@ event	write request for	写请求
 	{} (rear)	{}（背面）
 	{}, {} levels	{}，{} 层
 	{}, on {}	{}，位于 {}
+	to {}	至 {}
+	Backbone	主干线缆
+	Backbone to	主干线缆连到
+	Remove Backbone	移除主干线缆
+	No panel or wall mount with a free port in another place.	其他地点没有带空闲端口的配线架或墙面插座。
+	{} in {} to {} in {}	{}（{}）至 {}（{}）
 	Other devices	其他设备
 	Rack	机架
 	Shelf	层架

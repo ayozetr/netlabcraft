@@ -78,6 +78,11 @@ fn passive_value(s: &Session, v: &Value, key: &str) -> Result<u32> {
 
 /// The wiring closet a command acts in: `place`, else the one being looked at, else the default.
 fn closet_param(s: &Session, p: &Value) -> Result<u32> {
+    place_param(s, p, false)
+}
+
+/// As [`closet_param`], and a building too when `building_ok` (what a wall mount may stand in).
+fn place_param(s: &Session, p: &Value, building_ok: bool) -> Result<u32> {
     let t = &s.topology;
     let id = match p.get("place") {
         None | Some(Value::Null) => s.place_view.filter(|v| t.place(*v).is_some_and(|x| x.kind.holds_things())).unwrap_or_else(|| t.default_place()),
@@ -85,6 +90,7 @@ fn closet_param(s: &Session, p: &Value) -> Result<u32> {
     };
     match t.place(id) {
         Some(x) if x.kind.holds_things() => Ok(id),
+        Some(x) if building_ok && x.kind == netlabcraft_model::physical::PlaceKind::Building => Ok(id),
         Some(_) => Err(bad("furniture and passive devices stand in a wiring closet or a container")),
         None => Err(EngineError::Failed(format!("no place {id}"))),
     }
@@ -142,6 +148,9 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
         "place.working.get" => working_get(s),
         "passive.add" => passive_add(s, p),
         "passive.rename" | "passive.remove" => passive_edit(s, id, p),
+        "backbone.add" => backbone_add(s, p),
+        "backbone.remove" => backbone_remove(s, p),
+        "backbone.list" => backbone_list(s),
         "patch.wire" => wire(s, p),
         "patch.unwire" => unwire(s, p),
         "power.plug" | "power.unplug" => plug(s, id, p),
@@ -153,7 +162,7 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
 }
 
 fn list(s: &Session, p: &Value) -> Result<Value> {
-    let place = closet_param(s, p)?;
+    let place = place_param(s, p, true)?;
     let t = &s.topology;
     let furniture: Vec<Value> = t
         .furniture_in(place)
@@ -205,7 +214,7 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
         .physical
         .patch_wires
         .iter()
-        .filter(|w| t.pole_place(w.a) == Some(place))
+        .filter(|w| t.pole_place(w.a) == Some(place) && !t.is_backbone(w))
         .map(|w| json!({"a": t.pole_label(w.a), "b": t.pole_label(w.b)}))
         .collect();
     let paths: Vec<Value> = t
@@ -214,8 +223,24 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
         .filter(|x| t.home_of(x.a.device).map(|h| h.place) == Some(place))
         .map(|x| json!({"a": t.end_label(x.a), "b": t.end_label(x.b)}))
         .collect();
+    let backbones: Vec<Value> = t
+        .backbones()
+        .iter()
+        .filter_map(|w| {
+            let (here, far) = if t.pole_place(w.a) == Some(place) {
+                (w.a, w.b)
+            } else if t.pole_place(w.b) == Some(place) {
+                (w.b, w.a)
+            } else {
+                return None;
+            };
+            Some(json!({"a": t.pole_label(here), "to": t.pole_label(far), "place": t.pole_place(far).and_then(|q| t.place(q)).map(|q| q.name)}))
+        })
+        .collect();
     let floor = if t.floor_is_list(place) { "list" } else { "grid" };
-    Ok(json!({"place": place, "furniture": furniture, "passive": passive, "loose": loose, "floor": floor, "wires": wires, "paths": paths}))
+    Ok(
+        json!({"place": place, "furniture": furniture, "passive": passive, "loose": loose, "floor": floor, "wires": wires, "backbones": backbones, "paths": paths}),
+    )
 }
 
 fn furniture_add(s: &mut Session, p: &Value) -> Result<Value> {
@@ -378,7 +403,7 @@ fn passive_add(s: &mut Session, p: &Value) -> Result<Value> {
     };
     let place = match furniture.and_then(|f| s.topology.furniture_piece(f)) {
         Some(f) => f.place,
-        None => closet_param(s, p)?,
+        None => place_param(s, p, kind.is_wall_mount())?,
     };
     let mut t = s.topology.clone();
     let id = t.add_fitting(kind, p.get("name").and_then(Value::as_str), place, 0.0, 0.0, count(p, "ports")?)?;
@@ -423,6 +448,60 @@ fn unwire(s: &mut Session, p: &Value) -> Result<Value> {
     }
     commit(s, t, false);
     Ok(Value::Null)
+}
+
+/// The place a panel port stands in, by name.
+fn place_name(t: &Topology, pole: Pole) -> String {
+    t.pole_place(pole).and_then(|q| t.place(q)).map(|q| q.name).unwrap_or_default()
+}
+
+fn backbone_end(s: &Session, p: &Value, key: &str) -> Result<Pole> {
+    match pole_param(s, p, key)? {
+        pole @ Pole::Panel { .. } => Ok(pole),
+        Pole::Device(_) => Err(bad(format!("`{key}` is a patch panel or wall mount port: {{\"panel\", \"port\"}}"))),
+    }
+}
+
+fn backbone_add(s: &mut Session, p: &Value) -> Result<Value> {
+    let (a, b) = (backbone_end(s, p, "a")?, backbone_end(s, p, "b")?);
+    let mut t = s.topology.clone();
+    let made = t.add_backbone(a, b)?;
+    let cables: Vec<String> = made.iter().map(|e| t.end_label(*e)).collect();
+    let (from, to) = (place_name(&t, a), place_name(&t, b));
+    commit(s, t, false);
+    Ok(json!({"cables": cables, "from": from, "to": to}))
+}
+
+fn backbone_remove(s: &mut Session, p: &Value) -> Result<Value> {
+    let a = backbone_end(s, p, "a")?;
+    let b = match p.get("b") {
+        None | Some(Value::Null) => None,
+        Some(_) => Some(backbone_end(s, p, "b")?),
+    };
+    let mut t = s.topology.clone();
+    if !t.remove_backbone(a, b) {
+        return Err(EngineError::Failed(format!("no backbone at {}", t.pole_label(a))));
+    }
+    commit(s, t, false);
+    Ok(Value::Null)
+}
+
+fn backbone_list(s: &Session) -> Result<Value> {
+    let t = &s.topology;
+    let paths = t.patch_paths();
+    let out: Vec<Value> = t
+        .backbones()
+        .iter()
+        .map(|w| {
+            let cable = paths
+                .iter()
+                .find(|x| x.wires.contains(w))
+                .filter(|x| t.link_at(x.a).is_some_and(|l| l.a == x.b || l.b == x.b))
+                .map(|x| json!([t.end_label(x.a), t.end_label(x.b)]));
+            json!({"a": t.pole_label(w.a), "b": t.pole_label(w.b), "from": place_name(t, w.a), "to": place_name(t, w.b), "cable": cable})
+        })
+        .collect();
+    Ok(Value::Array(out))
 }
 
 fn plug(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {

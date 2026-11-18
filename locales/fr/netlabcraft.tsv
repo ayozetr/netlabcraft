@@ -1906,6 +1906,12 @@ event	write request for	demande d'écriture de
 	{} (rear)	{} (arrière)
 	{}, {} levels	{}, {} niveaux
 	{}, on {}	{}, sur {}
+	to {}	vers {}
+	Backbone	Câblage de dorsale
+	Backbone to	Dorsale vers
+	Remove Backbone	Retirer la dorsale
+	No panel or wall mount with a free port in another place.	Aucun panneau ni prise murale avec un port libre dans un autre lieu.
+	{} in {} to {} in {}	{} dans {} vers {} dans {}
 	Other devices	Autres appareils
 	Rack	Baie
 	Shelf	Étagère

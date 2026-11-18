@@ -538,4 +538,61 @@ mod t {
         let xs: Vec<f32> = t.devices.iter().filter_map(|d| layout.cell_of(netlabcraft_model::furniture::Item::Device(d.id))).map(|c| c.x).collect();
         assert!(xs.len() >= 3 && xs.windows(2).all(|w| w[0] == w[1]));
     }
+
+    /// Two closets with a switch in each, a panel in each and the backbone between them.
+    fn backbone() -> Harness<'static, PacketApp> {
+        let mut s = Session::new();
+        let cmd = |s: &mut Session, id: &str, p: serde_json::Value| s.execute(id, p).unwrap();
+        cmd(&mut s, "device.add", json!({"model": "Switch 24FE", "name": "SW1"}));
+        cmd(&mut s, "device.add", json!({"model": "Switch 24FE", "name": "SW2"}));
+        let annex = cmd(&mut s, "place.add", json!({"kind": "closet", "name": "Annex", "parent": 2}))["id"].as_u64().unwrap();
+        cmd(&mut s, "device.place", json!({"device": "SW2", "place": annex, "x": 40, "y": 40}));
+        cmd(&mut s, "passive.add", json!({"kind": "copper-patch-panel", "name": "PP1"}));
+        cmd(&mut s, "passive.add", json!({"kind": "copper-patch-panel", "name": "PP2", "place": annex}));
+        cmd(&mut s, "patch.wire", json!({"a": {"device": "SW1", "port": "Fa0/1"}, "b": {"panel": "PP1", "port": 1}}));
+        cmd(&mut s, "patch.wire", json!({"a": {"device": "SW2", "port": "Fa0/1"}, "b": {"panel": "PP2", "port": 1}}));
+        cmd(&mut s, "view.enter_place", json!({"id": 3}));
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 800.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.run_steps(3);
+        crate::closet::fit_all(h.state_mut(), 3);
+        h.run_steps(3);
+        h
+    }
+
+    #[test]
+    fn a_backbone_is_made_from_a_port_menu_and_the_cable_properties_name_it() {
+        let mut h = backbone();
+        let panel = |h: &Harness<'static, PacketApp>, name: &str| {
+            h.state().session.topology.physical.fittings.iter().find(|f| f.name == name).map(|f| f.id).unwrap()
+        };
+        let (pp1, pp2) = (panel(&h, "PP1"), panel(&h, "PP2"));
+        // Right-click a port of the first panel: Backbone to, listing the other closet's panels.
+        let port = |h: &Harness<'static, PacketApp>, f: u32, n: u32| {
+            let pole = netlabcraft_model::furniture::Pole::Panel { fitting: f, port: n };
+            h.state().ui.physical.closet.seen_ports.iter().find(|(p, _)| *p == pole).map(|(_, r)| r.center()).expect("the socket is drawn")
+        };
+        right_click(&mut h, port(&h, pp1, 2));
+        h.query_all_by_label("Backbone to").next().unwrap().click();
+        h.run_steps(2);
+        h.query_all_by_label("PP2 (Annex)").next().unwrap().click();
+        h.run_steps(3);
+        let t = &h.state().session.topology;
+        assert_eq!(t.backbones().len(), 1, "the command made the backbone");
+        assert_eq!(t.links.len(), 0, "no drop on those ports: no cable yet");
+        // The same port now offers to take the backbone away.
+        right_click(&mut h, port(&h, pp1, 2));
+        assert!(h.query_all_by_label("Remove Backbone").next().is_some());
+        h.query_all_by_label("Remove Backbone").next().unwrap().click();
+        h.run_steps(3);
+        assert!(h.state().session.topology.backbones().is_empty());
+        // With drops at both ends the path is a cable, and its properties say where it goes.
+        let ids = (pp1, pp2);
+        h.state_mut().session.execute("backbone.add", json!({"a": {"panel": ids.0, "port": 1}, "b": {"panel": ids.1, "port": 1}})).unwrap();
+        h.run_steps(3);
+        let end = h.state().session.topology.links[0].a;
+        h.state_mut().ui.cable_window = Some(netlabcraft_model::cable_ref::CableRef::Link(end));
+        h.run_steps(3);
+        assert!(h.query_by_label("Backbone").is_some());
+        assert!(h.query_by_label("PP1 1 in Main Wiring Closet to PP2 1 in Annex").is_some());
+    }
 }
