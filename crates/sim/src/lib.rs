@@ -2970,6 +2970,13 @@ impl Sim {
         };
         let mut ip = Ipv4::decode(payload).map_err(|e| e.to_string())?;
         self.bump(d.id, "received");
+        // IGMP and multicast data at a host.
+        if ip.dst.is_multicast()
+            && d.kind.is_host()
+            && let Some(r) = self.host_multicast_in(t, d, ifc, ip.clone())
+        {
+            return r;
+        }
         // Routing-protocol messages to the link's routers (OSPF, RIP); hosts ignore them.
         let udp_port = if ip.protocol == PROTO_UDP { Udp::decode(&ip.payload, ip.src, ip.dst).ok().map(|u| u.dst_port) } else { None };
         let rip = udp_port == Some(netlabcraft_wire::control::RIP_PORT);
@@ -3159,12 +3166,6 @@ impl Sim {
                 ip = back;
                 from_outside = true;
             }
-        }
-        if ip.dst.is_multicast()
-            && d.kind.is_host()
-            && let Some(r) = self.host_multicast_in(t, d, ifc, ip.clone())
-        {
-            return r;
         }
         let mine = l3_ifaces(d).iter().any(|i| i.net.addr == ip.dst)
             || self.hsrp_active(t, d, None).iter().any(|(v, _)| *v == ip.dst)

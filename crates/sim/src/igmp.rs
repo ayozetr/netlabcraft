@@ -238,6 +238,10 @@ impl Sim {
             }
             return Some(Ok(()));
         }
+        // Other protocols' groups on the link (routing hellos) are not for a host.
+        if ip.dst != ALL_HOSTS && ip.dst.octets().get(..3) == Some(&[224, 0, 0][..]) {
+            return Some(Ok(()));
+        }
         if ip.dst == ALL_HOSTS || d.igmp.joined.contains(&ip.dst) {
             return Some(self.local_in(t, d, ifc, ip));
         }
