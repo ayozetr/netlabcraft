@@ -14,6 +14,7 @@ mod bgp_password;
 mod bgp_peer_groups;
 mod bgp_reflection;
 mod console_depth;
+mod debug_crypto;
 mod debug_framework;
 mod debug_topics;
 mod error_counters;
