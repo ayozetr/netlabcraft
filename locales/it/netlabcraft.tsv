@@ -2415,6 +2415,8 @@ furniture	Table	Tavolo
 	no clock rate on the DCE end	nessun clock rate sull'estremità DCE
 	the two ends use different encapsulations	le due estremità usano incapsulamenti diversi
 	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
+	Each place has its own physics	Ogni luogo ha la sua fisica
+	Parts change the place they stand in by rates, and the place settles back when they stop	Le parti cambiano il luogo con una velocità e il luogo torna al valore quando si fermano
 	Pairing code:	Codice di abbinamento:
 	Profile:	Profilo:
 	Music (A2DP)	Musica (A2DP)

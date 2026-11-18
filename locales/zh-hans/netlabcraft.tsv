@@ -2415,6 +2415,8 @@ furniture	Table	桌子
 	no clock rate on the DCE end	DCE 端没有时钟速率
 	the two ends use different encapsulations	两端使用不同的封装
 	PPP authentication failed (check the usernames and passwords)	PPP 认证失败（请检查用户名和密码）
+	Each place has its own physics	每个地点有各自的物理模拟
+	Parts change the place they stand in by rates, and the place settles back when they stop	部件按速率改变所在地点的变量，停止后该地点会恢复原值
 	Pairing code:	配对码：
 	Profile:	配置文件：
 	Music (A2DP)	音乐 (A2DP)

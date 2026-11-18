@@ -82,6 +82,8 @@ pub struct IotState {
     pub(crate) env: Option<EnvRun>,
     /// Who crossed which wire, who hears which beacon (see `proximity`).
     pub(crate) prox: crate::proximity::ProximityState,
+    /// The places' own physics, once it has started (see `parts`).
+    pub(crate) places: BTreeMap<u32, crate::parts::PlaceRun>,
     servers: BTreeMap<DeviceId, Vec<IotEntry>>,
     pub(crate) things: BTreeMap<DeviceId, ThingState>,
     /// Programmable boards' runs (see the `board` module).
@@ -125,7 +127,7 @@ impl Sim {
         if !is_actuator(d) || t.is_dark(d.id) {
             return false;
         }
-        let burning = self.iot.env.as_ref().is_some_and(|r| r.climate.fire_m > 0);
+        let burning = self.iot.env.as_ref().is_some_and(|r| r.climate.fire_m > 0) || self.place_burning(t, d);
         self.iot.things.get(&d.id).is_some_and(|s| s.on) || (burning && thing(d).is_some_and(|x| x.what == "fire sprinkler"))
     }
 
@@ -186,14 +188,19 @@ impl Sim {
     /// Steps the room up to the present, a second at a time, with the devices as they are.
     /// Does nothing while the physics is off.
     pub fn env_step(&mut self, t: &Topology) {
+        self.place_step(t);
         self.prox_step(t);
         if !t.environment.enabled {
             self.iot.env = None;
             return;
         }
         let now = self.now;
-        let fx = self.env_effects(t);
+        let mut fx = self.env_effects(t);
         let run = self.iot.env.get_or_insert_with(|| EnvRun { climate: Climate::from_settings(&t.environment), last_us: now });
+        // With the places' own physics on, the wind outside also blows through an open window.
+        if t.environments.physics {
+            fx.wind_kph = u32::try_from(run.climate.wind).unwrap_or(0);
+        }
         let seconds = (now.saturating_sub(run.last_us) / 1_000_000).min(MAX_STEP_SECONDS);
         for _ in 0..seconds {
             run.climate.step_second(&t.environment, &fx);
@@ -214,6 +221,7 @@ impl Sim {
     /// Forgets the room's state: it starts again from the settings.
     pub fn env_reset(&mut self) {
         self.iot.env = None;
+        self.iot.places.clear();
     }
 
     /// Sets one quantity of the running room (starting it first), by name.
