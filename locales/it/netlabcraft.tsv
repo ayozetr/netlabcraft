@@ -220,6 +220,11 @@
 	cable	cavo
 	Cable Length	Lunghezza cavo
 	Cable Length…	Lunghezza cavo…
+	Resize…	Ridimensiona…
+	Resize	Ridimensiona
+	Units ({} to {}):	Unità ({} a {}):
+	Levels ({} to {}):	Livelli ({} a {}):
+	Enter a whole number	Inserisci un numero intero
 	Cable Modem	Cable Modem
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Cable modem: collega in bridge la porta coassiale (Coaxial0) alla porta Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	cavo troppo lungo: {} m in rame, max 100 m
@@ -941,7 +946,9 @@
 	Reset Activity	Ripristina attività
 	Reset room	Ripristina stanza
 	Reset Simulation	Ripristina simulazione
-	Resize Shape (not available yet)	Ridimensiona forma (non ancora disponibile)
+	Resize Shape (Alt+R)	Ridimensiona forma (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Ridimensiona forma (Alt+R): i disegni esistono solo nella vista logica
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Ridimensiona forma: fai clic su un rettangolo, un'ellisse o una linea, poi trascina le sue maniglie. Esc per uscire.
 	Resource Records	Record di risorsa
 	Response headers	Header della risposta
 	RESTCONF (HTTP)	RESTCONF (HTTP)
@@ -1041,6 +1048,18 @@
 	Show All/None	Mostra tutto/niente
 	Show as text	Mostra come testo
 	Show grid	Mostra griglia
+	Grid Preferences	Preferenze della griglia
+	Grid Preferences…	Preferenze della griglia…
+	Grid Scale	Scala della griglia
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Imposta la spaziatura della griglia, in metri, per ogni livello dell'area di lavoro fisica. La griglia di un livello viene disegnata quando la sua casella è selezionata.
+	Grid-X (m)	Griglia X (m)
+	Grid-Y (m)	Griglia Y (m)
+	Generic Container	Contenitore generico
+	A wiring closet has no scale, so it has no grid.	Un armadio di cablaggio non ha scala, quindi non ha griglia.
+	Grid Line Color	Colore delle linee della griglia
+	Select Grid Color	Scegli il colore della griglia
+	Grid color {}	Colore della griglia {}
+	{}: zoom in to see the lines	{}: ingrandisci per vedere le linee
 	Device windows as separate windows	Finestre dei dispositivi separate
 	Not available in the web version	Non disponibile nella versione web
 	shown when it fails	mostrato in caso di errore
@@ -1780,6 +1799,7 @@ event	write request for	richiesta di scrittura di
 	Delete Scenario	Elimina scenario
 	Device box	Riquadro dispositivi
 	Draw Freehand	Disegna a mano libera
+	Resize Shape	Ridimensiona forma
 	Fast Forward Time	Avanza veloce il tempo
 	Go Back One Level	Torna indietro di un livello
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	I tasti che digitano una lettera vengono ignorati mentre un campo di testo o la console ha la tastiera.
@@ -2370,6 +2390,9 @@ furniture	Table	Tavolo
 	Backup written to {}	Backup scritto in {}
 	Application size	Dimensione dell'applicazione
 	Enter the password first: some tabs are locked.	Inserisci prima la password: alcune schede sono bloccate.
+	Port, {}	Porta, {}
+	Language:	Lingua:
+	Program ({})	Programma ({})
 	Up	Attivo
 	Down	Inattivo
 	Properties…	Proprietà…
@@ -2397,3 +2420,12 @@ furniture	Table	Tavolo
 	no clock rate on the DCE end	nessun clock rate sull'estremità DCE
 	the two ends use different encapsulations	le due estremità usano incapsulamenti diversi
 	PPP authentication failed (check the usernames and passwords)	autenticazione PPP non riuscita (controlla utenti e password)
+	Each place has its own physics	Ogni luogo ha la sua fisica
+	Parts change the place they stand in by rates, and the place settles back when they stop	Le parti cambiano il luogo con una velocità e il luogo torna al valore quando si fermano
+	Pairing code:	Codice di abbinamento:
+	Profile:	Profilo:
+	Music (A2DP)	Musica (A2DP)
+	Headset	Cuffia
+	Card id (hex):	Id della scheda (hex):
+	Report crossings of the wire	Segnala gli attraversamenti del filo
+	Wire angle (degrees):	Angolo del filo (gradi):

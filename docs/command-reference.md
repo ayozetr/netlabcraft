@@ -88,20 +88,22 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.module.add` | Fit a card |  |  | `{"device", "slot": "0/1", "module": "Card-2S\|Card-4S\|Card-1GE\|Card-2GE\|Card-1FE\|Card-1GF\|Card-8A"} → {"slots", "added": [port names]}: modular routers, switched off` |
 | `device.module.remove` | Remove a card |  |  | `{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged` |
 | `port.transceiver` | Fiber transceiver |  |  | `{"device", "port": "fiber or combo port", "mode": "multi-mode" (850 nm, the default) \| "single-mode" (1310 nm)} → {"device", "port", "mode"}: the transceiver in the port; both ends of a fiber link need the same one, and a single mode fiber cable needs single-mode transceivers` |
-| `iot.configure` | Smart thing settings |  |  | `{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) \| 0-180 (servo) \| 0-16777215 (RGB LED, 0xRRGGBB), "red"?\|"green"?\|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: signal generator 0..20000 Hz} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "active", "paired", "message"} (reports at once)` |
-| `board.program` | Board program |  |  | `{"device": programmable board, "source"?: "BoardScript program", "run"?: true\|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile is refused with its line` |
-| `board.status` | Board status |  |  | `{"device": programmable board} → {"program", "run", "state": "not started"\|"running"\|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}` |
+| `iot.configure` | Smart thing settings |  |  | `{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) \| 0-180 (servo) \| 0-16777215 (RGB LED, 0xRRGGBB), "red"?\|"green"?\|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: 0..20000 Hz (a signal generator's output, the pitch a speaker, player, buzzer, alarm or siren plays (0: its own), the pitch a sound detector is tuned to (0: any; it hears only sounds within a tenth of it)), "pairing_code"?: "0000".."9999" (a Bluetooth speaker pairs with a player that has the same code), "profile"?: "a2dp"\|"headset" (a Bluetooth speaker; a headset pairs with no player), "tag"?: an RFID card's id typed in (a number, or up to eight hex digits; 0: the card's own), "crossing"?: true\|false (a trip sensor: read 1 for five seconds after something that moves crosses its 50 m wire instead of while something is near), "angle"?: 0..359 (a trip sensor: the wire's direction)} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "active", "paired", "pairing_code", "profile", "tag", "crossing", "angle", "message"} (reports at once)` |
+| `iot.beacon` | Beacon log |  |  | `{"device": beacon} → {"device", "audience": [names of the things that hear it], "log": [{"time_s", "thing", "event": "heard"\|"lost"}]}: what a beacon keeps (the last 60 things that came into its 100 m range or left it, as of the last step of the simulator)` |
+| `board.program` | Board program |  |  | `{"device": programmable board, "source"?: "program text", "language"?: "boardscript"\|"python" (Board SBC)\|"javascript" (Board MCU), "run"?: true\|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile in its language is refused with its line` |
+| `board.status` | Board status |  |  | `{"device": programmable board} → {"program", "language", "languages", "run", "state": "not started"\|"running"\|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}` |
 | `board.wire` | Wire a board pin |  |  | `{"device": programmable board, "pin": "D0"\|"A0"…, "thing"?: smart thing (none: unplug the pin)} → the board's status. Also link.add with "cable": "iot-custom"` |
 | `iot.environment` | IoT environment |  |  | `{"enabled"?: true\|false, "temperature"?: -50..100, "humidity"?: 0..100, "soil"?: 0..100, "smoke"?: 0..100, "co"?: 0..1000, "motion"?: 0\|1, "fire"?: 0..100, "co2"?: 0..10000, "outside_temperature"?, "outside_humidity"?, "outside_light"?: 0..100, "reset"?: true} → {"enabled", "outside", "start", "room"}: the smart things' shared room; while enabled, heaters, furnaces, air conditioners, fans, ceiling fans, humidifiers, sprinklers, fire sprinklers, running cars, windows, garages, lamps and anything playing sound change it over simulated time and the sensors read it (given values are set now and become the starting values)` |
 | `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
 | `iot.server` | IoT service |  |  | `{"device": server, "service"?: true\|false, "rules"?: [{"sensor", "above", "actuator"}]} → {"service", "rules", "things": [{"name", "kind", "address", "value", "on"}]}` |
 | `iot.switch` | Switch a smart device |  |  | `{"device": server, "name": registered smart device, "on": true\|false} → the server's IoT page` |
-| `environment.get` | Environments | Options | Shift+E | `{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"\|"inherited"\|"default"\|"room", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read.` |
+| `environment.get` | Environments | Options | Shift+E | `{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"\|"inherited"\|"default"\|"room"\|"live", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read, "live" what a place holds now where its parts are moving it (environment.physics).` |
 | `environment.set` | Set an environment variable |  |  | `{"place"?, "variable"?: id or label, "value"?: number within the variable's range (a constant for the whole day: its keyframes are replaced), "notes"?: text (up to 4000 characters), "show_notes"?: true\|false} → environment.get; one undo step. Needs a variable and its value, or notes, or show_notes` |
 | `environment.clear` | Clear an environment variable |  |  | `{"place"?, "variable"?: id or label (none: every variable of the place)} → environment.get: the place inherits again; one undo step` |
 | `environment.keyframe.add` | Add an environment keyframe |  |  | `{"place"?, "variable", "time": "HH:MM:SS" or seconds from midnight (0-86399), "value": number within the variable's range} → environment.get: adds a keyframe or changes the one at that time (at most 288 per variable); between keyframes the value moves in a straight line, and after the last it moves toward the first of the next day; one undo step` |
 | `environment.keyframe.remove` | Remove an environment keyframe |  |  | `{"place"?, "variable", "time"} → environment.get: removes the keyframe at that time; the variable is inherited again when none is left; one undo step` |
 | `environment.clock` | Environment clock |  |  | `{"time"?: "HH:MM:SS" or seconds from midnight (set the time of day now), "paused"?: true\|false, "real_minutes"?: 1-1440, "sim_minutes"?: 1-1440 (every `real_minutes` of simulated lab time pass `sim_minutes` in the environment; the time shown does not jump when the ratio changes)} → environment.get. The clock follows the lab's simulated time (it starts at 08:00:00); one undo step when something changes` |
+| `environment.physics` | Physics of the places |  |  | `{"enabled"?: true\|false} → {"physics"}: with it on, each place that holds smart things has its own physics: the heaters, air conditioners, fans, furnaces, humidifiers, sprinklers, fire sprinklers, windows and lamps standing in a place change that place's variables by rates (a part moves a variable toward where it settles; the variable covers 63 % of the way in 0.5 to 20 minutes, depending on the variable), the place settles back toward what it sets when the part stops, flames make smoke, carbon monoxide and heat, an open window pulls the place toward the one above it (faster in wind), and a sound fades with the distance to the sensor; environment.get shows what a place holds now as source "live". Off (the default): a running part adds a fixed amount at once, as before; one undo step` |
 | `environment.export` | Export environment |  |  | `{"place"?} → {"place", "file": suggested file name, "text"}: the variables and notes the place sets itself, as a JSON file of its own (format "netlabcraft-environment", docs/file-format.md); the app saves it with a dialog` |
 | `environment.import` | Import environment |  |  | `{"place"?, "text": contents of an exported environment, "merge"?: true (only replace the variables the file names; default: replace everything the place sets)} → environment.get plus "imported": {variables, skipped}: unknown variables are skipped and values are clamped to their range; one undo step` |
 | `phone.status` | Phone screen |  |  | `{"device": IP phone} → {"address", "tftp", "voice_vlan", "registered", "number", "server", "message", "call": {"state": "dialing"\|"ringback"\|"ringing"\|"connected", "peer", "peer_address", "rtp_sent", "rtp_received"}} (lets the phone register first)` |
@@ -141,11 +143,23 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `place.move` | Move place |  |  | `{"id", "x", "y", "transient"?: false}: its icon on the map it sits in` |
 | `place.remove` | Remove place |  |  | `{"id"}: with the places inside it; their devices go to the building above, else the default closet (the last city stays)` |
 | `place.list` | List places |  |  | `{} → {"implicit": true while the default layout is shown, "places": [{"id", "kind", "name", "x", "y", "parent", "devices": [names]}], "cables": [{"a", "b", "meters", "manual", "problem"}]}` |
+| `place.scene.set` | Set place pictures |  |  | `{"place"?: number, name or "intercity" (default: the place being viewed), "background"?: {"data": base64 PNG or JPEG \| "path": file (desktop and CLI) \| "image": id of a picture the lab holds (none: the one there now), "mode"?: "original"\|"tiled"\|"fit"\|"width"\|"height", "custom"?: width or height in map units for the last two} or null, "icon"?: {"data" \| "path" \| "image"} or null, "size"?: {"width", "length"?, "height"? in metres, "scale"? metres per map unit} or null}: what is left out stays, null clears; one undo step. Pictures are checked, stripped of metadata and scaled down to 4096 pixels and 8 MiB; at most 64 pictures and 32 MiB in a lab → {"place", "background", "icon", "size", "scale", "scaled_from"?: [w, h]}` |
+| `place.background.set` | Set place background |  |  | `{"place"?, "data" \| "path" \| "image", "mode"?: "original"\|"tiled"\|"fit"\|"width"\|"height", "custom"?: map units} → as place.scene.set: the picture under the map inside the place (the Intercity map is place 0)` |
+| `place.background.clear` | Clear place background |  |  | `{"place"?} → as place.scene.set` |
+| `place.icon.set` | Set place icon |  |  | `{"place": a city, building or closet, "data" \| "path" \| "image"} → as place.scene.set: the picture the place wears on the map above it, clipped to a rounded square` |
+| `place.icon.clear` | Clear place icon |  |  | `{"place"} → as place.scene.set` |
+| `place.size.set` | Set place size |  |  | `{"place"?, "width": metres (kept when left out), "length"?: metres (default: the proportions of the background), "height"?: metres (default 3), "scale"?: metres per map unit (default: width over the width the background is drawn at)} → as place.scene.set: the scale replaces the built-in one (1 m on a city, 100 m on the Intercity map) for cable lengths, cell tower reach and the Wi-Fi range of devices in the same place` |
+| `place.size.clear` | Clear place size |  |  | `{"place"?} → as place.scene.set` |
+| `workspace.background.set` | Set workspace background |  |  | `{"data" \| "path" \| "image", "mode"?: "original"\|"tiled"\|"fit"\|"width"\|"height", "custom"?: map units} → {"background": {"image", "mode", "custom", "pixels", "shown"}, "scaled_from"?}: the picture under the logical workspace` |
+| `workspace.background.clear` | Clear workspace background |  |  | `{}` |
+| `image.list` | List pictures |  |  | `{} → {"images": [{"id", "kind", "w", "h", "bytes"}], "uses": [{"kind": "logical"\|"background"\|"icon", "place", "place_name", "image"}], "total_bytes", "limits"}` |
+| `image.remove` | Remove picture |  |  | `{"kind": "logical"\|"background"\|"icon", "place"? (not for logical)} → image.list: stops using the picture there; the picture goes when nothing else uses it` |
 | `device.place` | Move to place |  |  | `{"device" \| "devices": [names or ids], "place": place number, "x"?, "y"?, "transient"?: false}: network devices go in wiring closets, hosts in a closet or a building` |
 | `link.length` | Cable length |  |  | `{"device", "port": "interface", "meters": 1-20000000 \| null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)` |
 | `closet.list` | List a wiring closet |  |  | `{"place"?: closet number (default: the closet being viewed)} → {"place", "furniture": [{"id", "kind", "name", "size", "items": [{"device" \| "passive": name, "slot" (from 1), "units"}]}], "passive": [{"id", "kind", "name", "ports", "on", "furniture", "slot", "plugged": [{"device", "outlet"}]}], "loose": [names standing on the floor], "wires": [{"a", "b"}], "paths": [{"a", "b"}] (devices cabled through patch panels)}` |
 | `furniture.add` | Add furniture |  |  | `{"kind": "rack" \| "shelf" \| "table", "name"?, "place"?: wiring closet number, "size"?: rack units 4-48 (default 12) or shelf levels 1-8 (default 4), "x"?, "y"?} → {"id", "name", "kind", "size", "place"}: furniture stands only in wiring closets` |
 | `furniture.rename` | Rename furniture |  |  | `{"furniture": name or number, "name"}` |
+| `furniture.resize` | Resize furniture |  |  | `{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size` |
 | `furniture.move` | Move furniture |  |  | `{"furniture", "x", "y", "transient"?: false}: where it stands in the closet` |
 | `furniture.remove` | Remove furniture |  |  | `{"furniture"}: what stood on it stays in the closet, loose` |
 | `furniture.mount` | Put on furniture |  |  | `{"device" \| "passive": name or number, "furniture": name or number, "slot"?: rack unit or shelf level counted from 1 at the top (default: the first free one), "units"?: 1-4 rack units (default 1)} → {"furniture", "slot", "units"}: the item moves into the furniture's closet; a rack takes no overlapping units, a shelf level holds 4 items, a table 8` |
@@ -350,6 +364,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |
+| `no ip ospf authentication key-chain` | interface, subinterface | router, switch | Stop reading the keys from a key chain |
+| `key chain NAME` | config | router, switch | Create or edit a chain of keys with lifetimes |
+| `no key chain NAME` | config | router, switch | Delete a key chain |
+| `key <0-2147483647>` |  | router, switch | Create or edit a key of the chain |
+| `no key <0-2147483647>` |  | router, switch | Delete a key of the chain |
+| `key-string TEXT` |  | router, switch | The secret the key signs with |
+| `no key-string` |  | router, switch | Forget the key's secret |
+| `accept-lifetime hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>\|infinite\|duration <seconds>}` |  | router, switch | When packets signed with this key are accepted |
+| `send-lifetime hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>\|infinite\|duration <seconds>}` |  | router, switch | When this key signs packets |
+| `no accept-lifetime` |  | router, switch | Accept the key at any time again |
+| `no send-lifetime` |  | router, switch | Sign with the key at any time again |
+| `show key chain` | user, privileged | router, switch | Every key chain, its keys and when they are valid |
+| `show key chain NAME` | user, privileged | router, switch | One key chain |
 | `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [tag <0-4294967295>] [subnets] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
 | `no redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |
@@ -493,6 +521,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no logging trap` | config | router, switch | Syslog servers get informational and above |
 | `logging console <0-7>\|LEVEL` | config | router, switch | The most detailed severity shown on the console |
 | `no logging console` | config | router, switch | The console shows every severity |
+| `logging monitor <0-7>\|LEVEL` | config | router, switch | The most detailed severity shown in terminal-monitor sessions |
+| `no logging monitor` | config | router, switch | Monitor sessions show every severity |
+| `no logging buffered` | config | router, switch | The logging buffer keeps every severity again |
 | `ntp master` | config | router, switch | Serve NTP from this device's own clock |
 | `ntp master <1-15>` | config | router, switch | Serve NTP from this device's own clock, at this stratum |
 | `no ntp master` | config | router, switch | Stop serving NTP |
@@ -517,6 +548,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `copy tftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from a TFTP server into flash |
 | `show users` | user, privileged | router, switch | Who is logged in, and where |
 | `terminal length N \| width N \| monitor` | user, privileged | router, switch | Terminal settings (output here is never paged) |
+| `no terminal monitor` | user, privileged | router, switch | Stop copying log messages to this session |
 | `cdp run` | config | router, switch | Discover neighbouring routers and switches |
 | `no cdp run` | config | router, switch | Stop neighbour discovery on this device |
 | `cdp enable` | interface | router, switch | Discover neighbours on this port |
@@ -548,19 +580,79 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `logging buffered [size] [level]` | config | router, switch | Keep messages in the logging buffer, up to a severity |
 | `logging buffered` | config | router, switch | Keep every severity in the logging buffer |
 | `debug ip icmp` | privileged | router, switch | Report echo requests and replies this device receives |
+| `debug ip rip` | privileged | router, switch | Report the RIP updates this router hears |
+| `debug ip rip events` | privileged | router, switch | Report the routes RIP learns, refreshes and drops |
+| `debug ip packet` | privileged | router, switch | Report each packet this device routes |
+| `debug ip packet ACL` | privileged | router, switch | Report the routed packets an access list permits |
+| `debug ip nat` | privileged | router, switch | Report new NAT translations |
+| `debug ip nat detailed` | privileged | router, switch | Report NAT translations with their ports and tables |
+| `debug ip dhcp server events` | privileged | router, switch | Report the addresses this DHCP server hands out |
+| `debug eigrp packets` | privileged | router, switch | Report the EIGRP packets this router hears |
+| `debug eigrp fsm` | privileged | router, switch | Report the EIGRP route computations |
+| `debug eigrp neighbors` | privileged | router, switch | Report EIGRP neighbours coming and going |
+| `debug arp` | privileged | router, switch | Report the ARP requests and replies this device handles |
+| `debug spanning-tree events` | privileged | router, switch | Report spanning-tree port role and state changes |
+| `debug spanning-tree bpdu` | privileged | router, switch | Report the BPDUs this device receives |
+| `debug spanning-tree root` | privileged | router, switch | Report the root bridge changing |
+| `debug cdp packets` | privileged | router, switch | Report the CDP advertisements this device receives |
+| `debug cdp events` | privileged | router, switch | Report CDP neighbours added and aged out |
+| `debug lldp` | privileged | router, switch | Report the LLDP advertisements this device receives |
+| `debug ppp negotiation` | privileged | router, switch | Report PPP link and address negotiation |
+| `debug ppp authentication` | privileged | router, switch | Report PPP PAP and CHAP exchanges |
+| `debug ppp packet` | privileged | router, switch | Report every PPP frame |
+| `debug pppoe events` | privileged | router, switch | Report PPPoE discovery and session changes |
+| `debug pppoe packets` | privileged | router, switch | Report the PPPoE frames this device handles |
+| `debug ip http` | privileged | router, switch | Report the requests this device's web server handles |
+| `debug standby` | privileged | router, switch | Report HSRP hellos and state changes |
+| `debug vrrp` | privileged | router, switch | Report VRRP advertisements and state changes |
+| `debug ip routing` | privileged | router, switch | Report routes being added and removed |
+| `debug ntp events` | privileged | router, switch | Report NTP exchanges and clock changes |
+| `debug ntp packets` | privileged | router, switch | Report NTP exchanges and clock changes |
+| `debug snmp packets` | privileged | router, switch | Report SNMP requests, answers and traps |
+| `debug dot1x events` | privileged | router, switch | Report 802.1X port authentication |
+| `debug dot1x packets` | privileged | router, switch | Report 802.1X port authentication |
+| `debug ip ssh` | privileged | router, switch | Report SSH logins to this device |
+| `debug crypto isakmp` | privileged | router, switch | Report the IKE exchanges of this device |
+| `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
-| `debug ip rip` | privileged | router, switch | Report the RIP updates this router hears |
-| `debug ip packet` | privileged | router, switch | Report each packet this device routes |
-| `debug ip nat` | privileged | router, switch | Report new NAT translations |
-| `debug ip dhcp server events` | privileged | router, switch | Report the addresses this DHCP server hands out |
+| `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
+| `no debug ip rip events` | privileged | router, switch | Stop reporting RIP route events |
 | `no debug ip packet` | privileged | router, switch | Stop reporting packets |
+| `no debug ip packet ACL` | privileged | router, switch | Stop reporting packets |
 | `no debug ip nat` | privileged | router, switch | Stop reporting NAT |
+| `no debug ip nat detailed` | privileged | router, switch | Stop reporting detailed NAT |
 | `no debug ip dhcp server events` | privileged | router, switch | Stop reporting DHCP |
+| `no debug eigrp packets` | privileged | router, switch | Stop reporting EIGRP packets |
+| `no debug eigrp fsm` | privileged | router, switch | Stop reporting EIGRP route computations |
+| `no debug eigrp neighbors` | privileged | router, switch | Stop reporting EIGRP neighbours |
+| `no debug arp` | privileged | router, switch | Stop reporting ARP |
+| `no debug spanning-tree events` | privileged | router, switch | Stop reporting spanning-tree events |
+| `no debug spanning-tree bpdu` | privileged | router, switch | Stop reporting BPDUs |
+| `no debug spanning-tree root` | privileged | router, switch | Stop reporting root changes |
+| `no debug cdp packets` | privileged | router, switch | Stop reporting CDP packets |
+| `no debug cdp events` | privileged | router, switch | Stop reporting CDP events |
+| `no debug lldp` | privileged | router, switch | Stop reporting LLDP |
+| `no debug ppp negotiation` | privileged | router, switch | Stop reporting PPP negotiation |
+| `no debug ppp authentication` | privileged | router, switch | Stop reporting PPP authentication |
+| `no debug ppp packet` | privileged | router, switch | Stop reporting PPP frames |
+| `no debug pppoe events` | privileged | router, switch | Stop reporting PPPoE events |
+| `no debug pppoe packets` | privileged | router, switch | Stop reporting PPPoE frames |
+| `no debug ip http` | privileged | router, switch | Stop reporting web requests |
+| `no debug standby` | privileged | router, switch | Stop reporting HSRP |
+| `no debug vrrp` | privileged | router, switch | Stop reporting VRRP |
+| `no debug ip routing` | privileged | router, switch | Stop reporting route changes |
+| `no debug ntp events` | privileged | router, switch | Stop reporting NTP |
+| `no debug ntp packets` | privileged | router, switch | Stop reporting NTP |
+| `no debug snmp packets` | privileged | router, switch | Stop reporting SNMP |
+| `no debug dot1x events` | privileged | router, switch | Stop reporting 802.1X |
+| `no debug dot1x packets` | privileged | router, switch | Stop reporting 802.1X |
+| `no debug ip ssh` | privileged | router, switch | Stop reporting SSH |
+| `no debug crypto isakmp` | privileged | router, switch | Stop reporting ISAKMP |
+| `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `no debug ip rip` | privileged | router, switch | Stop reporting RIP updates |
 | `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
 | `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
@@ -637,6 +729,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 nd managed-config-flag` | interface, subinterface | router, switch | Hosts build their own addresses |
 | `ipv6 nd other-config-flag` | interface, subinterface | router, switch | Tell hosts to take DNS and domain from DHCPv6 |
 | `no ipv6 nd other-config-flag` | interface, subinterface | router, switch | No other settings from DHCPv6 |
+| `ipv6 nd ra suppress` | interface, subinterface | router, switch | Send no router advertisements on this interface |
+| `ipv6 nd ra suppress all` | interface, subinterface | router, switch | Send no router advertisements on this interface |
+| `no ipv6 nd ra suppress` | interface, subinterface | router, switch | Answer router solicitations again |
+| `no ipv6 nd ra suppress all` | interface, subinterface | router, switch | Answer router solicitations again |
+| `ipv6 nd ra lifetime <0-9000>` | interface, subinterface | router, switch | Seconds this router may serve as a default router (0: never) |
+| `no ipv6 nd ra lifetime` | interface, subinterface | router, switch | A lifetime of 1800 seconds again |
 | `show ipv6 dhcp pool` | user, privileged | router | DHCPv6 pools |
 | `show ipv6 dhcp binding` | user, privileged | router | DHCPv6 addresses handed out |
 | `ntp server A.B.C.D` | config | router, switch | Take the time from an NTP server |
@@ -735,8 +833,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip eigrp neighbors` | user, privileged | router, switch | EIGRP neighbours |
 | `show ip eigrp topology` | user, privileged | router, switch | Successors and feasible successors |
 | `show ip eigrp interfaces` | user, privileged | router, switch | Interfaces running EIGRP |
-| `debug eigrp packets` | privileged | router, switch | Report the EIGRP hellos this router hears |
-| `no debug eigrp packets` | privileged | router, switch | Stop reporting EIGRP hellos |
 | `router bgp <1-4294967295>` | config | router, switch | Start or configure BGP in this autonomous system |
 | `no router bgp <1-4294967295>` | config | router, switch | Stop BGP |
 | `bgp router-id A.B.C.D` |  | router, switch | Set the BGP router id |
@@ -905,6 +1001,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ipv6 router ospf <1-65535>` | config | router, switch | Stop OSPFv3 |
 | `ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Run OSPFv3 on this interface |
 | `no ipv6 ospf <1-65535> area <0-4294967295>` | interface, subinterface | router, switch | Stop OSPFv3 on this interface |
+| `ospfv3 authentication ipsec spi <256-4294967295> {md5\|sha1} [0] KEY` | interface, subinterface | router, switch | Protect OSPFv3 packets here with an AH header (the key is 32 hex digits for md5, 40 for sha1) |
+| `ospfv3 authentication null` | interface, subinterface | router, switch | No AH header here, whatever the area says |
+| `no ospfv3 authentication` | interface, subinterface | router, switch | Use the area's protection again |
+| `area <0-4294967295> authentication ipsec spi <256-4294967295> {md5\|sha1} [0] KEY` |  | router, switch | Protect the OSPFv3 packets of every interface in the area with an AH header |
+| `area <0-4294967295> authentication null` |  | router, switch | No AH header in this area unless an interface sets one |
+| `no area <0-4294967295> authentication` |  | router, switch | Take the area's OSPFv3 protection off |
 | `show ipv6 ospf neighbor` | user, privileged | router, switch | OSPFv3 neighbours |
 | `ipv6 router eigrp <1-65535>` | config | router, switch | Start or configure EIGRP for IPv6 |
 | `no ipv6 router eigrp <1-65535>` | config | router, switch | Stop EIGRP for IPv6 |
@@ -1073,8 +1175,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no snmp-server system-shutdown` | config | router, switch | Return this setting to its default |
 | `snmp-server trap-timeout <1-1000>` | config | router, switch | Seconds to retry sending a trap |
 | `no snmp-server trap-timeout` | config | router, switch | Return this setting to its default |
-| `logging monitor LEVEL` | config | router, switch | Most detailed severity shown on remote terminals |
-| `no logging monitor` | config | router, switch | Return this setting to its default |
 | `logging source-interface INTERFACE` | config | router, switch | Interface whose address log messages come from |
 | `no logging source-interface` | config | router, switch | Return this setting to its default |
 | `logging facility WORD` | config | router, switch | Syslog facility sent to servers |
@@ -1420,6 +1520,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no banner motd` | config | router, switch | Remove the message |
 | `service password-encryption` | config | router, switch | Write passwords obscured |
 | `no service password-encryption` | config | router, switch | Write passwords in clear |
+| `ip host NAME A.B.C.D` | config | router, switch | Give a host name an address this device resolves by itself |
+| `no ip host NAME` | config | router, switch | Forget a host name |
+| `ip name-server A.B.C.D [A.B.C.D ...]` | config | router, switch | The DNS servers that resolve host names (the first one is asked) |
+| `no ip name-server` | config | router, switch | Use no DNS server |
+| `no ip name-server A.B.C.D [A.B.C.D ...]` | config | router, switch | Stop using these DNS servers |
 | `ip domain-lookup` | config | router, switch | Resolve mistyped commands as host names |
 | `no ip domain-lookup` | config | router, switch | Don't resolve mistyped commands |
 | `ip dhcp pool WORD` | config | router, switch | Create or edit a DHCP pool |

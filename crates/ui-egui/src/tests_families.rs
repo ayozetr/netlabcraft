@@ -363,6 +363,40 @@ mod boards {
     }
 
     #[test]
+    fn a_speaker_a_card_and_a_trip_sensor_show_their_proximity_controls() {
+        let mut s = Session::new();
+        for (model, name) in [("Bluetooth Speaker", "Speaker1"), ("RFID Card", "Card1"), ("Trip Sensor", "Trip1")] {
+            s.execute("device.add", json!({"model": model, "name": name})).unwrap();
+        }
+        let ids: Vec<_> = ["Speaker1", "Card1", "Trip1"].iter().map(|n| s.topology.resolve(n).unwrap()).collect();
+        let mut h = Harness::builder().with_size(egui::vec2(1300.0, 860.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        for (id, label) in ids.into_iter().zip(["Pairing code:", "Card id (hex):", "Report crossings of the wire"]) {
+            h.state_mut().ui.windows.clear();
+            crate::open_console(h.state_mut(), id);
+            h.run_steps(3);
+            assert!(h.query_by_label(label).is_some(), "{label}");
+        }
+    }
+
+    #[test]
+    fn the_programming_tab_offers_the_languages_of_its_board() {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": "board"})).unwrap();
+        let b = s.topology.resolve("Board1").unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1300.0, 860.0)).build_ui_state(|ui, app: &mut PacketApp| app.ui(ui), PacketApp::new(s));
+        h.state_mut().ui.show_notes = false;
+        crate::open_console(h.state_mut(), b);
+        h.run_steps(3);
+        assert!(h.query_by_label("Language:").is_some(), "a microcontroller board runs more than one language");
+        assert!(h.query_by_label("Program (BoardScript)").is_some());
+        h.state_mut().session.execute("board.program", json!({"device": "Board1", "language": "javascript", "source": "console.log(1)"})).unwrap();
+        h.run_steps(3);
+        assert!(h.query_by_label("Program (JavaScript)").is_some(), "the editor's title follows the language");
+        assert_eq!(h.state().session.topology.device(b).map(|d| d.board.language.id()), Some("javascript"));
+    }
+
+    #[test]
     fn the_programming_tab_runs_and_stops_the_board_and_shows_its_pins() {
         let mut s = Session::new();
         s.execute("file.new", json!({"sample": "board"})).unwrap();

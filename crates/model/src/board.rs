@@ -11,6 +11,63 @@ use crate::{Device, DeviceKind, ModelError, Result, Topology, models};
 /// The longest program a board keeps (characters).
 pub const MAX_PROGRAM: usize = 8_000;
 
+/// The language a board's program is written in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Language {
+    /// BoardScript, our own line-based language (every board).
+    #[default]
+    BoardScript,
+    /// A documented subset of Python (the single-board computer).
+    Python,
+    /// A documented subset of JavaScript (the microcontroller board).
+    JavaScript,
+}
+
+impl Language {
+    /// The word the engine commands and the lab file use.
+    pub fn id(self) -> &'static str {
+        match self {
+            Language::BoardScript => "boardscript",
+            Language::Python => "python",
+            Language::JavaScript => "javascript",
+        }
+    }
+
+    /// The name shown in the Programming tab.
+    pub fn label(self) -> &'static str {
+        match self {
+            Language::BoardScript => "BoardScript",
+            Language::Python => "Python",
+            Language::JavaScript => "JavaScript",
+        }
+    }
+
+    /// A language as typed (`python`, `py`, `JS`, `board script`).
+    pub fn parse(text: &str) -> Option<Language> {
+        match text.trim().to_ascii_lowercase().replace([' ', '-', '_'], "").as_str() {
+            "boardscript" | "bs" => Some(Language::BoardScript),
+            "python" | "py" => Some(Language::Python),
+            "javascript" | "js" => Some(Language::JavaScript),
+            _ => None,
+        }
+    }
+
+    /// The languages a board model can run (BoardScript first).
+    pub fn allowed(model_id: &str) -> &'static [Language] {
+        match model_id {
+            "Board-SBC" => &[Language::BoardScript, Language::Python],
+            "Board-MCU" => &[Language::BoardScript, Language::JavaScript],
+            _ => &[Language::BoardScript],
+        }
+    }
+
+    /// Serde helper: a board left on BoardScript writes nothing.
+    pub fn is_default(&self) -> bool {
+        *self == Language::BoardScript
+    }
+}
+
 /// An IoT custom cable from a board's pin to a smart thing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PinWire {
@@ -28,6 +85,9 @@ pub struct Board {
     /// The program runs whenever the board has power (and starts at once when set).
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub run: bool,
+    /// The language of `program` (BoardScript when left out).
+    #[serde(skip_serializing_if = "Language::is_default")]
+    pub language: Language,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub wires: Vec<PinWire>,
 }
@@ -74,6 +134,9 @@ impl Device {
             return;
         }
         self.board.program = self.board.program.chars().take(MAX_PROGRAM).collect();
+        if !Language::allowed(self.catalogue_model().id).contains(&self.board.language) {
+            self.board.language = Language::default();
+        }
         let pins = pins(self.catalogue_model());
         let mut seen = std::collections::BTreeSet::new();
         self.board.wires.retain(|w| pins.contains(&w.pin) && seen.insert(w.pin.clone()));
@@ -139,6 +202,30 @@ impl Topology {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_language_is_allowed_only_on_its_boards_and_is_left_out_when_default() {
+        assert_eq!(Language::parse("Python"), Some(Language::Python));
+        assert_eq!(Language::parse("java-script"), Some(Language::JavaScript));
+        assert_eq!(Language::parse("board script"), Some(Language::BoardScript));
+        assert_eq!(Language::parse("ruby"), None);
+        assert!(Language::allowed("Board-SBC").contains(&Language::Python));
+        assert!(!Language::allowed("Board-SBC").contains(&Language::JavaScript));
+        assert!(Language::allowed("Board-MCU").contains(&Language::JavaScript));
+        assert_eq!(Language::allowed("PLC"), &[Language::BoardScript]);
+        let mut t = Topology::new();
+        let b = t.add_model(models::find("Board-MCU").unwrap(), None, 0.0, 0.0).unwrap();
+        assert!(!crate::file::to_json(&t).unwrap().contains("language"), "BoardScript is left out");
+        t.device_mut(b).unwrap().board.language = Language::JavaScript;
+        let text = crate::file::to_json(&t).unwrap();
+        assert!(text.contains("\"language\": \"javascript\"") || text.contains("\"language\":\"javascript\""));
+        let mut back = crate::file::from_json(&text).unwrap();
+        assert_eq!(back.device(b).unwrap().board.language, Language::JavaScript);
+        // A hostile file: Python on a microcontroller falls back to BoardScript.
+        back.device_mut(b).unwrap().board.language = Language::Python;
+        back.sanitize();
+        assert_eq!(back.device(b).unwrap().board.language, Language::BoardScript);
+    }
 
     #[test]
     fn pins_wire_once_to_smart_things_and_files_are_trimmed() {

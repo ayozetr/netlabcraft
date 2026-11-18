@@ -100,6 +100,7 @@ pub enum Act {
     Rectangle,
     Ellipse,
     Freeform,
+    Resize,
     PowerCycle,
     FastForward,
     SimBack,
@@ -152,7 +153,7 @@ use When::{Always, Idle};
 ///
 /// Not here, because we have nothing for them: Ctrl+Shift+H (dock the Instruction window),
 /// Ctrl+Shift+I (scenario description), Ctrl+Shift+P (Port Monitor), Shift+F (generic container), Shift+H (working closet), Shift+M (Move Object),
-/// Shift+N (Navigation panel), Alt+R (Resize), Ctrl+Space and Space (rubber-band and select by
+/// Shift+N (Navigation panel), Ctrl+Space and Space (rubber-band and select by
 /// key), Alt+F/E/O/V/T/X/H (open a menu), Y and N for confirmations, and the device boxes for
 /// wireless, security, home, smart city, industrial, power grid, boards, actuators, sensors and
 /// miscellaneous (see docs/gaps.md). Ctrl+Insert and Shift+Insert copy and paste in the console
@@ -214,6 +215,7 @@ pub static TABLE: &[Shortcut] = &[
     row("Tools", "Draw Rectangle", 0, Key::R, Act::Rectangle, Idle),
     row("Tools", "Draw Ellipse", 0, Key::E, Act::Ellipse, Idle),
     row("Tools", "Draw Freehand", 0, Key::F, Act::Freeform, Idle),
+    row("Tools", "Resize Shape", A, Key::R, Act::Resize, Idle),
     // Time and simulation
     row("Simulation", "Power Cycle Devices", A, Key::S, Act::PowerCycle, Idle),
     row("Simulation", "Fast Forward Time", A, Key::D, Act::FastForward, Idle),
@@ -429,7 +431,7 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::ZoomIn => app.zoom(Some(1.25)),
         Act::ZoomReset => app.reset_view(),
         Act::ZoomOut => app.zoom(Some(0.8)),
-        Act::ShowGrid => app.ui.show_grid = !app.ui.show_grid,
+        Act::ShowGrid => crate::physical_grid::toggle(app),
         Act::Simulation => app.ui.mode = Mode::Simulation,
         Act::Realtime => app.ui.mode = Mode::Realtime,
         Act::Logical => {
@@ -489,6 +491,12 @@ pub fn perform(app: &mut PacketApp, ctx: &Context, act: Act) {
         Act::Rectangle => app.set_tool(Tool::Draw(Shape::Rectangle)),
         Act::Ellipse => app.set_tool(Tool::Draw(Shape::Ellipse)),
         Act::Freeform => app.set_tool(Tool::Draw(Shape::Freehand)),
+        Act::Resize => {
+            // Drawings live in the logical view only.
+            if !app.session.physical {
+                app.set_tool(Tool::Resize);
+            }
+        }
         Act::PowerCycle => {
             app.run("sim.reset", json!({}));
             app.info(tl("Devices power-cycled: dynamic tables cleared."));

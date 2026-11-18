@@ -16,11 +16,13 @@ use crate::{host, render};
 pub(crate) mod automation;
 pub(crate) mod bgp;
 pub(crate) mod cellular;
+pub(crate) mod debug;
 pub(crate) mod eigrp6;
 pub(crate) mod families;
 pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
+pub(crate) mod keychain;
 pub(crate) mod knobs;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
@@ -157,6 +159,10 @@ pub enum Mode {
     PkiTrustpoint(String),
     /// `R1(cs-server)#`: the certificate authority's name.
     PkiServer(String),
+    /// `R1(config-keychain)#`: the key chain's name.
+    KeyChain(String),
+    /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
+    KeyChainKey(String, u32),
 }
 
 impl Mode {
@@ -207,6 +213,8 @@ impl Mode {
             Mode::Ikev2Profile(_) => Modes::IKEV2_PROFILE,
             Mode::PkiTrustpoint(_) => Modes::PKI_TRUSTPOINT,
             Mode::PkiServer(_) => Modes::PKI_SERVER,
+            Mode::KeyChain(_) => Modes::KEYCHAIN,
+            Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
         }
     }
 }
@@ -234,6 +242,8 @@ pub struct Cli {
     pub ftp: Option<crate::host::FtpClient>,
     /// `terminal history size N` / `history size N`: commands this session remembers.
     pub history_cap: Option<usize>,
+    /// `terminal monitor` in a remote session: log and debug messages of the device appear in it.
+    pub monitor: bool,
 }
 
 /// The questions a TFTP copy asks when the server isn't on the command line.
@@ -296,6 +306,10 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         (false, _) => LoginStage::Password(None),
     };
     let remote_cli = Cli { vty: true, logged_in: true, ..Cli::default() };
+    if proto == RemoteProto::Ssh {
+        let from = t.device(dev).map_or_else(String::new, |d| d.name.clone());
+        sim.debug_log(target, DebugKind::Ssh, &format!("a session is opened from {from}; the key exchange is done and the login follows"));
+    }
     cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0 }));
     let banner = t.device(target).map(|d| d.access.banner_motd.clone()).unwrap_or_default();
     let mut out = format!("Trying {dst} ... Open");
@@ -384,6 +398,11 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
                     (_, _) => target.access.vty.password.as_deref() == Some(line),
                 }
             };
+            if r.proto == RemoteProto::Ssh {
+                let who = user.as_deref().unwrap_or("(no name)");
+                let line = if ok { format!("user {who} is logged in") } else { format!("login of {who} is refused: wrong password or unknown user") };
+                sim.debug_log(target.id, DebugKind::Ssh, &line);
+            }
             if ok {
                 r.stage = LoginStage::Ready;
                 r.cli.user.clone_from(&user);
@@ -574,6 +593,8 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Ikev2Profile(_) => format!("{n}(config-ikev2-profile)#"),
         Mode::PkiTrustpoint(_) => format!("{n}(ca-trustpoint)#"),
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
+        Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
+        Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -893,6 +914,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Profile(_)
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
+                | Mode::KeyChain(_)
+                | Mode::KeyChainKey(..)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -972,10 +995,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Profile(_)
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
+                | Mode::KeyChain(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
                 Mode::Ikev2Peer(ref k, _) => Mode::Ikev2Keyring(k.clone()),
+                Mode::KeyChainKey(ref k, _) => Mode::KeyChain(k.clone()),
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
                 Mode::InspectPolicyClass(ref p, _) => Mode::InspectPolicy(p.clone()),
@@ -1171,12 +1196,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let hosts =
                 if d.log_hosts.is_empty() { "none".to_string() } else { d.log_hosts.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ") };
             Ok(format!(
-                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, syslog servers {}\nSyslog servers: {hosts}\n{}",
+                "Logging buffer: {} message{} (at most {})\nLevels: console {}, buffer {}, monitor {}, syslog servers {}\nSyslog servers: {hosts}\n{}",
                 lines.len(),
                 if lines.len() == 1 { "" } else { "s" },
                 netlabcraft_sim::MAX_LOG,
                 lv(m.logging_console, 7),
                 lv(m.logging_buffered, 7),
+                lv(m.logging_monitor, 7),
                 lv(m.logging_trap, 6),
                 lines.join("\n")
             )
@@ -1194,6 +1220,9 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoLoggingTrap
         | Id::LoggingConsole
         | Id::NoLoggingConsole
+        | Id::LoggingMonitor
+        | Id::NoLoggingMonitor
+        | Id::NoLoggingBuffered
         | Id::NtpMaster
         | Id::NoNtpMaster
         | Id::NtpAuthenticate
@@ -1213,34 +1242,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::CopyStartRun
         | Id::CopyFlashTftp
         | Id::CopyTftpFlash => mgmt::command(&mut c, spec.id, &args),
-        Id::DebugIpIcmp => {
-            c.sim.set_debug(c.dev, DebugKind::Icmp, true);
-            Ok("ICMP debugging is on: echo messages this device receives are reported.".into())
-        }
-        Id::DebugIpOther | Id::NoDebugIpOther => {
-            let on = spec.id == Id::DebugIpOther;
-            let w: Vec<String> = line.split_whitespace().map(str::to_ascii_lowercase).collect();
-            let topic = w.get(if on { 2 } else { 3 }).map(String::as_str).unwrap_or("");
-            let (kind, name) = if "packet".starts_with(topic) {
-                (DebugKind::Packet, "IP packet")
-            } else if "nat".starts_with(topic) {
-                (DebugKind::Nat, "NAT")
-            } else {
-                (DebugKind::Dhcp, "DHCP server")
-            };
-            c.sim.set_debug(c.dev, kind, on);
-            Ok(if on { format!("{name} debugging is on.") } else { format!("{name} debugging is off.") })
-        }
-        Id::DebugIpRip | Id::NoDebugIpRip => {
-            let on = spec.id == Id::DebugIpRip;
-            c.sim.set_debug(c.dev, DebugKind::Rip, on);
-            Ok(if on { "RIP debugging is on: the updates this router hears are reported." } else { "RIP debugging is off." }.into())
-        }
-        Id::DebugEigrpPackets | Id::NoDebugEigrpPackets => {
-            let on = spec.id == Id::DebugEigrpPackets;
-            c.sim.set_debug(c.dev, DebugKind::Eigrp, on);
-            Ok(if on { "EIGRP debugging is on: the hellos this router hears are reported." } else { "EIGRP debugging is off." }.into())
-        }
+        Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
             let pick = ["adj", "events", "hello"].into_iter().find(|w| !what.is_empty() && w.starts_with(what.as_str()));
@@ -1263,16 +1265,6 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj and events"))
             })
         }
-        Id::UndebugAll => {
-            for k in DebugKind::ALL {
-                c.sim.set_debug(c.dev, k, false);
-            }
-            Ok("All debugging is off.".into())
-        }
-        Id::ShowDebugging => {
-            let on = c.sim.debugs(c.dev);
-            Ok(if on.is_empty() { "No debugging is on.".into() } else { format!("Debugging is on for: {}.", on.join(", ")) })
-        }
         Id::ShowClock => {
             let (now, set) = c.sim.clock(c.dev);
             Ok(crate::clock::show(now, set))
@@ -1280,6 +1272,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ClockSet => {
             let t = crate::clock::parse_set(arg(0))?;
             c.sim.set_clock(c.dev, t);
+            // The OSPF state is worked out from the configuration alone, so key chains read this.
+            c.dm()?.clock_unix = Some(t);
             Ok(String::new())
         }
         Id::ShowFlash => Ok(render::flash(c.d()?)),
@@ -1294,9 +1288,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                     c.cli.history_cap = Some(n);
                     Ok(String::new())
                 }
-                ["monitor"] | ["no", "monitor"] => Ok(String::new()),
+                ["monitor"] => {
+                    c.cli.monitor = true;
+                    Ok(String::new())
+                }
+                ["no", "monitor"] => {
+                    c.cli.monitor = false;
+                    Ok(String::new())
+                }
                 _ => Err("% terminal length N, terminal width N or terminal monitor".into()),
             }
+        }
+        Id::NoTerminalMonitor => {
+            c.cli.monitor = false;
+            Ok(String::new())
         }
         Id::CdpRun | Id::NoCdpRun => {
             c.dm()?.cdp_off = spec.id == Id::NoCdpRun;
@@ -2038,6 +2043,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpOspfAuthKey
         | Id::NoIpOspfAuthKey
         | Id::IpOspfMd5Key
+        | Id::IpOspfKeyChain
+        | Id::NoIpOspfKeyChain
         | Id::NoIpOspfMd5Key => routing::ospf_if_command(&mut c, spec.id, &args),
         Id::AreaAuth | Id::NoAreaAuth => routing::ospf_area_auth(&mut c, spec.id == Id::AreaAuth, &args),
         Id::AreaNssa | Id::NoAreaNssa | Id::AreaDefaultCost | Id::NoAreaDefaultCost | Id::AreaVirtualLink | Id::NoAreaVirtualLink => {
@@ -2194,6 +2201,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::KeyChain
+        | Id::NoKeyChain
+        | Id::KeyChainKey
+        | Id::NoKeyChainKey
+        | Id::KeyString
+        | Id::NoKeyString
+        | Id::AcceptLifetime
+        | Id::SendLifetime
+        | Id::NoAcceptLifetime
+        | Id::NoSendLifetime
+        | Id::ShowKeyChain => keychain::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
@@ -2795,6 +2813,47 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             d.access.users.retain(|u| u.name != arg(0));
             if d.access.users.len() == before { Err(format!("% No user {}", arg(0))) } else { Ok(String::new()) }
         }
+        Id::IpHost => {
+            let name: String = arg(0).chars().filter(|ch| !ch.is_control()).take(64).collect();
+            if name.is_empty() || name.parse::<std::net::Ipv4Addr>().is_ok() {
+                return Err("% A host name is a word that is not an address".into());
+            }
+            let a = parse_ip(arg(1)).map_err(|e| format!("% {e}"))?;
+            let d = c.dm()?;
+            d.access.hosts.retain(|(n, _)| !n.eq_ignore_ascii_case(&name));
+            if d.access.hosts.len() >= 64 {
+                return Err("% At most 64 host names".into());
+            }
+            d.access.hosts.push((name, a));
+            Ok(String::new())
+        }
+        Id::NoIpHost => {
+            let d = c.dm()?;
+            let before = d.access.hosts.len();
+            d.access.hosts.retain(|(n, _)| !n.eq_ignore_ascii_case(arg(0)));
+            if d.access.hosts.len() == before { Err(format!("% No host named {}", arg(0))) } else { Ok(String::new()) }
+        }
+        Id::IpNameServer | Id::NoIpNameServer => {
+            let mut given = Vec::new();
+            for w in arg(0).split_whitespace().take(6) {
+                given.push(parse_ip(w).map_err(|e| format!("% {e}"))?);
+            }
+            let d = c.dm()?;
+            if spec.id == Id::IpNameServer {
+                for a in given {
+                    if !d.access.name_servers.contains(&a) {
+                        d.access.name_servers.push(a);
+                    }
+                }
+                d.access.name_servers.truncate(6);
+            } else if given.is_empty() {
+                d.access.name_servers.clear();
+            } else {
+                d.access.name_servers.retain(|a| !given.contains(a));
+            }
+            d.dns = d.access.name_servers.first().copied();
+            Ok(String::new())
+        }
         Id::DomainName | Id::NoDomainName => {
             let v = (spec.id == Id::DomainName).then(|| arg(0).chars().take(64).collect::<String>());
             c.dm()?.access.domain_name = v;
@@ -3096,14 +3155,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
-        Id::Ipv6DhcpServer | Id::NoIpv6DhcpServer | Id::NdManaged | Id::NoNdManaged | Id::NdOther | Id::NoNdOther => {
+        Id::Ipv6DhcpServer
+        | Id::NoIpv6DhcpServer
+        | Id::NdManaged
+        | Id::NoNdManaged
+        | Id::NdOther
+        | Id::NoNdOther
+        | Id::NdSuppress
+        | Id::NoNdSuppress
+        | Id::NdRaLifetime
+        | Id::NoNdRaLifetime => {
             let id = spec.id;
             let pool = arg(0).to_string();
+            let lifetime = if id == Id::NdRaLifetime {
+                Some(arg(0).parse::<u16>().ok().filter(|n| *n <= 9_000).ok_or("% The router lifetime is 0-9000 seconds")?)
+            } else {
+                None
+            };
             c.each_v6(|v6, _, _| {
                 match id {
                     Id::Ipv6DhcpServer => v6.dhcp_server = Some(pool.clone()),
                     Id::NoIpv6DhcpServer => v6.dhcp_server = None,
                     Id::NdManaged | Id::NoNdManaged => v6.nd_managed = id == Id::NdManaged,
+                    Id::NdSuppress | Id::NoNdSuppress => v6.nd_suppress = id == Id::NdSuppress,
+                    Id::NdRaLifetime | Id::NoNdRaLifetime => v6.nd_ra_lifetime = lifetime,
                     _ => v6.nd_other = id == Id::NdOther,
                 }
                 Ok(())
@@ -3480,11 +3555,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }),
         Id::ShowHosts => {
             let a = &c.d()?.access;
-            Ok(format!(
-                "Default domain: {}\nName lookup: {}",
+            let servers = if a.name_servers.is_empty() {
+                "no name servers set".to_string()
+            } else {
+                format!("name servers {}", a.name_servers.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "))
+            };
+            let mut s = format!(
+                "Default domain: {}\nName lookup: {} ({servers})",
                 a.domain_name.clone().unwrap_or_else(|| "not set".into()),
-                if a.no_domain_lookup { "off (no ip domain-lookup)" } else { "on (no name servers set)" }
-            ))
+                if a.no_domain_lookup { "off (no ip domain-lookup)" } else { "on" },
+            );
+            if !a.hosts.is_empty() {
+                s.push_str(&format!("\n\n{:<24} {}", "Host", "Address"));
+                for (n, ip) in &a.hosts {
+                    s.push_str(&format!("\n{n:<24} {ip} (static)"));
+                }
+            }
+            Ok(s)
         }
         Id::NatSideCmd | Id::NoNatSide => {
             let side = match arg(0).to_ascii_lowercase().as_str() {
@@ -4239,6 +4326,35 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
                 Ok(())
             })
+        }
+        Id::Ospfv3AuthIpsec | Id::Ospfv3AuthNull | Id::NoOspfv3Auth => {
+            let auth = match spec.id {
+                Id::Ospfv3AuthIpsec => Some(ospf6_auth(arg(0), arg(1), arg(2))?),
+                Id::Ospfv3AuthNull => Some(netlabcraft_model::Ospf6Auth::Null),
+                _ => None,
+            };
+            c.each_v6(|v6, _, _| {
+                v6.ospf_auth = auth.clone();
+                Ok(())
+            })
+        }
+        Id::Ospf6AreaAuthIpsec | Id::Ospf6AreaAuthNull | Id::NoOspf6AreaAuth => {
+            let area: u32 = arg(0).parse().map_err(|_| "% Area number 0-4294967295")?;
+            let auth = match spec.id {
+                Id::Ospf6AreaAuthIpsec => Some(ospf6_auth(arg(1), arg(2), arg(3))?),
+                Id::Ospf6AreaAuthNull => Some(netlabcraft_model::Ospf6Auth::Null),
+                _ => None,
+            };
+            let o = c.dm()?.ospf6.as_mut().ok_or("% Not in OSPFv3 mode")?;
+            match auth {
+                Some(a) => {
+                    o.area_auth.insert(area, a);
+                }
+                None => {
+                    o.area_auth.remove(&area);
+                }
+            }
+            Ok(String::new())
         }
         Id::ShowIpv6OspfNeighbor => {
             let st = c.sim.ospf6_state(c.t);
@@ -5469,7 +5585,35 @@ impl Ctx<'_> {
         Ok(render::ping(dst.into(), &probes, opts))
     }
 
+    /// A name typed where an address goes: the device's own host table first, then its DNS server.
+    /// Returns the address as text and the line that says how the name was resolved.
+    fn name_to_address(&mut self, target: &str) -> Result<(String, String), String> {
+        let t = target.trim();
+        if t.parse::<std::net::IpAddr>().is_ok() || !t.chars().any(|ch| ch.is_ascii_alphabetic()) {
+            return Ok((t.to_string(), String::new()));
+        }
+        let d = self.d()?;
+        if let Some((_, a)) = d.access.hosts.iter().find(|(n, _)| n.eq_ignore_ascii_case(t)) {
+            return Ok((a.to_string(), format!("Translating \"{t}\"...static [OK]\n")));
+        }
+        let (Some(server), false) = (d.dns, d.access.no_domain_lookup) else {
+            return Err("% Unrecognized host or address, or protocol not running.".into());
+        };
+        let name = match &d.access.domain_name {
+            Some(dn) if !t.contains('.') => format!("{t}.{dn}"),
+            _ => t.to_string(),
+        };
+        let a = self.sim.dns_resolve(self.t, self.dev, &name).map_err(|e| format!("% {e}"))?;
+        Ok((a.to_string(), format!("Translating \"{t}\"...domain server ({server}) [OK]\n")))
+    }
+
     fn ping(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
+        let (target, said) = self.name_to_address(target)?;
+        let out = self.ping_address(&target, count, data)?;
+        Ok(format!("{said}{out}"))
+    }
+
+    fn ping_address(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
         let mut opts = PingOptions { count, ..PingOptions::default() };
         if let Some(n) = data {
             opts.size = n;
@@ -5484,6 +5628,12 @@ impl Ctx<'_> {
     }
 
     fn traceroute(&mut self, target: &str) -> R {
+        let (target, said) = self.name_to_address(target)?;
+        let out = self.traceroute_address(&target)?;
+        Ok(format!("{said}{out}"))
+    }
+
+    fn traceroute_address(&mut self, target: &str) -> R {
         if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
             let hops = self.sim.traceroute6(self.t, self.dev, dst6, 30, 2_000_000).map_err(|e| format!("% {e}"))?;
             return Ok(render::traceroute(dst6.into(), &hops));
@@ -5577,4 +5727,31 @@ fn vtp_bump(d: &mut Device, before: &std::collections::BTreeMap<VlanId, String>)
     if d.vtp.mode == netlabcraft_model::VtpMode::Server && d.vlans != *before {
         d.vtp.revision = d.vtp.revision.saturating_add(1);
     }
+}
+
+/// The AH settings an `ospfv3 authentication ipsec spi N md5|sha1 [0] KEY` line gives: the SPI is
+/// at least 256 (the lower numbers are reserved), the key is hexadecimal, 32 digits for md5 and
+/// 40 for sha1.
+fn ospf6_auth(spi: &str, alg: &str, key: &str) -> Result<netlabcraft_model::Ospf6Auth, String> {
+    use netlabcraft_model::{Ospf6Auth, Ospf6AuthAlg};
+    let spi: u32 = spi.parse().ok().filter(|n| *n >= 256).ok_or("% The SPI is 256-4294967295")?;
+    let alg = match alg.to_ascii_lowercase().as_str() {
+        "md5" => Ospf6AuthAlg::Md5,
+        "sha1" => Ospf6AuthAlg::Sha1,
+        _ => return Err("% The algorithm is md5 or sha1".into()),
+    };
+    let mut words = key.split_whitespace();
+    let first = words.next().unwrap_or("");
+    let text = if first == "0" {
+        words.next().unwrap_or("")
+    } else if first == "7" {
+        return Err("% Encrypted (type 7) keys are not read: give the key as hexadecimal digits".into());
+    } else {
+        first
+    };
+    let want = if alg == Ospf6AuthAlg::Md5 { 32 } else { 40 };
+    if text.len() != want || !text.chars().all(|ch| ch.is_ascii_hexdigit()) || words.next().is_some() {
+        return Err(format!("% The key is {want} hexadecimal digits for {}", if want == 32 { "md5" } else { "sha1" }));
+    }
+    Ok(Ospf6Auth::Ipsec { spi, alg, key: text.to_ascii_lowercase() })
 }

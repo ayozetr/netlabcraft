@@ -103,6 +103,10 @@ impl Modes {
     pub const VTEMPLATE: Modes = Modes(1 << 57);
     /// `interface Dialer N`.
     pub const DIALER: Modes = Modes(1 << 58);
+    /// `key chain NAME`.
+    pub const KEYCHAIN: Modes = Modes(1 << 59);
+    /// `key N` inside a key chain.
+    pub const KEYCHAIN_KEY: Modes = Modes(1 << 60);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         63 | 256
@@ -143,7 +147,9 @@ impl Modes {
             | (1 << 55)
             | (1 << 56)
             | (1 << 57)
-            | (1 << 58),
+            | (1 << 58)
+            | (1 << 59)
+            | (1 << 60),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -246,6 +252,10 @@ pub enum Id {
     ServicePasswordEncryption,
     NoServicePasswordEncryption,
     DomainLookup,
+    IpHost,
+    NoIpHost,
+    IpNameServer,
+    NoIpNameServer,
     NoDomainLookup,
     DhcpPool,
     NoDhcpPool,
@@ -467,6 +477,19 @@ pub enum Id {
     NoIpOspfAuthKey,
     IpOspfMd5Key,
     NoIpOspfMd5Key,
+    IpOspfKeyChain,
+    NoIpOspfKeyChain,
+    KeyChain,
+    NoKeyChain,
+    KeyChainKey,
+    NoKeyChainKey,
+    KeyString,
+    NoKeyString,
+    AcceptLifetime,
+    SendLifetime,
+    NoAcceptLifetime,
+    NoSendLifetime,
+    ShowKeyChain,
     AreaAuth,
     NoAreaAuth,
     OspfRedistribute,
@@ -487,6 +510,12 @@ pub enum Id {
     NoIpv6RouterOspf,
     Ipv6OspfArea,
     NoIpv6OspfArea,
+    Ospfv3AuthIpsec,
+    Ospfv3AuthNull,
+    NoOspfv3Auth,
+    Ospf6AreaAuthIpsec,
+    Ospf6AreaAuthNull,
+    NoOspf6AreaAuth,
     ShowIpv6OspfNeighbor,
     ShowIpv6Ospf,
     ShowIpProtocols,
@@ -866,8 +895,6 @@ pub enum Id {
     ShowIpEigrpNeighbors,
     ShowIpEigrpTopology,
     ShowIpEigrpInterfaces,
-    DebugEigrpPackets,
-    NoDebugEigrpPackets,
     // ---- BGP (exec/bgp.rs) ----
     BgpRouter,
     NoBgpRouter,
@@ -1027,14 +1054,15 @@ pub enum Id {
     ShowLogging,
     ClearLogging,
     LoggingBuffered,
-    DebugIpIcmp,
-    DebugIpRip,
     DebugIpOspf,
-    DebugIpOther,
-    NoDebugIpOther,
-    NoDebugIpRip,
     NoDebugIpOspf,
     UndebugAll,
+    DebugTopic,
+    NoDebugTopic,
+    NoTerminalMonitor,
+    LoggingMonitor,
+    NoLoggingMonitor,
+    NoLoggingBuffered,
     ShowDebugging,
     StandbyIp,
     StandbyIpGroup0,
@@ -1094,6 +1122,10 @@ pub enum Id {
     NoNdManaged,
     NdOther,
     NoNdOther,
+    NdSuppress,
+    NoNdSuppress,
+    NdRaLifetime,
+    NoNdRaLifetime,
     ShowIpv6DhcpPool,
     ShowIpv6DhcpBinding,
     NtpServer,
@@ -1320,6 +1352,8 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::EIGRP)
     .or(Modes::BGP)
     .or(Modes::ROUTE_MAP)
+    .or(Modes::KEYCHAIN)
+    .or(Modes::KEYCHAIN_KEY)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1677,6 +1711,50 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("ip"), K("ospf"), K("message-digest-key"), Arg("<1-255>")],
         "Remove a message-digest key"
     ),
+    spec!(
+        IpOspfKeyChain,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("authentication"), K("key-chain"), Arg("NAME")],
+        "Sign OSPF packets with the keys of a key chain"
+    ),
+    spec!(
+        NoIpOspfKeyChain,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("ospf"), K("authentication"), K("key-chain")],
+        "Stop reading the keys from a key chain"
+    ),
+    spec!(KeyChain, Modes::CONFIG, Modes::BOTH, [K("key"), K("chain"), Arg("NAME")], "Create or edit a chain of keys with lifetimes"),
+    spec!(NoKeyChain, Modes::CONFIG, Modes::BOTH, [K("no"), K("key"), K("chain"), Arg("NAME")], "Delete a key chain"),
+    spec!(KeyChainKey, Modes::KEYCHAIN.or(Modes::KEYCHAIN_KEY), Modes::BOTH, [K("key"), Arg("<0-2147483647>")], "Create or edit a key of the chain"),
+    spec!(
+        NoKeyChainKey,
+        Modes::KEYCHAIN.or(Modes::KEYCHAIN_KEY),
+        Modes::BOTH,
+        [K("no"), K("key"), Arg("<0-2147483647>")],
+        "Delete a key of the chain"
+    ),
+    spec!(KeyString, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("key-string"), Arg("TEXT")], "The secret the key signs with"),
+    spec!(NoKeyString, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("no"), K("key-string")], "Forget the key's secret"),
+    spec!(
+        AcceptLifetime,
+        Modes::KEYCHAIN_KEY,
+        Modes::BOTH,
+        [K("accept-lifetime"), Rest("hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>|infinite|duration <seconds>}")],
+        "When packets signed with this key are accepted"
+    ),
+    spec!(
+        SendLifetime,
+        Modes::KEYCHAIN_KEY,
+        Modes::BOTH,
+        [K("send-lifetime"), Rest("hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>|infinite|duration <seconds>}")],
+        "When this key signs packets"
+    ),
+    spec!(NoAcceptLifetime, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("no"), K("accept-lifetime")], "Accept the key at any time again"),
+    spec!(NoSendLifetime, Modes::KEYCHAIN_KEY, Modes::BOTH, [K("no"), K("send-lifetime")], "Sign with the key at any time again"),
+    spec!(ShowKeyChain, EXECS, Modes::BOTH, [K("show"), K("key"), K("chain")], "Every key chain, its keys and when they are valid"),
+    spec!(ShowKeyChain, EXECS, Modes::BOTH, [K("show"), K("key"), K("chain"), Arg("NAME")], "One key chain"),
     spec!(
         OspfRedistribute,
         Modes::OSPF,
@@ -2111,6 +2189,15 @@ pub static SPECS: &[Spec] = &[
         "The most detailed severity shown on the console"
     ),
     spec!(NoLoggingConsole, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("console")], "The console shows every severity"),
+    spec!(
+        LoggingMonitor,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("logging"), K("monitor"), Arg("<0-7>|LEVEL")],
+        "The most detailed severity shown in terminal-monitor sessions"
+    ),
+    spec!(NoLoggingMonitor, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("monitor")], "Monitor sessions show every severity"),
+    spec!(NoLoggingBuffered, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("buffered")], "The logging buffer keeps every severity again"),
     spec!(NtpMaster, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("master")], "Serve NTP from this device's own clock"),
     spec!(NtpMaster, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("master"), Arg("<1-15>")], "Serve NTP from this device's own clock, at this stratum"),
     spec!(NoNtpMaster, Modes::CONFIG, Modes::BOTH, [K("no"), K("ntp"), K("master")], "Stop serving NTP"),
@@ -2183,6 +2270,7 @@ pub static SPECS: &[Spec] = &[
         [K("terminal"), Rest("length N | width N | monitor")],
         "Terminal settings (output here is never paged)"
     ),
+    spec!(NoTerminalMonitor, EXECS, Modes::BOTH, [K("no"), K("terminal"), K("monitor")], "Stop copying log messages to this session"),
     spec!(CdpRun, Modes::CONFIG, Modes::BOTH, [K("cdp"), K("run")], "Discover neighbouring routers and switches"),
     spec!(NoCdpRun, Modes::CONFIG, Modes::BOTH, [K("no"), K("cdp"), K("run")], "Stop neighbour discovery on this device"),
     spec!(CdpEnable, Modes::IF, Modes::BOTH, [K("cdp"), K("enable")], "Discover neighbours on this port"),
@@ -2231,23 +2319,90 @@ pub static SPECS: &[Spec] = &[
         "Keep messages in the logging buffer, up to a severity"
     ),
     spec!(LoggingBuffered, Modes::CONFIG, Modes::BOTH, [K("logging"), K("buffered")], "Keep every severity in the logging buffer"),
-    spec!(DebugIpIcmp, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("icmp")], "Report echo requests and replies this device receives"),
-    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
-    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
-    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
-    spec!(DebugIpRip, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("rip")], "Report the RIP updates this router hears"),
-    spec!(DebugIpOther, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("packet")], "Report each packet this device routes"),
-    spec!(DebugIpOther, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("nat")], "Report new NAT translations"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("icmp")], "Report echo requests and replies this device receives"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("rip")], "Report the RIP updates this router hears"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("rip"), K("events")], "Report the routes RIP learns, refreshes and drops"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("packet")], "Report each packet this device routes"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("packet"), Arg("ACL")], "Report the routed packets an access list permits"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("nat")], "Report new NAT translations"),
     spec!(
-        DebugIpOther,
+        DebugTopic,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("debug"), K("ip"), K("nat"), K("detailed")],
+        "Report NAT translations with their ports and tables"
+    ),
+    spec!(
+        DebugTopic,
         Modes::EXEC,
         Modes::BOTH,
         [K("debug"), K("ip"), K("dhcp"), K("server"), K("events")],
         "Report the addresses this DHCP server hands out"
     ),
-    spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("packet")], "Stop reporting packets"),
-    spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("nat")], "Stop reporting NAT"),
-    spec!(NoDebugIpOther, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("dhcp"), K("server"), K("events")], "Stop reporting DHCP"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("eigrp"), K("packets")], "Report the EIGRP packets this router hears"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("eigrp"), K("fsm")], "Report the EIGRP route computations"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("eigrp"), K("neighbors")], "Report EIGRP neighbours coming and going"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("arp")], "Report the ARP requests and replies this device handles"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("spanning-tree"), K("events")], "Report spanning-tree port role and state changes"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("spanning-tree"), K("bpdu")], "Report the BPDUs this device receives"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("spanning-tree"), K("root")], "Report the root bridge changing"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("cdp"), K("packets")], "Report the CDP advertisements this device receives"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("cdp"), K("events")], "Report CDP neighbours added and aged out"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("lldp")], "Report the LLDP advertisements this device receives"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ppp"), K("negotiation")], "Report PPP link and address negotiation"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ppp"), K("authentication")], "Report PPP PAP and CHAP exchanges"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ppp"), K("packet")], "Report every PPP frame"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("pppoe"), K("events")], "Report PPPoE discovery and session changes"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("pppoe"), K("packets")], "Report the PPPoE frames this device handles"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("http")], "Report the requests this device's web server handles"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("standby")], "Report HSRP hellos and state changes"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("vrrp")], "Report VRRP advertisements and state changes"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("routing")], "Report routes being added and removed"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ntp"), K("events")], "Report NTP exchanges and clock changes"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ntp"), K("packets")], "Report NTP exchanges and clock changes"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("snmp"), K("packets")], "Report SNMP requests, answers and traps"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("dot1x"), K("events")], "Report 802.1X port authentication"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("dot1x"), K("packets")], "Report 802.1X port authentication"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("ssh")], "Report SSH logins to this device"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("isakmp")], "Report the IKE exchanges of this device"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("ipsec")], "Report IPsec SAs coming and going"),
+    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
+    spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("rip")], "Stop reporting RIP updates"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("rip"), K("events")], "Stop reporting RIP route events"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("packet")], "Stop reporting packets"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("packet"), Arg("ACL")], "Stop reporting packets"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("nat")], "Stop reporting NAT"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("nat"), K("detailed")], "Stop reporting detailed NAT"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("dhcp"), K("server"), K("events")], "Stop reporting DHCP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("eigrp"), K("packets")], "Stop reporting EIGRP packets"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("eigrp"), K("fsm")], "Stop reporting EIGRP route computations"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("eigrp"), K("neighbors")], "Stop reporting EIGRP neighbours"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("arp")], "Stop reporting ARP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("spanning-tree"), K("events")], "Stop reporting spanning-tree events"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("spanning-tree"), K("bpdu")], "Stop reporting BPDUs"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("spanning-tree"), K("root")], "Stop reporting root changes"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("cdp"), K("packets")], "Stop reporting CDP packets"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("cdp"), K("events")], "Stop reporting CDP events"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("lldp")], "Stop reporting LLDP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ppp"), K("negotiation")], "Stop reporting PPP negotiation"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ppp"), K("authentication")], "Stop reporting PPP authentication"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ppp"), K("packet")], "Stop reporting PPP frames"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("pppoe"), K("events")], "Stop reporting PPPoE events"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("pppoe"), K("packets")], "Stop reporting PPPoE frames"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("http")], "Stop reporting web requests"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("standby")], "Stop reporting HSRP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("vrrp")], "Stop reporting VRRP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("routing")], "Stop reporting route changes"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ntp"), K("events")], "Stop reporting NTP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ntp"), K("packets")], "Stop reporting NTP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("snmp"), K("packets")], "Stop reporting SNMP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("dot1x"), K("events")], "Stop reporting 802.1X"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("dot1x"), K("packets")], "Stop reporting 802.1X"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("ssh")], "Stop reporting SSH"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("isakmp")], "Stop reporting ISAKMP"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("ipsec")], "Stop reporting IPsec"),
     spec!(
         DebugDhcpPacket,
         Modes::EXEC,
@@ -2262,7 +2417,6 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("debug"), K("ip"), K("dhcp"), K("server"), K("packet")],
         "Stop reporting DHCP messages"
     ),
-    spec!(NoDebugIpRip, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("rip")], "Stop reporting RIP updates"),
     spec!(
         DebugIpOspf,
         Modes::EXEC,
@@ -2558,6 +2712,18 @@ pub static SPECS: &[Spec] = &[
     spec!(NoNdManaged, ANY_IF, Modes::BOTH, [K("no"), K("ipv6"), K("nd"), K("managed-config-flag")], "Hosts build their own addresses"),
     spec!(NdOther, ANY_IF, Modes::BOTH, [K("ipv6"), K("nd"), K("other-config-flag")], "Tell hosts to take DNS and domain from DHCPv6"),
     spec!(NoNdOther, ANY_IF, Modes::BOTH, [K("no"), K("ipv6"), K("nd"), K("other-config-flag")], "No other settings from DHCPv6"),
+    spec!(NdSuppress, ANY_IF, Modes::BOTH, [K("ipv6"), K("nd"), K("ra"), K("suppress")], "Send no router advertisements on this interface"),
+    spec!(NdSuppress, ANY_IF, Modes::BOTH, [K("ipv6"), K("nd"), K("ra"), K("suppress"), K("all")], "Send no router advertisements on this interface"),
+    spec!(NoNdSuppress, ANY_IF, Modes::BOTH, [K("no"), K("ipv6"), K("nd"), K("ra"), K("suppress")], "Answer router solicitations again"),
+    spec!(NoNdSuppress, ANY_IF, Modes::BOTH, [K("no"), K("ipv6"), K("nd"), K("ra"), K("suppress"), K("all")], "Answer router solicitations again"),
+    spec!(
+        NdRaLifetime,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ipv6"), K("nd"), K("ra"), K("lifetime"), Arg("<0-9000>")],
+        "Seconds this router may serve as a default router (0: never)"
+    ),
+    spec!(NoNdRaLifetime, ANY_IF, Modes::BOTH, [K("no"), K("ipv6"), K("nd"), K("ra"), K("lifetime")], "A lifetime of 1800 seconds again"),
     spec!(ShowIpv6DhcpPool, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("dhcp"), K("pool")], "DHCPv6 pools"),
     spec!(ShowIpv6DhcpBinding, EXECS, Modes::ROUTER, [K("show"), K("ipv6"), K("dhcp"), K("binding")], "DHCPv6 addresses handed out"),
     spec!(NtpServer, Modes::CONFIG, Modes::BOTH, [K("ntp"), K("server"), Arg("A.B.C.D")], "Take the time from an NTP server"),
@@ -2914,8 +3080,6 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowIpEigrpNeighbors, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("neighbors")], "EIGRP neighbours"),
     spec!(ShowIpEigrpTopology, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("topology")], "Successors and feasible successors"),
     spec!(ShowIpEigrpInterfaces, EXECS, Modes::BOTH, [K("show"), K("ip"), K("eigrp"), K("interfaces")], "Interfaces running EIGRP"),
-    spec!(DebugEigrpPackets, Modes::EXEC, Modes::BOTH, [K("debug"), K("eigrp"), K("packets")], "Report the EIGRP hellos this router hears"),
-    spec!(NoDebugEigrpPackets, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("eigrp"), K("packets")], "Stop reporting EIGRP hellos"),
     spec!(BgpRouter, Modes::CONFIG, Modes::BOTH, [K("router"), K("bgp"), Arg("<1-4294967295>")], "Start or configure BGP in this autonomous system"),
     spec!(NoBgpRouter, Modes::CONFIG, Modes::BOTH, [K("no"), K("router"), K("bgp"), Arg("<1-4294967295>")], "Stop BGP"),
     spec!(BgpRouterId, Modes::BGP, Modes::BOTH, [K("bgp"), K("router-id"), Arg("A.B.C.D")], "Set the BGP router id"),
@@ -3636,6 +3800,36 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("ipv6"), K("ospf"), Arg("<1-65535>"), K("area"), Arg("<0-4294967295>")],
         "Stop OSPFv3 on this interface"
     ),
+    spec!(
+        Ospfv3AuthIpsec,
+        ANY_IF,
+        Modes::BOTH,
+        [K("ospfv3"), K("authentication"), K("ipsec"), K("spi"), Arg("<256-4294967295>"), Arg("{md5|sha1}"), Rest("[0] KEY")],
+        "Protect OSPFv3 packets here with an AH header (the key is 32 hex digits for md5, 40 for sha1)"
+    ),
+    spec!(Ospfv3AuthNull, ANY_IF, Modes::BOTH, [K("ospfv3"), K("authentication"), K("null")], "No AH header here, whatever the area says"),
+    spec!(NoOspfv3Auth, ANY_IF, Modes::BOTH, [K("no"), K("ospfv3"), K("authentication")], "Use the area's protection again"),
+    spec!(
+        Ospf6AreaAuthIpsec,
+        Modes::OSPF6,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication"), K("ipsec"), K("spi"), Arg("<256-4294967295>"), Arg("{md5|sha1}"), Rest("[0] KEY")],
+        "Protect the OSPFv3 packets of every interface in the area with an AH header"
+    ),
+    spec!(
+        Ospf6AreaAuthNull,
+        Modes::OSPF6,
+        Modes::BOTH,
+        [K("area"), Arg("<0-4294967295>"), K("authentication"), K("null")],
+        "No AH header in this area unless an interface sets one"
+    ),
+    spec!(
+        NoOspf6AreaAuth,
+        Modes::OSPF6,
+        Modes::BOTH,
+        [K("no"), K("area"), Arg("<0-4294967295>"), K("authentication")],
+        "Take the area's OSPFv3 protection off"
+    ),
     spec!(ShowIpv6OspfNeighbor, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("ospf"), K("neighbor")], "OSPFv3 neighbours"),
     spec!(Ipv6RouterEigrp, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("router"), K("eigrp"), Arg("<1-65535>")], "Start or configure EIGRP for IPv6"),
     spec!(NoIpv6RouterEigrp, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("router"), K("eigrp"), Arg("<1-65535>")], "Stop EIGRP for IPv6"),
@@ -3924,8 +4118,6 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("system-shutdown")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("snmp-server"), K("trap-timeout"), Arg("<1-1000>")], "Seconds to retry sending a trap"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("snmp-server"), K("trap-timeout")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("logging"), K("monitor"), Arg("LEVEL")], "Most detailed severity shown on remote terminals"),
-    spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("logging"), K("monitor")], "Return this setting to its default"),
     spec!(
         Knob,
         Modes::CONFIG,
@@ -4595,6 +4787,29 @@ pub static SPECS: &[Spec] = &[
     spec!(NoBannerMotd, Modes::CONFIG, Modes::BOTH, [K("no"), K("banner"), K("motd")], "Remove the message"),
     spec!(ServicePasswordEncryption, Modes::CONFIG, Modes::BOTH, [K("service"), K("password-encryption")], "Write passwords obscured"),
     spec!(NoServicePasswordEncryption, Modes::CONFIG, Modes::BOTH, [K("no"), K("service"), K("password-encryption")], "Write passwords in clear"),
+    spec!(
+        IpHost,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("host"), Arg("NAME"), Arg("A.B.C.D")],
+        "Give a host name an address this device resolves by itself"
+    ),
+    spec!(NoIpHost, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("host"), Arg("NAME")], "Forget a host name"),
+    spec!(
+        IpNameServer,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("name-server"), Rest("A.B.C.D [A.B.C.D ...]")],
+        "The DNS servers that resolve host names (the first one is asked)"
+    ),
+    spec!(NoIpNameServer, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("name-server")], "Use no DNS server"),
+    spec!(
+        NoIpNameServer,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("name-server"), Rest("A.B.C.D [A.B.C.D ...]")],
+        "Stop using these DNS servers"
+    ),
     spec!(DomainLookup, Modes::CONFIG, Modes::BOTH, [K("ip"), K("domain-lookup")], "Resolve mistyped commands as host names"),
     spec!(NoDomainLookup, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("domain-lookup")], "Don't resolve mistyped commands"),
     spec!(DhcpPool, Modes::CONFIG, Modes::BOTH, [K("ip"), K("dhcp"), K("pool"), Arg("WORD")], "Create or edit a DHCP pool"),
@@ -6322,6 +6537,8 @@ mod tests {
                 Modes::BBA_GROUP,
                 Modes::VTEMPLATE,
                 Modes::DIALER,
+                Modes::KEYCHAIN,
+                Modes::KEYCHAIN_KEY,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

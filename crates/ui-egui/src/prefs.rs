@@ -57,6 +57,8 @@ pub struct Prefs {
     pub cable_popup: bool,
     /// Places and devices snap to the grid in the physical workspace.
     pub align_physical: bool,
+    /// The grid of each level of the physical workspace (Grid Preferences).
+    pub grid: crate::physical_grid::GridPrefs,
     /// View ▸ View Wireless Signals: the radios' coverage drawn under the cables.
     pub show_wireless_signals: bool,
     /// Interface text size in percent.
@@ -123,6 +125,7 @@ impl Default for Prefs {
             cli_default_tab: true,
             cable_popup: true,
             align_physical: false,
+            grid: crate::physical_grid::GridPrefs::default(),
             show_wireless_signals: false,
             font_percent: 100,
             hide_physical_tab: false,
@@ -223,6 +226,7 @@ impl Prefs {
             self.buffer_full.key(),
             self.answer_filter.key()
         ));
+        out.push_str(&self.grid.to_text());
         let mut colors = self.colors;
         for (key, _, color) in colors.slots() {
             out.push_str(&format!("{key}={}\n", color.key()));
@@ -300,6 +304,9 @@ impl Prefs {
                 return true;
             }
             _ => {}
+        }
+        if key.starts_with("grid-") {
+            return self.grid.apply(key, value);
         }
         if key.starts_with("color-") {
             for (name, _, slot) in self.colors.slots() {
@@ -420,7 +427,7 @@ impl PacketApp {
     /// Applies what [`PacketApp::preferences_text`] wrote. Hostile or damaged text changes less,
     /// never fails.
     pub fn load_preferences(&mut self, text: &str) {
-        for line in text.lines().take(200) {
+        for line in text.lines().take(300) {
             let Some((key, value)) = line.split_once('=') else { continue };
             let (key, value) = (key.trim(), value.trim());
             match key {

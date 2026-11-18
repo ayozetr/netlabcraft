@@ -204,6 +204,62 @@ mod t {
     }
 
     #[test]
+    fn hiding_the_physical_tab_hides_the_workspace_switch_until_the_lab_is_in_the_physical_workspace() {
+        let mut h = harness("lan");
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Logical").next().is_some());
+        h.state_mut().ui.prefs.hide_physical_tab = true;
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Logical").next().is_none(), "the switch is hidden");
+        // Already in the Physical workspace the switch stays, so the lab can get back.
+        h.state_mut().set_physical(true);
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Logical").next().is_some());
+        h.state_mut().set_physical(false);
+        h.state_mut().ui.prefs.hide_physical_tab = false;
+        h.run_steps(3);
+        assert!(h.query_all_by_label("Logical").next().is_some());
+    }
+
+    #[test]
+    fn what_a_native_window_kept_goes_with_the_window() {
+        let mut h = harness("lan");
+        h.run_steps(2);
+        let d = h.state().session.topology.devices[0].id;
+        // Pieces of a native window of a device whose window is not open (it was closed by the
+        // window list, or the device was removed) are dropped on the next frame.
+        h.state_mut().ui.native_start.insert(d, ([680.0, 470.0], None));
+        h.state_mut().ui.raise.insert(d);
+        h.state_mut().ui.native_geometry.insert(d, ([680.0, 470.0], Some([10.0, 10.0])));
+        assert!(h.state().ui.native_window_open());
+        h.run_steps(2);
+        assert!(!h.state().ui.native_window_open());
+        assert!(h.state().ui.raise.is_empty());
+        // The geometry of a device that still exists is kept for the session; a gone device's is not.
+        assert!(h.state().ui.native_geometry.contains_key(&d));
+        h.state_mut().ui.native_geometry.insert(netlabcraft_core::DeviceId(9999), ([680.0, 470.0], None));
+        h.run_steps(2);
+        assert!(!h.state().ui.native_geometry.contains_key(&netlabcraft_core::DeviceId(9999)));
+    }
+
+    #[test]
+    fn a_remembered_window_is_moved_onto_the_screen_it_opens_on() {
+        use crate::place_on_screen as fit;
+        let screen = Some([1920.0, 1080.0]);
+        // On the screen: unchanged. No screen size known: unchanged.
+        assert_eq!(fit(([680.0, 470.0], Some([100.0, 80.0])), screen), ([680.0, 470.0], Some([100.0, 80.0])));
+        assert_eq!(fit(([680.0, 470.0], Some([5000.0, 4000.0])), None), ([680.0, 470.0], Some([5000.0, 4000.0])));
+        // A monitor that is gone: far right and below pulls back to where 120 points show.
+        assert_eq!(fit(([680.0, 470.0], Some([4000.0, 3000.0])), screen), ([680.0, 470.0], Some([1800.0, 960.0])));
+        // Far left and above: the title bar comes back (y never above the top).
+        assert_eq!(fit(([680.0, 470.0], Some([-3000.0, -500.0])), screen), ([680.0, 470.0], Some([-560.0, 0.0])));
+        // Bigger than the screen: shrunk to it. No position stays none.
+        assert_eq!(fit(([4000.0, 3000.0], None), screen), ([1920.0, 1080.0], None));
+        // A hostile screen size changes nothing.
+        assert_eq!(fit(([680.0, 470.0], Some([1.0, 2.0])), Some([f32::NAN, 1080.0])), ([680.0, 470.0], Some([1.0, 2.0])));
+    }
+
+    #[test]
     fn wireless_pages_hide_and_the_coverage_field_goes() {
         let mut h = harness("wifi");
         let ap = h.state().session.topology.resolve("AP1").unwrap();

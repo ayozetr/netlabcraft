@@ -220,6 +220,11 @@
 	cable	cabo
 	Cable Length	Comprimento do cabo
 	Cable Length…	Comprimento do cabo…
+	Resize…	Redimensionar…
+	Resize	Redimensionar
+	Units ({} to {}):	Unidades ({} a {}):
+	Levels ({} to {}):	Níveis ({} a {}):
+	Enter a whole number	Digite um número inteiro
 	Cable Modem	Modem a cabo
 	Cable modem: bridges its coaxial port (Coaxial0) to its Ethernet port (Ethernet1)	Modem a cabo: faz bridge da porta coaxial (Coaxial0) para a porta Ethernet (Ethernet1)
 	cable too long: {} m copper, max 100 m	cabo longo demais: {} m de cobre, máximo de 100 m
@@ -941,7 +946,9 @@
 	Reset Activity	Reiniciar atividade
 	Reset room	Reiniciar ambiente
 	Reset Simulation	Reiniciar simulação
-	Resize Shape (not available yet)	Redimensionar forma (ainda indisponível)
+	Resize Shape (Alt+R)	Redimensionar forma (Alt+R)
+	Resize Shape (Alt+R): drawings are in the logical view	Redimensionar forma (Alt+R): os desenhos só existem na visão lógica
+	Resize Shape: click a rectangle, ellipse or line, then drag its handles. Esc to stop.	Redimensionar forma: clique em um retângulo, uma elipse ou uma linha e arraste as alças. Esc para sair.
 	Resource Records	Registros de recurso
 	Response headers	Cabeçalhos da resposta
 	RESTCONF (HTTP)	RESTCONF (HTTP)
@@ -1041,6 +1048,18 @@
 	Show All/None	Mostrar tudo/nada
 	Show as text	Mostrar como texto
 	Show grid	Mostrar grade
+	Grid Preferences	Preferências da grade
+	Grid Preferences…	Preferências da grade…
+	Grid Scale	Escala da grade
+	Set the grid spacing, in metres, for each level of the physical workspace. A level's grid is drawn once its box is checked.	Define o espaçamento da grade, em metros, para cada nível do espaço de trabalho físico. A grade de um nível é desenhada quando sua caixa está marcada.
+	Grid-X (m)	Grade X (m)
+	Grid-Y (m)	Grade Y (m)
+	Generic Container	Contêiner genérico
+	A wiring closet has no scale, so it has no grid.	Um armário de cabeamento não tem escala, portanto não tem grade.
+	Grid Line Color	Cor das linhas da grade
+	Select Grid Color	Escolher cor da grade
+	Grid color {}	Cor da grade {}
+	{}: zoom in to see the lines	{}: aumente o zoom para ver as linhas
 	Device windows as separate windows	Janelas de dispositivo separadas
 	Not available in the web version	Indisponível na versão web
 	shown when it fails	mostrado quando falha
@@ -1780,6 +1799,7 @@ event	write request for	requisição de escrita de
 	Delete Scenario	Excluir cenário
 	Device box	Caixa de dispositivos
 	Draw Freehand	Desenhar à mão livre
+	Resize Shape	Redimensionar forma
 	Fast Forward Time	Avançar o tempo rápido
 	Go Back One Level	Voltar um nível
 	Keys that type a letter are ignored while a text field or the console has the keyboard.	As teclas que digitam uma letra são ignoradas enquanto um campo de texto ou o console está com o teclado.
@@ -2370,6 +2390,9 @@ furniture	Table	Mesa
 	Backup written to {}	Backup gravado em {}
 	Application size	Tamanho do aplicativo
 	Enter the password first: some tabs are locked.	Digite antes a senha: algumas abas estão bloqueadas.
+	Port, {}	Porta, {}
+	Language:	Idioma:
+	Program ({})	Programa ({})
 	Up	Ativo
 	Down	Inativo
 	Properties…	Propriedades…
@@ -2397,3 +2420,12 @@ furniture	Table	Mesa
 	no clock rate on the DCE end	sem clock rate na ponta DCE
 	the two ends use different encapsulations	as duas pontas usam encapsulamentos diferentes
 	PPP authentication failed (check the usernames and passwords)	falha na autenticação PPP (confira os usuários e as senhas)
+	Each place has its own physics	Cada local tem sua própria física
+	Parts change the place they stand in by rates, and the place settles back when they stop	As peças mudam o local onde estão com uma taxa, e o local volta ao valor quando elas param
+	Pairing code:	Código de pareamento:
+	Profile:	Perfil:
+	Music (A2DP)	Música (A2DP)
+	Headset	Fone de ouvido
+	Card id (hex):	Id do cartão (hex):
+	Report crossings of the wire	Informar travessias do fio
+	Wire angle (degrees):	Ângulo do fio (graus):
