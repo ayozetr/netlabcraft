@@ -132,6 +132,8 @@ pub(crate) fn run(s: &mut Session, id: &str, p: &Value) -> Option<Result<Value>>
         "closet.list" => list(s, p),
         "furniture.add" => furniture_add(s, p),
         "furniture.rename" | "furniture.move" | "furniture.remove" | "furniture.resize" => furniture_edit(s, id, p),
+        "furniture.turn" => turn(s, p),
+        "closet.floor" => floor(s, p),
         "furniture.mount" => mount(s, p),
         "furniture.unmount" => unmount(s, p),
         "furniture.hang" => hang(s, p),
@@ -169,7 +171,16 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
                 .collect();
             let hung: Vec<Value> =
                 t.hangs_on(f.id).iter().map(|h| json!({"peg": h.peg.saturating_add(1), "a": t.end_label(h.a), "b": t.end_label(h.b)})).collect();
-            json!({"id": f.id, "kind": f.kind.id(), "name": f.name, "size": f.size, "items": items, "hung": hung})
+            let mut v = json!({"id": f.id, "kind": f.kind.id(), "name": f.name, "size": f.size, "items": items, "hung": hung});
+            match f.kind {
+                FurnitureKind::Table => {
+                    v["width"] = json!(f.table_cols());
+                    v["depth"] = json!(f.table_rows());
+                }
+                FurnitureKind::Rack => v["side"] = json!(if f.back { "back" } else { "front" }),
+                _ => {}
+            }
+            v
         })
         .collect();
     let passive: Vec<Value> = t
@@ -203,7 +214,8 @@ fn list(s: &Session, p: &Value) -> Result<Value> {
         .filter(|x| t.home_of(x.a.device).map(|h| h.place) == Some(place))
         .map(|x| json!({"a": t.end_label(x.a), "b": t.end_label(x.b)}))
         .collect();
-    Ok(json!({"place": place, "furniture": furniture, "passive": passive, "loose": loose, "wires": wires, "paths": paths}))
+    let floor = if t.floor_is_list(place) { "list" } else { "grid" };
+    Ok(json!({"place": place, "furniture": furniture, "passive": passive, "loose": loose, "floor": floor, "wires": wires, "paths": paths}))
 }
 
 fn furniture_add(s: &mut Session, p: &Value) -> Result<Value> {
@@ -215,6 +227,10 @@ fn furniture_add(s: &mut Session, p: &Value) -> Result<Value> {
     let (x, y) = (float(p, "x").unwrap_or(dx), float(p, "y").unwrap_or(dy));
     let mut t = s.topology.clone();
     let id = t.add_furniture(kind, p.get("name").and_then(Value::as_str), place, x, y, count(p, "size")?)?;
+    let (width, depth) = (count(p, "width")?, count(p, "depth")?);
+    if width.is_some() || depth.is_some() {
+        t.resize_table(id, width, depth)?;
+    }
     commit(s, t, false);
     let f = s.topology.furniture_piece(id).cloned();
     Ok(json!({"id": id, "name": f.as_ref().map(|f| f.name.clone()), "kind": kind.id(), "size": f.map(|f| f.size), "place": place}))
@@ -227,8 +243,16 @@ fn furniture_edit(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
     match cmd {
         "furniture.rename" => t.rename_furniture(id, text(p, "name")?)?,
         "furniture.resize" => {
-            let size = count(p, "size")?.ok_or_else(|| bad("`size` (rack units or shelf levels) is required"))?;
-            t.resize_furniture(id, size)?;
+            if t.furniture_piece(id).is_some_and(|f| f.kind == FurnitureKind::Table) {
+                let (width, depth) = (count(p, "width")?, count(p, "depth")?);
+                if width.is_none() && depth.is_none() {
+                    return Err(bad("`width` and/or `depth` (cells) is required for a table"));
+                }
+                t.resize_table(id, width, depth)?;
+            } else {
+                let size = count(p, "size")?.ok_or_else(|| bad("`size` (rack units or shelf levels) is required"))?;
+                t.resize_furniture(id, size)?;
+            }
         }
         "furniture.move" => {
             let (x, y) = (float(p, "x").ok_or_else(|| bad("`x` is required"))?, float(p, "y").ok_or_else(|| bad("`y` is required"))?);
@@ -241,6 +265,35 @@ fn furniture_edit(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
     }
     commit(s, t, quick);
     Ok(Value::Null)
+}
+
+/// Turns a rack around: `side` is `front` or `back`; without it the rack flips. One undo step.
+fn turn(s: &mut Session, p: &Value) -> Result<Value> {
+    let id = furniture_param(s, p, "furniture")?;
+    let back = match p.get("side") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(v)) if v.eq_ignore_ascii_case("back") || v.eq_ignore_ascii_case("rear") => Some(true),
+        Some(Value::String(v)) if v.eq_ignore_ascii_case("front") => Some(false),
+        _ => return Err(bad("`side` is \"front\" or \"back\"")),
+    };
+    let mut t = s.topology.clone();
+    let back = t.turn_furniture(id, back)?;
+    commit(s, t, false);
+    Ok(json!({"side": if back { "back" } else { "front" }}))
+}
+
+/// Lays the loose items of a closet out as a `grid` or a `list`.
+fn floor(s: &mut Session, p: &Value) -> Result<Value> {
+    let place = closet_param(s, p)?;
+    let list = match p.get("layout") {
+        Some(Value::String(v)) if v.eq_ignore_ascii_case("list") => true,
+        Some(Value::String(v)) if v.eq_ignore_ascii_case("grid") => false,
+        _ => return Err(bad("`layout` is \"grid\" or \"list\"")),
+    };
+    let mut t = s.topology.clone();
+    t.set_floor_list(place, list)?;
+    commit(s, t, false);
+    Ok(json!({"place": place, "layout": if list { "list" } else { "grid" }}))
 }
 
 fn mount(s: &mut Session, p: &Value) -> Result<Value> {

@@ -91,8 +91,7 @@ fn process_and_neighbour_settings_are_kept_replaced_and_written_back() {
     assert!(lab.try_run(r1, "neighbor 10.0.12.2 maximum-prefix 0").starts_with("% "), "1 at least");
     assert!(lab.try_run(r1, "neighbor 10.0.12.2 transport connection-mode both").starts_with("% Say one of"));
     assert!(lab.try_run(r1, "neighbor 10.0.12.9 version 4").starts_with("% "), "the neighbour must exist");
-    let said = lab.run(r1, "neighbor 10.0.12.2 send-community extended");
-    assert!(said.contains("extended communities are not simulated"), "{said}");
+    assert!(lab.run(r1, "neighbor 10.0.12.2 send-community extended").is_empty(), "extended communities are simulated now");
     lab.run(r1, "end");
     let run = lab.run(r1, "show running-config");
     for line in [
@@ -107,6 +106,7 @@ fn process_and_neighbour_settings_are_kept_replaced_and_written_back() {
         " neighbor 10.0.12.2 transport connection-mode passive\n",
         " neighbor 10.0.12.2 ttl-security hops 2\n",
         " neighbor 10.0.12.2 as-override\n",
+        " neighbor 10.0.12.2 send-community extended\n",
     ] {
         assert!(run.contains(line), "{line}: {run}");
     }
