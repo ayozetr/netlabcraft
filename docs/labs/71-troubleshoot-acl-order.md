@@ -114,7 +114,9 @@ that already permits everything it would deny. Watch one host's packets to be su
 `debug ip packet` to an access list that names PC2.
 
 ```console R1
+configure terminal
 access-list 30 permit host 10.71.1.11
+end
 debug ip packet 30
 clear logging
 ```
@@ -153,7 +155,6 @@ clear ip access-list counters LAN-IN
 R1# show access-lists LAN-IN
   expect: 10 deny tcp host 10.71.1.11 host 10.71.2.10 eq 80
   expect: 20 permit ip 10.71.1.0 0.0.0.255 any
-  reject: 30 
 run browser.get {"device": "PC2", "url": "http://10.71.2.10/index.html"}
   reject: 200
 run browser.get {"device": "PC1", "url": "http://10.71.2.10/index.html"}
