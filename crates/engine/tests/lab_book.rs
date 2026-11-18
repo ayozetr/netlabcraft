@@ -89,6 +89,7 @@ labs! {
     lab_47_bgp_passwords_and_conditional_default => "47-bgp-passwords-and-conditional-default.md",
     lab_48_dial_up => "48-dial-up.md",
     lab_49_ospf_authentication_rollover => "49-ospf-authentication-rollover-key-chains-ospfv3-ah.md",
+    lab_57_bgp_prefix_limits_and_timers => "57-bgp-prefix-limits-and-timers.md",
     lab_61_troubleshoot_site_to_site_vpn => "61-troubleshoot-site-to-site-vpn.md",
     lab_62_troubleshoot_remote_access_vpn => "62-troubleshoot-remote-access-vpn.md",
     lab_63_troubleshoot_wireless_clients => "63-troubleshoot-wireless-clients.md",
