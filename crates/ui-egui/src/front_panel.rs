@@ -145,9 +145,12 @@ pub(crate) fn show(app: &PacketApp, ui: &mut egui::Ui, dev: &Device) {
     }
     if let Some(i) = clicked {
         selected = if selected == Some(i) { None } else { Some(i) };
-        ui.data_mut(|d| match selected {
-            Some(v) => d.insert_temp(sel_id, v),
-            None => d.remove_temp::<usize>(sel_id),
+        ui.data_mut(|d| {
+            if let Some(v) = selected {
+                d.insert_temp(sel_id, v);
+            } else {
+                d.remove_temp::<usize>(sel_id);
+            }
         });
         ui.ctx().request_repaint();
     }
