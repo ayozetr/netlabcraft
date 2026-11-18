@@ -113,11 +113,7 @@
 - **Simulation mode:** an event list replayed on the canvas, simple and complex PDUs, OSI layer
   details, scenarios, capture filters, drop reasons and pcap export.
 - **Console and PC prompt:** every mode a CCNA course uses, with `?` help, Tab completion and
-<<<<<<< HEAD
-  output filters (1408 grammar entries in all; see
-=======
-  output filters (1347 grammar entries in all; see
->>>>>>> origin/main
+  output filters (1414 grammar entries in all; see
   [`docs/command-reference.md`](docs/command-reference.md)); on PCs `ipconfig`, `ping`,
   `tracert`, `nslookup`, `telnet`, `ssh`, `ftp`, `netstat` and more.
 - **Activities:** checks worth points, sections, hints, values per student, time limits, password
