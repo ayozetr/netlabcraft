@@ -519,9 +519,29 @@ pub fn routing_table_with(
             out.push(r.clone());
         }
     }
+    // `ip default-network`: a route to the candidate network is also the default route, when
+    // there is no other.
+    if !out.iter().any(|r| r.net.prefix == 0) {
+        for dn in &d.default_networks {
+            let classful = Ipv4Net::new(*dn, classful_prefix(*dn)).network();
+            if let Some(r) = out.iter().find(|r| r.net == classful && r.code != 'L').cloned() {
+                out.push(RouteEntry { net: Ipv4Net::new(Ipv4Addr::UNSPECIFIED, 0), ..r });
+                break;
+            }
+        }
+    }
     // Stable: the paths of one destination keep the order the protocol gave them.
     out.sort_by_key(|r| (r.net.addr, r.net.prefix, r.code));
     out
+}
+
+/// The prefix length of an address's class (A, B or C).
+fn classful_prefix(a: Ipv4Addr) -> u8 {
+    match a.octets().first().copied().unwrap_or(0) {
+        0..=127 => 8,
+        128..=191 => 16,
+        _ => 24,
+    }
 }
 
 fn routing_table_static(t: &Topology, d: &Device) -> Vec<RouteEntry> {
@@ -676,6 +696,27 @@ pub(crate) fn host_gateway(d: &Device, i: &L3If) -> Option<Ipv4Addr> {
 /// Among several paths to the most specific destination, `flow` picks one.
 #[allow(clippy::too_many_arguments)]
 pub fn route_with(
+    t: &Topology,
+    d: &Device,
+    dst: Ipv4Addr,
+    flow: u32,
+    eigrp_routes: &[eigrp::EigrpRoute],
+    ospf_routes: &[ospf::OspfRoute],
+    rip_routes: &[rip::RipRoute],
+    bgp_routes: &[bgp::BgpRoute],
+) -> Option<(L3If, Ipv4Addr)> {
+    let found = route_core(t, d, dst, flow, eigrp_routes, ospf_routes, rip_routes, bgp_routes);
+    if found.is_some() || d.default_networks.is_empty() {
+        return found;
+    }
+    // `ip default-network`: with no route at all, a route to a candidate network is the way out.
+    d.default_networks.iter().find_map(|dn| {
+        route_core(t, d, *dn, flow, eigrp_routes, ospf_routes, rip_routes, bgp_routes).map(|(i, nh)| (i, if nh == *dn { dst } else { nh }))
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn route_core(
     t: &Topology,
     d: &Device,
     dst: Ipv4Addr,

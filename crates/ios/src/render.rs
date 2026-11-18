@@ -705,6 +705,9 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    for dn in &d.default_networks {
+        let _ = writeln!(s, "ip default-network {dn}");
+    }
     for r in &d.routes {
         let via = match &r.via {
             NextHop::Address(a) => a.to_string(),

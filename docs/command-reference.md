@@ -266,6 +266,13 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip route {connected\|static\|eigrp\|ospf\|rip\|bgp\|summary}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip route A.B.C.D A.B.C.D` | user, privileged | router, switch | The route for exactly this network and mask |
 | `show ip route tag <0-4294967295>` | user, privileged | router, switch | The routes that carry this tag |
+| `show ip cef` | user, privileged | router, switch | The forwarding table: each prefix, its next hop and interface |
+| `show ip cef detail` | user, privileged | router, switch | The forwarding table with each next hop's adjacency |
+| `show ip cef summary` | user, privileged | router, switch | How many prefixes the forwarding table holds and of what kind |
+| `show ip cef A.B.C.D` | user, privileged | router, switch | The forwarding entry that carries traffic to an address |
+| `show ip cef A.B.C.D detail` | user, privileged | router, switch | The forwarding entry for an address with its adjacency |
+| `ip default-network A.B.C.D` | config | router, switch | Use the route to this network as the default route when there is none |
+| `no ip default-network A.B.C.D` | config | router, switch | Stop using this network as a candidate default |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
 | `show interfaces` | user, privileged | router, switch, firewall | Interface details |

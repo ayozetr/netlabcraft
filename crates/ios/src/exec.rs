@@ -15,6 +15,7 @@ use crate::{host, render};
 
 pub(crate) mod automation;
 pub(crate) mod bgp;
+pub(crate) mod cef;
 pub(crate) mod cellular;
 pub(crate) mod debug;
 pub(crate) mod eigrp6;
@@ -2454,6 +2455,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::ShowIpCef
+        | Id::ShowIpCefDetail
+        | Id::ShowIpCefSummary
+        | Id::ShowIpCefAddress
+        | Id::ShowIpCefAddressDetail
+        | Id::IpDefaultNetwork
+        | Id::NoIpDefaultNetwork => cef::command(&mut c, spec.id, &args),
         Id::KeyChain
         | Id::NoKeyChain
         | Id::KeyChainKey
