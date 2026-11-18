@@ -43,6 +43,7 @@ pub mod mgmt;
 pub mod models;
 pub mod mst;
 pub mod netflow;
+pub mod pbr;
 pub mod physical;
 pub mod pki;
 pub mod poe;
@@ -750,6 +751,9 @@ impl Port {
     }
 }
 
+/// Most `ip default-network` candidates on one device.
+pub const MAX_DEFAULT_NETWORKS: usize = 8;
+
 /// Where a static route sends traffic.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -946,12 +950,18 @@ pub struct Device {
     /// IP SLA operations (`ip sla N`) and what they measured.
     #[serde(default, skip_serializing_if = "sla::Sla::is_empty")]
     pub sla: sla::Sla,
+    /// Policy-based routing: the route maps that choose a packet's path (`ip policy route-map`).
+    #[serde(default, skip_serializing_if = "pbr::Pbr::is_empty")]
+    pub pbr: pbr::Pbr,
     /// Routers: IPv6 static routes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes6: Vec<StaticRoute6>,
     /// Routers: static routes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes: Vec<StaticRoute>,
+    /// Routers: `ip default-network` candidates: a route to one becomes the default route.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub default_networks: Vec<Ipv4Addr>,
     /// Switches: the VLAN database (id → name). VLAN 1 always exists.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub vlans: BTreeMap<VlanId, String>,
@@ -2262,8 +2272,10 @@ impl Device {
             fhrp: fhrp::Fhrp::default(),
             track: track::Track::default(),
             sla: sla::Sla::default(),
+            pbr: pbr::Pbr::default(),
             routes6: Vec::new(),
             routes: Vec::new(),
+            default_networks: Vec::new(),
             vlans: BTreeMap::new(),
             vtp: Vtp::default(),
             rapid_stp: false,
@@ -2383,8 +2395,10 @@ impl Device {
         self.fhrp = fhrp::Fhrp::default();
         self.track = track::Track::default();
         self.sla = sla::Sla::default();
+        self.pbr = pbr::Pbr::default();
         self.routes6.clear();
         self.routes.clear();
+        self.default_networks.clear();
         // The VLAN database and VTP settings live apart from the configuration (as in a
         // switch's flash) and survive a reload.
         self.dhcp_pools.clear();
@@ -3085,8 +3099,10 @@ impl Topology {
                 policy::sanitize_community_lists(&mut d.community_lists);
                 policy::sanitize_as_path_lists(&mut d.as_path_lists);
                 d.fhrp.sanitize();
+                d.default_networks.truncate(MAX_DEFAULT_NETWORKS);
                 d.track.sanitize();
                 d.sla.sanitize();
+                d.pbr.sanitize();
                 span::sanitize(&mut d.l2.span);
                 d.ensure_default_vlan();
             }

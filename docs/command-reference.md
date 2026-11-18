@@ -27,6 +27,9 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `dialup.status` | Dial-up status |  |  | `{"device": Dial-up PC} → {"state": "disconnected"\|"connected"\|"lost", "connected", "number", "carrier": true while the call's circuit is up, "called": the number the circuit goes to, "cloud", "username", "server", "address", "mask", "gateway", "auth"}` |
 | `vpnclient.connect` | VPN Client connect |  |  | `{"device": PC, laptop or server, "host"?: the VPN concentrator's address, "group"?: group name, "key"?: group key, "username"?: text, "password"?: text (each defaults to the one last used)} → {"state", "connected", "server", "address", "transforms", "esp", …}: sends a request to UDP port 10000 of the concentrator, a router set up as a remote-access server (a client group with its key and pool, a dynamic map, a crypto map with its authentication and authorization lists on the interface the host reaches). The router checks the group key and the user and gives the first free address of the group's pool; from then on the device's traffic beyond its own subnet goes through an ESP tunnel to the router. Fails when nothing answers or the router refuses; the simulator's own exchange, not IKE with Xauth and mode-config` |
 | `vpnclient.disconnect` | VPN Client disconnect |  |  | `{"device": PC, laptop or server} → the status: the router is told and the tunnel and the VPN address are gone` |
+| `aaa.certificate` | Server certificate (802.1X) |  |  | `{"device": Server, "ca"?: "a router running `crypto pki server` that issues it", "self_signed"?: true, "subject"?: "CN=radius.lab.test, O=NetLab", "fqdn"?: "radius.lab.test", "days"?: 1-36500 (365), "clear"?: true (back to no certificate)} → {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}: the certificate the RADIUS service presents in the PEAP tunnel, for a 1024-bit key pair the simulator makes; a host whose login validates the server checks it` |
+| `dot1x.trust` | Login: validate the server certificate |  |  | `{"device": host, "port"?: "Wireless0", "validate"?: true\|false (refuse a RADIUS server whose certificate does not chain to a trusted CA), "ca"?: "a lab device whose CA certificate to trust: a router running a certificate authority or holding a trustpoint, or a Server with a certificate", "ca_pem"?: "a CA certificate in PEM", "server_name"?: "the name the certificate must be for", "clear"?: true (forget the trusted CAs first)} → {"validate", "server_name", "trusted_cas": [subjects]}: for a host that has a login (device.wireless user and password)` |
+| `dot1x.status` | Login: 802.1X status |  |  | `{"device": host, "port"?: "Wireless0"} → {"login": user or null, "validate", "server_name", "trusted_cas": [subjects], "associated": bool (through the login and the handshake), "server_certificate": null \| {"presented", "subject", "issuer", "not_after", "chain_length", "verified", "error", "suite"}}: what the host saw of the RADIUS server's certificate in its PEAP tunnel (run `sim.advance` first: the login takes simulated time)` |
 | `vpnclient.status` | VPN Client status |  |  | `{"device": PC, laptop or server} → {"state": "disconnected"\|"connected", "connected", "host", "group", "username", "server", "address", "transforms", "esp", "encapsulated", "decapsulated"} (the key and the password are never returned)` |
 | `netflow.listen` | Netflow Collector start |  |  | `{"device": PC, laptop or server, "port"?: 1-65535 (default: the one last used, else 2055)} → the collector's state as netflow.flows: opens the UDP port; routers set up with `ip flow-export destination` send it NetFlow version 5 or 9 datagrams. The port is saved with the lab, what was received is not` |
 | `netflow.stop` | Netflow Collector stop |  |  | `{"device": PC, laptop or server} → the collector's state as netflow.flows: closes the port (what was received stays until cleared); fails when it is not listening` |
@@ -270,10 +273,18 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip route {connected\|static\|eigrp\|ospf\|rip\|bgp\|summary}` | user, privileged | router, switch | Only the routes one source gave |
 | `show ip route A.B.C.D A.B.C.D` | user, privileged | router, switch | The route for exactly this network and mask |
 | `show ip route tag <0-4294967295>` | user, privileged | router, switch | The routes that carry this tag |
+| `show ip cef` | user, privileged | router, switch | The forwarding table: each prefix, its next hop and interface |
+| `show ip cef detail` | user, privileged | router, switch | The forwarding table with each next hop's adjacency |
+| `show ip cef summary` | user, privileged | router, switch | How many prefixes the forwarding table holds and of what kind |
+| `show ip cef A.B.C.D` | user, privileged | router, switch | The forwarding entry that carries traffic to an address |
+| `show ip cef A.B.C.D detail` | user, privileged | router, switch | The forwarding entry for an address with its adjacency |
+| `ip default-network A.B.C.D` | config | router, switch | Use the route to this network as the default route when there is none |
+| `no ip default-network A.B.C.D` | config | router, switch | Stop using this network as a candidate default |
 | `show ip arp` | user, privileged | router, switch | ARP cache |
 | `show arp` | user, privileged | router, switch, firewall | ARP cache |
 | `show interfaces` | user, privileged | router, switch, firewall | Interface details |
 | `show interfaces trunk` | user, privileged | switch | Trunk ports |
+| `show interfaces switchport` | user, privileged | switch | Switchport settings of every port |
 | `show interfaces <interface>` | user, privileged | router, switch, firewall | One interface's details |
 | `show vlan` | user, privileged | switch | VLAN database |
 | `show vlan brief` | user, privileged | switch | VLAN database |
@@ -577,6 +588,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no clock rate` | interface | router | Remove the clock rate |
 | `show controllers <interface>` | user, privileged | router, switch | Cable type at an interface (DCE or DTE) |
 | `show clock` | user, privileged | router, switch | The device's date and time |
+| `show clock detail` | user, privileged | router, switch | The date and time, where it came from and the uptime |
 | `clock set hh:mm:ss <day> <month> <year>` | privileged | router, switch | Set the date and time |
 | `show flash:` | user, privileged | router, switch | Files in flash memory |
 | `show flash` | user, privileged | router, switch | Files in flash memory |
@@ -613,6 +625,15 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `copy startup-config running-config` | privileged | router, switch | Merge the saved configuration into the running one |
 | `copy flash: tftp: <file> <address> [name on the server]` | privileged | router, switch | Back up a flash file to a TFTP server |
 | `copy tftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from a TFTP server into flash |
+| `copy running-config flash: NAME` | privileged | router, switch | Keep the running configuration as a file in flash |
+| `copy startup-config flash: NAME` | privileged | router, switch | Keep the startup configuration as a file in flash |
+| `copy flash: running-config NAME` | privileged | router, switch | Merge a configuration file from flash into the running one |
+| `copy flash: startup-config NAME` | privileged | router, switch | Make a configuration file in flash the startup configuration |
+| `copy flash: ftp: <file> <address> [name on the server]` | privileged | router, switch | Back up a flash file to an FTP server |
+| `copy ftp: flash: <address> <file> [name in flash]` | privileged | router, switch | Copy a file from an FTP server into flash |
+| `copy http: running-config <address> <path>` | privileged | router, switch | Merge a configuration fetched from a web server |
+| `copy http: startup-config <address> <path>` | privileged | router, switch | Make a page of a web server the startup configuration |
+| `copy http: flash: <address> <path> [name in flash]` | privileged | router, switch | Fetch a page of a web server into flash |
 | `show users` | user, privileged | router, switch | Who is logged in, and where |
 | `terminal length N \| width N \| monitor` | user, privileged | router, switch | Terminal settings (output here is never paged) |
 | `no terminal monitor` | user, privileged | router, switch | Stop copying log messages to this session |
@@ -636,6 +657,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show lldp entry *` | user, privileged | router, switch | LLDP neighbours with everything they advertise |
 | `show processes` | user, privileged | router, switch | What the device is busy with |
 | `show processes cpu` | user, privileged | router, switch | What the device is busy with |
+| `show processes cpu sorted` | user, privileged | router, switch | Tasks ordered by run time |
+| `show processes cpu history` | user, privileged | router, switch | Processor use over time |
+| `show processes memory` | user, privileged | router, switch | Memory held by each task |
 | `show memory` | user, privileged | router, switch | Memory in use |
 | `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
@@ -683,6 +707,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug crypto isakmp` | privileged | router, switch | Report the IKE exchanges of this device |
 | `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
 | `debug crypto pki` | privileged | router, switch | Report certificates checked, requests, grants and revocations |
+| `debug ip policy` | privileged | router, switch | Report the decisions of policy-based routing |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
@@ -721,6 +746,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto isakmp` | privileged | router, switch | Stop reporting ISAKMP |
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
+| `no debug ip policy` | privileged | router, switch | Stop reporting policy routing |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet\|retransmission` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again |
@@ -961,6 +987,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip prefix-list NAME` | user, privileged | router, switch | One prefix list |
 | `show route-map` | user, privileged | router, switch | Every route map |
 | `show route-map NAME` | user, privileged | router, switch | One route map |
+| `ip policy route-map NAME` | interface, subinterface | router | Route the packets that arrive here by a route map first |
+| `no ip policy route-map` | interface, subinterface | router | Route the packets that arrive here by the table only |
+| `no ip policy route-map NAME` | interface, subinterface | router | Route the packets that arrive here by the table only |
+| `ip local policy route-map NAME` | config | router | Route this router's own packets by a route map first |
+| `no ip local policy route-map` | config | router | Route this router's own packets by the table only |
+| `show ip policy` | user, privileged | router | Which route map routes the packets of each interface, and what each clause took |
+| `match length <0-65535> <0-65535>` |  | router, switch | Match packets of this length (policy routing) |
+| `no match length` |  | router, switch | Remove the length match |
+| `set ip default next-hop A.B.C.D` |  | router, switch | Policy routing: send here when the table has no route to the destination |
+| `no set ip default next-hop` |  | router, switch | Forget the default next hop |
+| `set interface INTERFACE` |  | router, switch | Policy routing: send out of this interface |
+| `no set interface` |  | router, switch | Forget the exit interface |
+| `set ip precedence <0-7>` |  | router, switch | Policy routing: mark the packets with this IP precedence |
+| `no set ip precedence` |  | router, switch | Leave the precedence alone |
+| `set ip dscp DSCP` |  | router, switch | Policy routing: mark the packets with this DSCP |
+| `no set ip dscp` |  | router, switch | Leave the DSCP alone |
+| `set ip next-hop verify-availability A.B.C.D <1-65535> track <1-1000>` |  | router, switch | Policy routing: use this next hop only while a tracked object is up |
 | `track <1-1000> interface <interface> {line-protocol\|ip routing}` | config | router, switch | Track whether an interface works (or routes IP) |
 | `track <1-1000> ip route A.B.C.D/<0-32> reachability` | config | router, switch | Track whether the routing table has a prefix |
 | `track <1-1000> ip route A.B.C.D MASK reachability` | config | router, switch | Track whether the routing table has a prefix |
@@ -1679,6 +1722,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show tech-support` | privileged | router, switch | Everything for a support request |
 | `show boot` | user, privileged | router, switch | What the device starts from |
 | `show environment` | user, privileged | router, switch | Power and temperature |
+| `show environment all` | user, privileged | router, switch | Power and temperature |
+| `show environment power` | user, privileged | router, switch | Power supplies |
+| `show environment temperature` | user, privileged | router, switch | Temperatures and fans |
 | `show inventory` | user, privileged | router, switch | Hardware |
 | `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |

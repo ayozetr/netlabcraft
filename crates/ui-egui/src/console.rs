@@ -1112,6 +1112,9 @@ fn port_page(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device, i: usize) {
                 })
         };
         ui.label(assoc);
+        if !ap {
+            dot1x_login(app, ui, d, i, &port.name);
+        }
         if ui.button(tl("Apply Wi-Fi")).clicked()
             && let Some(v) = app.run("device.wireless", form.params(d.0, &port.name, ap))
         {
@@ -1696,5 +1699,62 @@ pub(crate) fn draw_app_icon(p: &egui::Painter, r: egui::Rect, app: DesktopApp) {
             );
             p.rect_filled(base, 2.0, light);
         }
+    }
+}
+
+/// A host's WPA2-Enterprise login: whether to validate the RADIUS server's certificate, the CA
+/// certificates and the name it is checked against, and what the last login saw of it.
+fn dot1x_login(app: &mut PacketApp, ui: &mut egui::Ui, d: DeviceId, port: usize, port_name: &str) {
+    let Some(login) = app.session.topology.device(d).and_then(|x| x.ports.get(port)).and_then(|p| p.wifi.as_ref()).and_then(|w| w.login.clone())
+    else {
+        return;
+    };
+    ui.separator();
+    ui.label(RichText::new(tl("802.1X login")).strong());
+    let mut validate = login.validate_server;
+    if ui.checkbox(&mut validate, tl("Validate server certificate")).changed() {
+        app.run("dot1x.trust", json!({"device": d.0, "port": port_name, "validate": validate}));
+    }
+    let name_id = ui.make_persistent_id(("dot1x_name", d.0));
+    let mut name: String = ui.data_mut(|m| m.get_temp(name_id)).unwrap_or_else(|| login.server_name.clone());
+    ui.horizontal(|ui| {
+        ui.label(tl("Server name"));
+        ui.text_edit_singleline(&mut name);
+        if ui.button(tl("Apply")).clicked() {
+            app.run("dot1x.trust", json!({"device": d.0, "port": port_name, "server_name": name.trim()}));
+        }
+    });
+    ui.data_mut(|m| m.insert_temp(name_id, name));
+    // The lab devices that hold a CA certificate offer it to trust.
+    let cas: Vec<String> = app
+        .session
+        .topology
+        .devices
+        .iter()
+        .filter(|x| netlabcraft_sim::pki::ca_certificate(x).is_some() || x.services.aaa.cert.as_ref().is_some_and(|c| !c.ca_certificate.is_empty()))
+        .map(|x| x.name.clone())
+        .collect();
+    ui.horizontal(|ui| {
+        ui.label(tl("Trust the CA of"));
+        for ca in &cas {
+            if ui.button(ca).clicked() {
+                app.run("dot1x.trust", json!({"device": d.0, "port": port_name, "ca": ca}));
+            }
+        }
+    });
+    let subjects: Vec<String> =
+        login.trusted_cas.iter().filter_map(|c| netlabcraft_wire::x509::Certificate::from_pem(c).ok()).map(|c| c.subject.text()).collect();
+    ui.label(if subjects.is_empty() { tl("No trusted CA").to_string() } else { crate::i18n::trf("Trusted CAs: {}", &[&subjects.join("; ")]) });
+    if let Some(r) = app.session.sim.association(End { device: d, port }).and_then(|a| a.peap_report()).cloned()
+        && (r.presented || !r.error.is_empty())
+    {
+        let verdict = if !r.error.is_empty() {
+            r.error.clone()
+        } else if r.verified {
+            tl("trusted").to_string()
+        } else {
+            tl("not checked").to_string()
+        };
+        ui.label(crate::i18n::trf("Server certificate: {} (issued by {}), {}", &[&r.subject, &r.issuer, &verdict]));
     }
 }

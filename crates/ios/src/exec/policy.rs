@@ -112,7 +112,7 @@ fn clause_words(rest: &str) -> Result<(Option<bool>, Option<u32>), String> {
 }
 
 /// The clause the console is inside.
-fn clause<'a>(c: &'a mut Ctx<'_>) -> Result<&'a mut Clause, String> {
+pub(super) fn clause<'a>(c: &'a mut Ctx<'_>) -> Result<&'a mut Clause, String> {
     let Mode::RouteMap(name, seq) = c.cli.mode.clone() else { return Err("% Not in route-map mode".into()) };
     c.dm()?
         .route_maps
@@ -229,7 +229,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             if removed { Ok(String::new()) } else { Err(format!("% No such line in prefix list {name}")) }
         }
         Id::ShowIpPrefixList => show_prefix_lists(c.d()?, args.first().map(String::as_str)),
-        Id::ShowRouteMap => show_route_maps(c.d()?, args.first().map(String::as_str)),
+        Id::ShowRouteMap => show_route_maps(c.d()?, args.first().map(String::as_str), c.sim),
         Id::RouteMapEnter => {
             let name = name_ok(arg(0))?;
             let (permit, seq) = clause_words(arg(1))?;
@@ -411,11 +411,15 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             if a.is_unspecified() || a.is_multicast() || a == Ipv4Addr::BROADCAST {
                 return Err(format!("% {a} is not an address a next hop can have"));
             }
-            clause(c)?.sets.next_hop = Some(a);
+            let cl = clause(c)?;
+            cl.sets.next_hop = Some(a);
+            cl.sets.next_hop_track = None;
             Ok(String::new())
         }
         Id::NoRmSetNextHop => {
-            clause(c)?.sets.next_hop = None;
+            let cl = clause(c)?;
+            cl.sets.next_hop = None;
+            cl.sets.next_hop_track = None;
             Ok(String::new())
         }
         Id::RmSetOrigin => {
@@ -687,7 +691,7 @@ fn show_prefix_lists(d: &Device, only: Option<&str>) -> R {
     Ok(s.trim_end().to_string())
 }
 
-fn show_route_maps(d: &Device, only: Option<&str>) -> R {
+fn show_route_maps(d: &Device, only: Option<&str>, sim: &netlabcraft_sim::Sim) -> R {
     let maps: Vec<&RouteMap> = d.route_maps.iter().filter(|m| only.is_none_or(|n| m.name == n)).collect();
     if maps.is_empty() {
         return match only {
@@ -718,11 +722,19 @@ fn show_route_maps(d: &Device, only: Option<&str>) -> R {
             if !c.tags.is_empty() {
                 let _ = writeln!(s, "    match tag: {}", c.tags.iter().map(u32::to_string).collect::<Vec<_>>().join(", "));
             }
+            if let Some((lo, hi)) = c.length {
+                let _ = writeln!(s, "    match length: {lo}-{hi} bytes");
+            }
             for line in set_lines(c, d.bgp_community_new_format) {
                 let _ = writeln!(s, "    set {line}");
             }
+            let (packets, bytes) = sim.pbr_hits(d.id, &m.name, c.seq);
+            if packets > 0 {
+                let _ = writeln!(s, "    policy routing took {packets} packets, {bytes} bytes");
+            }
             if c.prefix_lists.is_empty()
                 && c.acls.is_empty()
+                && c.length.is_none()
                 && c.metric.is_none()
                 && c.community_lists.is_empty()
                 && c.as_path_lists.is_empty()
@@ -758,7 +770,22 @@ fn set_lines(c: &Clause, new_format: bool) -> Vec<String> {
         v.push(format!("as-path prepend {}", c.sets.prepend.iter().map(u32::to_string).collect::<Vec<_>>().join(" ")));
     }
     if let Some(x) = c.sets.next_hop {
-        v.push(format!("ip next-hop {x}"));
+        match c.sets.next_hop_track {
+            Some(n) => v.push(format!("ip next-hop verify-availability {x} 10 track {n}")),
+            None => v.push(format!("ip next-hop {x}")),
+        }
+    }
+    if let Some(x) = c.sets.default_next_hop {
+        v.push(format!("ip default next-hop {x}"));
+    }
+    if let Some(x) = &c.sets.interface {
+        v.push(format!("interface {x}"));
+    }
+    if let Some(x) = c.sets.precedence {
+        v.push(format!("ip precedence {x}"));
+    }
+    if let Some(x) = c.sets.dscp {
+        v.push(format!("ip dscp {x}"));
     }
     if let Some(x) = c.sets.origin {
         v.push(format!("origin {}", origin_word(x)));
@@ -826,6 +853,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             }
             if !c.tags.is_empty() {
                 let _ = writeln!(s, " match tag {}", c.tags.iter().map(u32::to_string).collect::<Vec<_>>().join(" "));
+            }
+            if let Some((lo, hi)) = c.length {
+                let _ = writeln!(s, " match length {lo} {hi}");
             }
             for line in set_lines(c, d.bgp_community_new_format) {
                 let _ = writeln!(s, " set {line}");

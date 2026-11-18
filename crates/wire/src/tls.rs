@@ -488,6 +488,17 @@ impl Tls {
         &self.chain
     }
 
+    /// Keying material exported from the session (RFC 5705; EAP-TLS uses it, RFC 5216 §2.3):
+    /// PRF(master secret, label, client random | server random). `None` before the key
+    /// exchange has run.
+    pub fn export(&self, label: &str, len: usize) -> Option<Vec<u8>> {
+        if self.master.is_empty() {
+            return None;
+        }
+        let seed = [&self.client_random[..], &self.server_random[..]].concat();
+        Some(prf(&self.master, label, &seed, len.min(1024)))
+    }
+
     /// Whether the server's chain was checked against trust anchors and passed.
     pub fn verified(&self) -> bool {
         self.verified
@@ -906,6 +917,16 @@ mod tests {
         assert_eq!(o.app, big);
         assert!(o.closed && o.peer_alert.is_none());
         assert!(describe(&hello).contains("ClientHello"));
+    }
+
+    #[test]
+    fn both_ends_export_the_same_keying_material() {
+        let (c, s, _) = handshake_pair();
+        let (a, b) = (c.export("client EAP encryption", 64).unwrap(), s.export("client EAP encryption", 64).unwrap());
+        assert_eq!((a.len(), &a), (64, &b));
+        assert_ne!(c.export("other label", 64).unwrap(), a);
+        assert_eq!(c.export("client EAP encryption", 20).unwrap(), a[..20].to_vec());
+        assert_eq!(Tls::server(b"fresh").export("x", 16), None);
     }
 
     #[test]
