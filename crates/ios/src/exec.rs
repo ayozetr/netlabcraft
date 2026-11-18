@@ -38,6 +38,7 @@ pub(crate) mod qos;
 pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
+pub(crate) mod sla;
 pub(crate) mod span;
 pub(crate) mod srcguard;
 pub(crate) mod sweep;
@@ -132,6 +133,8 @@ pub enum Mode {
     ObjectGroup(String, bool),
     /// `R1(config-track)#`: the tracked object's number.
     Track(u32),
+    /// `R1(config-ip-sla)#`: the operation's number.
+    IpSla(u32),
     /// `R1(config-telephony)#`
     Telephony,
     /// `R1(config-ephone-dn)#`: the directory number's tag.
@@ -208,7 +211,7 @@ impl Mode {
             Mode::BbaGroup(_) => Modes::BBA_GROUP,
             Mode::VirtualTemplate(_) => Modes::VTEMPLATE,
             Mode::Dialer(_) => Modes::DIALER,
-            Mode::Track(_) => Modes::TRACK,
+            Mode::Track(_) | Mode::IpSla(_) => Modes::TRACK,
             Mode::ClassMap(_) => Modes::CLASS_MAP,
             Mode::PolicyMap(_) => Modes::POLICY_MAP,
             Mode::PolicyClass(..) => Modes::POLICY_CLASS,
@@ -696,6 +699,18 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::BbaGroup(_) => format!("{n}(config-bba-group)#"),
         Mode::VirtualTemplate(_) | Mode::Dialer(_) => format!("{n}(config-if)#"),
         Mode::Track(_) => format!("{n}(config-track)#"),
+        Mode::IpSla(op) => {
+            use netlabcraft_model::sla::Probe;
+            let kind = match d.sla.ops.get(op).and_then(|o| o.probe.as_ref()) {
+                None => "",
+                Some(Probe::IcmpEcho { .. }) => "-echo",
+                Some(Probe::TcpConnect { .. }) => "-tcp-conn",
+                Some(Probe::UdpEcho { .. }) => "-udp-echo",
+                Some(Probe::UdpJitter { .. }) => "-jitter",
+                Some(Probe::HttpGet { .. }) => "-http",
+            };
+            format!("{n}(config-ip-sla{kind})#")
+        }
         Mode::ClassMap(_) => format!("{n}(config-cmap)#"),
         Mode::PolicyMap(_) => format!("{n}(config-pmap)#"),
         Mode::PolicyClass(..) => format!("{n}(config-pmap-c)#"),
@@ -1140,6 +1155,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::VirtualTemplate(_)
                 | Mode::Dialer(_)
                 | Mode::Track(_)
+                | Mode::IpSla(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::PolicyClass(..)
@@ -1227,6 +1243,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::VirtualTemplate(_)
                 | Mode::Dialer(_)
                 | Mode::Track(_)
+                | Mode::IpSla(_)
                 | Mode::ClassMap(_)
                 | Mode::PolicyMap(_)
                 | Mode::Object(_)
@@ -1287,6 +1304,31 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::TrackObjectNot
         | Id::NoTrackObject
         | Id::ShowTrack => track::command(&mut c, spec.id, &args),
+        Id::IpSla
+        | Id::NoIpSla
+        | Id::IpSlaSchedule
+        | Id::NoIpSlaSchedule
+        | Id::IpSlaResponder
+        | Id::NoIpSlaResponder
+        | Id::IpSlaReaction
+        | Id::NoIpSlaReaction
+        | Id::SlaIcmpEcho
+        | Id::SlaIcmpEchoSource
+        | Id::SlaTcpConnect
+        | Id::SlaUdpEcho
+        | Id::SlaUdpJitter
+        | Id::SlaHttpGet
+        | Id::SlaFrequency
+        | Id::NoSlaFrequency
+        | Id::SlaTimeout
+        | Id::NoSlaTimeout
+        | Id::SlaThreshold
+        | Id::NoSlaThreshold
+        | Id::SlaTag
+        | Id::NoSlaTag
+        | Id::ShowIpSlaStatistics
+        | Id::ShowIpSlaConfiguration
+        | Id::ShowIpSlaSummary => sla::command(&mut c, spec.id, &args),
         Id::PingRepeat => c.ping_extended(arg(0), arg(1)),
         Id::ShowIpTraffic => Ok(render::ip_traffic(c.sim, c.dev)),
         Id::ShowTcpBrief => Ok(render::tcp_brief(c.sim, c.dev)),

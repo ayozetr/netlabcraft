@@ -54,6 +54,7 @@ pub mod routing;
 pub mod scenario;
 pub mod security;
 pub mod services;
+pub mod sla;
 pub mod span;
 pub mod textmatch;
 pub mod track;
@@ -940,6 +941,9 @@ pub struct Device {
     /// Object tracking (`track N …`) and the static routes that follow an object.
     #[serde(default, skip_serializing_if = "track::Track::is_empty")]
     pub track: track::Track,
+    /// IP SLA operations (`ip sla N`) and what they measured.
+    #[serde(default, skip_serializing_if = "sla::Sla::is_empty")]
+    pub sla: sla::Sla,
     /// Routers: IPv6 static routes.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub routes6: Vec<StaticRoute6>,
@@ -2252,6 +2256,7 @@ impl Device {
             eigrp6: None,
             fhrp: fhrp::Fhrp::default(),
             track: track::Track::default(),
+            sla: sla::Sla::default(),
             routes6: Vec::new(),
             routes: Vec::new(),
             vlans: BTreeMap::new(),
@@ -2371,6 +2376,7 @@ impl Device {
         self.eigrp6 = None;
         self.fhrp = fhrp::Fhrp::default();
         self.track = track::Track::default();
+        self.sla = sla::Sla::default();
         self.routes6.clear();
         self.routes.clear();
         // The VLAN database and VTP settings live apart from the configuration (as in a
@@ -3073,6 +3079,7 @@ impl Topology {
                 policy::sanitize_as_path_lists(&mut d.as_path_lists);
                 d.fhrp.sanitize();
                 d.track.sanitize();
+                d.sla.sanitize();
                 span::sanitize(&mut d.l2.span);
                 d.ensure_default_vlan();
             }
