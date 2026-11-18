@@ -71,6 +71,7 @@ fn commands_are_checked() {
     assert!(lab.try_run(r1, "ip sla reaction-configuration 1 react nothing").starts_with("% "));
     assert!(lab.try_run(r1, "no ip sla 5").starts_with("% "));
     lab.run(r1, "ip sla schedule 1 life 100 start-time pending");
+    lab.run(r1, "end");
     assert!(!probe_round(&mut lab, 120), "a pending operation sends nothing");
     assert!(lab.run(r1, "show ip sla statistics 1").contains("pending"));
 }
@@ -101,7 +102,8 @@ fn a_default_route_follows_an_operation_and_a_floating_route_takes_over() {
     // And it comes back when the far router does.
     lab.run(r2, "conf t\nint g0/0\nno shutdown\nend");
     lab.sim.topology_changed(&lab.t);
-    assert!(probe_round(&mut lab, 6));
+    // The switch port towards the far router needs its spanning-tree delay before it forwards.
+    assert!(probe_round(&mut lab, 40));
     assert!(lab.run(r1, "show track 1").contains("State is Up"));
     assert!(lab.run(r1, "show ip route").contains("10.0.0.2"));
 }
