@@ -1908,6 +1908,20 @@ event	write request for	Schreibanfrage für
 	{} (rear)	{} (hinten)
 	{}, {} levels	{}, {} Ebenen
 	{}, on {}	{}, auf {}
+	Plugged into {} (USB {}): {}	Angeschlossen an {} (USB {}): {}
+	Not plugged in: join it to a host with a USB cable.	Nicht angeschlossen: Mit einem USB-Kabel an einen Host anschließen.
+	mounted	eingebunden
+	ejected	ausgeworfen
+	Eject	Auswerfen
+	Mount	Einbinden
+	{} of {} bytes used	{} von {} Bytes belegt
+	No files on the stick.	Keine Dateien auf dem Stick.
+	Save to stick	Auf Stick speichern
+	USB {}	USB {}
+	Print test page	Testseite drucken
+	This device has no USB port.	Dieses Gerät hat keinen USB-Anschluss.
+	Test page from {}	Testseite von {}
+	Sent a test page over USB.	Eine Testseite wurde über USB gesendet.
 	Rack	Rack
 	Shelf	Regal
 furniture	Table	Tisch

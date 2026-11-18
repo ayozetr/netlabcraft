@@ -76,6 +76,7 @@ mod sniffer_page;
 pub mod sound;
 pub mod theme;
 mod touch;
+mod usb_page;
 mod wifi_form;
 mod wireless;
 mod wlan_page;
@@ -94,6 +95,8 @@ mod tests_pictures;
 mod tests_prefs;
 #[cfg(test)]
 mod tests_prefs2;
+#[cfg(test)]
+mod tests_usb;
 
 use crate::i18n::tl;
 use icons::Glyph;
@@ -478,7 +481,7 @@ pub fn open_console(app: &mut PacketApp, d: DeviceId) {
 
 /// Opens a host's Desktop: `"prompt"`, `"ip"` (IP Configuration), `"email"`, `"mib"`, `"terminal"`,
 /// `"programming"`, `"telnet"` (Telnet/SSH Client), `"editor"` (Text Editor), `"firewall"`, `"firewall6"`,
-/// `"traffic"` (Traffic Generator), `"pppoe"` (PPPoE Dialer), `"dialup"` (Dial-up), `"vpn"` (VPN Client), `"netflow"` (Netflow Collector) or the tiles (anything else).
+/// `"traffic"` (Traffic Generator), `"pppoe"` (PPPoE Dialer), `"dialup"` (Dial-up), `"vpn"` (VPN Client), `"netflow"` (Netflow Collector), `"usb"` (USB) or the tiles (anything else).
 pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
     console::open(app, d);
     if let Some(w) = app.ui.windows.get_mut(&d) {
@@ -501,6 +504,7 @@ pub fn open_desktop_app(app: &mut PacketApp, d: DeviceId, which: &str) {
             "vpn" => Some(console::DesktopApp::VpnClient),
             "netflow" => Some(console::DesktopApp::NetflowCollector),
             "softphone" => Some(console::DesktopApp::Softphone),
+            "usb" => Some(console::DesktopApp::Usb),
             _ => None,
         };
     }

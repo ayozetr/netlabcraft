@@ -1908,6 +1908,20 @@ event	write request for	richiesta di scrittura di
 	{} (rear)	{} (retro)
 	{}, {} levels	{}, {} livelli
 	{}, on {}	{}, su {}
+	Plugged into {} (USB {}): {}	Collegata a {} (USB {}): {}
+	Not plugged in: join it to a host with a USB cable.	Non collegata: collegala a un host con un cavo USB.
+	mounted	montata
+	ejected	espulsa
+	Eject	Espelli
+	Mount	Monta
+	{} of {} bytes used	{} di {} byte usati
+	No files on the stick.	Nessun file sulla chiavetta.
+	Save to stick	Salva sulla chiavetta
+	USB {}	USB {}
+	Print test page	Stampa pagina di prova
+	This device has no USB port.	Questo dispositivo non ha porte USB.
+	Test page from {}	Pagina di prova da {}
+	Sent a test page over USB.	Una pagina di prova è stata inviata via USB.
 	Rack	Rack
 	Shelf	Scaffale
 furniture	Table	Tavolo

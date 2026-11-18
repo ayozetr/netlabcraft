@@ -1911,6 +1911,20 @@ event	no APN	sin APN
 	{} (rear)	{} (trasera)
 	{}, {} levels	{}, {} niveles
 	{}, on {}	{}, en {}
+	Plugged into {} (USB {}): {}	Conectada a {} (USB {}): {}
+	Not plugged in: join it to a host with a USB cable.	Sin conectar: únela a un anfitrión con un cable USB.
+	mounted	montada
+	ejected	expulsada
+	Eject	Expulsar
+	Mount	Montar
+	{} of {} bytes used	{} de {} bytes usados
+	No files on the stick.	No hay archivos en la memoria.
+	Save to stick	Guardar en la memoria
+	USB {}	USB {}
+	Print test page	Imprimir página de prueba
+	This device has no USB port.	Este dispositivo no tiene puerto USB.
+	Test page from {}	Página de prueba de {}
+	Sent a test page over USB.	Se envió una página de prueba por USB.
 	Rack	Bastidor
 	Shelf	Estante
 furniture	Table	Mesa
