@@ -139,3 +139,23 @@ fn transport_mode_drops_traffic_that_is_not_between_the_peers_and_modes_must_agr
         assert!(sa.contains("transform sets differ") || sa.contains("another mode"), "v2={v2}: {sa}");
     }
 }
+
+#[test]
+fn esp_null_alone_is_refused_because_it_protects_nothing() {
+    for v2 in [false, true] {
+        let (mut lab, r1, _isp, r2, a) = two_sites();
+        lab.run(r1, &config(v2, LAN1, "198.51.100.1", "esp-null", ""));
+        lab.run(r2, &config(v2, LAN2, "203.0.113.1", "esp-null", ""));
+        assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"), "v2={v2}");
+        let sa = lab.run(r1, "show crypto ipsec sa");
+        assert!(sa.contains("protects nothing") && sa.contains("RFC 4303"), "v2={v2}: {sa}");
+        // With an integrity transform next to it the set negotiates, with nothing simulated.
+        lab.run(r1, "conf t\ncrypto ipsec transform-set TS esp-null esp-sha-hmac\nend");
+        lab.run(r2, "conf t\ncrypto ipsec transform-set TS esp-null esp-sha-hmac\nend");
+        lab.run(r1, "clear crypto sa");
+        lab.run(r2, "clear crypto sa");
+        let ping = ping_settled(&mut lab, a, "192.168.2.10");
+        assert!(ping.contains("4 answered"), "v2={v2}: {ping}");
+        assert!(lab.run(r1, "show crypto ipsec sa").contains("NULL / HMAC-SHA1-96 (real ciphers)"));
+    }
+}
