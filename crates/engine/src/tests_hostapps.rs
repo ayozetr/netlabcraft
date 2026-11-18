@@ -192,7 +192,7 @@ fn terminal_monitor_shows_a_routers_debug_output_in_the_remote_session() {
     cli(&mut s, "PC1", "debug ip icmp");
     let pc1 = s.topology.resolve("PC1").unwrap();
     assert!(ping_ok(&mut s, "PC3", "10.0.1.1"));
-    assert!(!s.consoles[&pc1].log.contains("ICMP debug"), "without `terminal monitor` the session sees no log messages");
+    assert!(!s.consoles[&pc1].log.contains("ICMP debug:"), "without `terminal monitor` the session sees no log messages");
     cli(&mut s, "PC1", "terminal monitor");
     assert!(ping_ok(&mut s, "PC3", "10.0.1.1"));
     assert!(s.consoles[&pc1].log.contains("ICMP debug: echo request from 10.0.2.10"), "{}", s.consoles[&pc1].log);
@@ -201,7 +201,7 @@ fn terminal_monitor_shows_a_routers_debug_output_in_the_remote_session() {
     assert!(s.consoles[&r1].log.contains("ICMP debug: echo request from 10.0.2.10"));
     // Turned off, the session is quiet again.
     cli(&mut s, "PC1", "terminal no monitor");
-    let before = s.consoles[&pc1].log.matches("ICMP debug").count();
+    let before = s.consoles[&pc1].log.matches("ICMP debug:").count();
     assert!(ping_ok(&mut s, "PC3", "10.0.1.1"));
-    assert_eq!(s.consoles[&pc1].log.matches("ICMP debug").count(), before);
+    assert_eq!(s.consoles[&pc1].log.matches("ICMP debug:").count(), before);
 }
