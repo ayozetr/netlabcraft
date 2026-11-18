@@ -348,6 +348,14 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             clause(c)?.sets.tag = None;
             Ok(String::new())
         }
+        Id::RmSetDampening => {
+            clause(c)?.sets.dampening = Some(super::bgp::damp_params(args)?);
+            Ok(String::new())
+        }
+        Id::NoRmSetDampening => {
+            clause(c)?.sets.dampening = None;
+            Ok(String::new())
+        }
         Id::RmSetLocalPref => {
             let v = number(arg(0), "local preference", u64::from(u32::MAX))?;
             clause(c)?.sets.local_pref = Some(v);
@@ -750,6 +758,9 @@ fn set_lines(c: &Clause, new_format: bool) -> Vec<String> {
     }
     if let Some(x) = c.sets.tag {
         v.push(format!("tag {x}"));
+    }
+    if let Some(x) = c.sets.dampening {
+        v.push(format!("dampening {} {} {} {}", x.half_life, x.reuse, x.suppress, x.max_suppress));
     }
     if let Some(x) = c.sets.weight {
         v.push(format!("weight {x}"));

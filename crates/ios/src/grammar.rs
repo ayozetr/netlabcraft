@@ -1132,6 +1132,13 @@ pub enum Id {
     ShowIpBgpReceived,
     BgpTimers,
     NoBgpTimers,
+    BgpDampening,
+    NoBgpDampening,
+    RmSetDampening,
+    NoRmSetDampening,
+    ShowIpBgpDampened,
+    ShowIpBgpFlapStatistics,
+    ClearIpBgpDampening,
     ShowIpBgpAdvertised,
     ShowIpBgpNeighborRoutes,
     ShowIpBgpRegexp,
@@ -4197,6 +4204,78 @@ pub static SPECS: &[Spec] = &[
         "Keepalive interval and hold time of every neighbour that has none of its own (seconds)"
     ),
     spec!(NoBgpTimers, Modes::BGP, Modes::BOTH, [K("no"), K("timers"), K("bgp")], "Keepalive 60 and hold time 180 again"),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening")],
+        "Penalise flapping external routes and hold them down (half-life 15 minutes, reuse 750, suppress 2000, at most 60 minutes)"
+    ),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening"), Arg("<1-45>"), Arg("<1-20000>"), Arg("<1-20000>"), Arg("<1-255>")],
+        "Dampen with a half-life (minutes), a reuse limit, a suppress limit and a longest suppression (minutes)"
+    ),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening"), K("route-map"), Arg("NAME")],
+        "Dampen only the routes this route map permits, with its set dampening values"
+    ),
+    spec!(NoBgpDampening, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("dampening")], "Stop dampening and forget the penalties"),
+    spec!(
+        NoBgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("dampening"), Rest("<1-45> <1-20000> <1-20000> <1-255> | route-map NAME")],
+        "Stop dampening and forget the penalties"
+    ),
+    spec!(
+        RmSetDampening,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("dampening"), Arg("<1-45>"), Arg("<1-20000>"), Arg("<1-20000>"), Arg("<1-255>")],
+        "Dampen the matched routes with a half-life, a reuse limit, a suppress limit and a longest suppression"
+    ),
+    spec!(NoRmSetDampening, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("dampening")], "Dampen the matched routes with the default values"),
+    spec!(
+        ShowIpBgpDampened,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("dampened-paths")],
+        "The routes dampening holds down, with the penalty and when they are used again"
+    ),
+    spec!(
+        ShowIpBgpFlapStatistics,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("flap-statistics")],
+        "The routes that flapped: how often, the penalty and whether they are held down"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening")],
+        "Forget every penalty and use the held-down routes again"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening"), Arg("A.B.C.D")],
+        "Forget the penalty of the route to this network"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening"), Arg("A.B.C.D"), Arg("MASK")],
+        "Forget the penalty of the route to this network and mask"
+    ),
     spec!(
         ShowIpBgpAdvertised,
         EXECS,

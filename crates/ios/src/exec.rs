@@ -4638,6 +4638,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowIpBgpReceived
         | Id::BgpTimers
         | Id::NoBgpTimers
+        | Id::BgpDampening
+        | Id::NoBgpDampening
+        | Id::ShowIpBgpDampened
+        | Id::ShowIpBgpFlapStatistics
+        | Id::ClearIpBgpDampening
         | Id::ShowIpBgpAdvertised
         | Id::ShowIpBgpNeighborRoutes
         | Id::ShowIpBgpRegexp
@@ -4682,6 +4687,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::NoRmMatchTag
         | Id::RmSetTag
         | Id::NoRmSetTag
+        | Id::RmSetDampening
+        | Id::NoRmSetDampening
         | Id::RmSetLocalPref
         | Id::NoRmSetLocalPref
         | Id::RmSetMetric

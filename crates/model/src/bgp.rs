@@ -89,6 +89,99 @@ impl Source {
     }
 }
 
+/// `bgp dampening HALF-LIFE REUSE SUPPRESS MAX-SUPPRESS` (RFC 2439): how a flapping route is
+/// penalised and when it is used again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DampParams {
+    /// Minutes for the penalty to halve (1-45).
+    pub half_life: u16,
+    /// The penalty a suppressed route has to fall below to be used again (1-20000).
+    pub reuse: u16,
+    /// The penalty above which a route is suppressed (1-20000, above the reuse limit).
+    pub suppress: u16,
+    /// The most minutes a route stays suppressed (1-255).
+    pub max_suppress: u16,
+}
+
+/// The penalty a withdrawn route gets.
+pub const FLAP_PENALTY: u32 = 1_000;
+/// The penalty a route gets when it is advertised again with other attributes.
+pub const CHANGE_PENALTY: u32 = 500;
+
+impl Default for DampParams {
+    fn default() -> Self {
+        DampParams { half_life: 15, reuse: 750, suppress: 2_000, max_suppress: 60 }
+    }
+}
+
+impl DampParams {
+    /// The values after a sanity check: `Err` says what is wrong.
+    pub fn check(self) -> Result<DampParams, &'static str> {
+        if !(1..=45).contains(&self.half_life) {
+            return Err("The half-life is 1-45 minutes");
+        }
+        if !(1..=20_000).contains(&self.reuse) || !(1..=20_000).contains(&self.suppress) {
+            return Err("The reuse and suppress limits are 1-20000");
+        }
+        if self.suppress <= self.reuse {
+            return Err("The suppress limit must be above the reuse limit");
+        }
+        if !(1..=255).contains(&self.max_suppress) {
+            return Err("The maximum suppress time is 1-255 minutes");
+        }
+        Ok(self)
+    }
+
+    /// The same values forced into range (what a lab file may hold).
+    pub fn clamped(self) -> DampParams {
+        let reuse = self.reuse.clamp(1, 19_999);
+        DampParams {
+            half_life: self.half_life.clamp(1, 45),
+            reuse,
+            suppress: self.suppress.clamp(reuse.saturating_add(1), 20_000),
+            max_suppress: self.max_suppress.clamp(1, 255),
+        }
+    }
+
+    /// The most penalty a route can collect: the one that takes `max_suppress` minutes to fall to
+    /// the reuse limit.
+    pub fn max_penalty(&self) -> u32 {
+        let halvings = f64::from(self.max_suppress) / f64::from(self.half_life.max(1));
+        let top = f64::from(self.reuse) * 2f64.powf(halvings.min(20.0));
+        top.min(f64::from(u32::MAX / 2)) as u32
+    }
+
+    /// The penalty left after `micros` of simulated time.
+    pub fn decayed(&self, penalty: u32, micros: u64) -> u32 {
+        let half = f64::from(self.half_life.max(1)) * 60_000_000.0;
+        let left = f64::from(penalty) * 0.5f64.powf(micros as f64 / half);
+        left as u32
+    }
+
+    /// How long a penalty takes to fall to the reuse limit, in simulated microseconds (rounded up).
+    pub fn time_to_reuse(&self, penalty: u32) -> u64 {
+        if penalty <= u32::from(self.reuse) {
+            return 0;
+        }
+        let half = f64::from(self.half_life.max(1)) * 60_000_000.0;
+        let halvings = (f64::from(penalty) / f64::from(self.reuse.max(1))).log2();
+        (halvings * half).ceil() as u64 + 1
+    }
+}
+
+/// `bgp dampening [HALF-LIFE REUSE SUPPRESS MAX-SUPPRESS | route-map NAME]` of the process.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Dampening {
+    /// What every external route gets (and what a route map's route gets when the map sets none).
+    pub params: DampParams,
+    /// `route-map NAME`: only the routes it permits are dampened, with its `set dampening` values.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub route_map: Option<String>,
+    /// The values were typed (`bgp dampening 15 750 2000 60`), so the running configuration writes them.
+    #[serde(default)]
+    pub explicit: bool,
+}
+
 /// One `neighbor A.B.C.D …` peer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Neighbor {
@@ -324,6 +417,9 @@ pub struct Bgp {
     /// `timers bgp KEEPALIVE HOLD`: the timers of every neighbour that has none of its own.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timers: Option<(u16, u16)>,
+    /// `bgp dampening`: the penalty a flapping external route collects and when it is used again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dampening: Option<Dampening>,
     /// `bgp default local-preference N` (100 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub default_local_pref: Option<u32>,
@@ -547,6 +643,10 @@ impl Bgp {
         self.aggregates.truncate(MAX_AGGREGATES);
         self.maximum_paths = self.maximum_paths.map(|m| m.clamp(1, MAX_MULTIPATH)).filter(|m| *m > 1);
         self.maximum_paths_ibgp = self.maximum_paths_ibgp.map(|m| m.clamp(1, MAX_MULTIPATH)).filter(|m| *m > 1);
+        if let Some(dm) = &mut self.dampening {
+            dm.params = dm.params.clamped();
+            dm.route_map = dm.route_map.take().map(|m| crate::policy::clean_name(&m)).filter(|m| !m.is_empty());
+        }
         self.confed_id = self.confed_id.filter(|a| *a >= 1);
         let own = self.asn;
         self.confed_peers.retain(|a| *a >= 1 && *a != own);
@@ -650,6 +750,30 @@ mod tests {
         assert_eq!(serde_json::from_str::<Bgp>(&json).unwrap(), b);
         let plain = serde_json::to_string(&Bgp::new(1)).unwrap();
         assert!(!plain.contains("cluster_id") && !plain.contains("confed") && !plain.contains("maximum_paths_ibgp"), "{plain}");
+    }
+
+    #[test]
+    fn damping_values_are_checked_and_decay_by_half_lives() {
+        let d = DampParams::default();
+        assert_eq!(d.check(), Ok(d));
+        assert!(DampParams { half_life: 0, ..d }.check().is_err());
+        assert!(DampParams { half_life: 46, ..d }.check().is_err());
+        assert!(DampParams { suppress: 750, ..d }.check().is_err(), "suppress must be above reuse");
+        assert!(DampParams { max_suppress: 0, ..d }.check().is_err());
+        let wild = DampParams { half_life: 900, reuse: 0, suppress: 0, max_suppress: 0 }.clamped();
+        assert_eq!(wild.check(), Ok(wild));
+        // One half-life halves the penalty; four of them (the default maximum) take the limit to the reuse limit.
+        assert_eq!(d.decayed(3_000, 15 * 60_000_000), 1_500);
+        assert_eq!(d.decayed(3_000, 0), 3_000);
+        assert_eq!(d.max_penalty(), 12_000);
+        let wait = d.time_to_reuse(3_000);
+        assert!((30 * 60_000_000..30 * 60_000_000 + 10).contains(&wait), "{wait}");
+        assert!(d.decayed(3_000, wait) <= u32::from(d.reuse));
+        assert_eq!(d.time_to_reuse(700), 0);
+        let mut b = Bgp::new(1);
+        b.dampening = Some(Dampening { params: wild, route_map: Some(String::new()), explicit: true });
+        b.sanitize();
+        assert_eq!(b.dampening.map(|x| x.route_map), Some(None));
     }
 
     fn grouped() -> Bgp {
