@@ -125,13 +125,13 @@ What it doesn't do yet is listed, ranked, in [`docs/gaps.md`](docs/gaps.md).
 
 ## The CCNA lab book
 
-[`docs/labs/`](docs/labs/README.md) holds forty-eight hands-on labs written for NetLabCraft over the
-topics of the three CCNA courses (four for the first, seventeen for the second and twenty-six for
-the third, the last eleven of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas, route tags and BGP peer groups, BGP passwords, Dial-up) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Eleven of them are troubleshooting labs where you find and
-fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security), and two
-teach you to read the OSPF database and spanning-tree views. Each lab lists its topology, addressing, every command to
+[`docs/labs/`](docs/labs/README.md) holds sixty hands-on labs written for NetLabCraft over the
+topics of the three CCNA courses (four for the first, twenty-four for the second and thirty-one for
+the third, the last eleven of them (BGP, route filtering, redistribution, communities and timers, route reflectors, PPPoE, PPPoE with routers, OSPF stub, NSSA and virtual-link areas, route tags and BGP peer groups, BGP passwords, Dial-up) going a step past the course; one more, on wireless security, follows the first two), plus one on mobile data. Nineteen of them are troubleshooting labs where you find and
+fix deliberate faults (VLANs and trunks, routing, OSPF, ACLs, DHCP, NAT, spanning tree, EtherChannel, port security, site-to-site and remote-access VPNs, wireless clients, IP phones, IPv6, HSRP, DHCP snooping, ACL order), and six
+teach you to read output: the OSPF database and spanning-tree views, and what `debug` prints for ICMP, ARP, packets, RIP, EIGRP, spanning tree and NAT. Each lab lists its topology, addressing, every command to
 type and what to check. Every lab is also a test: the suite runs each one end to end as
-written, and sixteen of them through the MCP server, so a lab that passes there works when typed
+written, and nineteen of them through the MCP server, so a lab that passes there works when typed
 by hand.
 
 ## Quick start
