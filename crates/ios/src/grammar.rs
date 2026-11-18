@@ -468,6 +468,8 @@ pub enum Id {
     NoAreaAuth,
     OspfRedistribute,
     NoOspfRedistribute,
+    OspfTimersThrottleSpf,
+    NoOspfTimersThrottleSpf,
     RipRedistribute,
     NoRipRedistribute,
     EigrpRedistribute,
@@ -1673,6 +1675,20 @@ pub static SPECS: &[Spec] = &[
         "Remove a message-digest key"
     ),
     spec!(
+        OspfTimersThrottleSpf,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("timers"), K("throttle"), K("spf"), Arg("<0-600000>"), Arg("<0-600000>"), Arg("<0-600000>")],
+        "Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to"
+    ),
+    spec!(
+        NoOspfTimersThrottleSpf,
+        Modes::OSPF,
+        Modes::BOTH,
+        [K("no"), K("timers"), K("throttle"), K("spf")],
+        "The default SPF delays again (50, 200 and 5000 ms)"
+    ),
+    spec!(
         OspfRedistribute,
         Modes::OSPF,
         Modes::BOTH,
@@ -2262,14 +2278,14 @@ pub static SPECS: &[Spec] = &[
         DebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
-        "Report OSPF: hellos heard, adjacency states, or events"
+        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
+        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello")],
+        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
         "Stop one kind of OSPF report"
     ),
     spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),

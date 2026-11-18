@@ -26,6 +26,7 @@ mod nat_verbose;
 mod ospf_areas;
 mod ospf_database;
 mod ospf_debug;
+mod ospf_lsdb_copies;
 mod pki;
 mod policy;
 mod protocols_summary;

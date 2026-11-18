@@ -138,6 +138,24 @@ pub struct Stamp {
     /// Whether it was in the database the time before (while the history is being brought up to date,
     /// `present` is the new answer).
     present_before: bool,
+    /// What the LSA said when it was last in the database (a withdrawn LSA is flushed from
+    /// this).
+    body: Option<Lsa>,
+    /// When it left the database, in simulated microseconds.
+    gone: Option<u64>,
+}
+
+/// What identifies an LSA in the database: its type, area, link-state ID and advertising router.
+pub type LsaKey = (LsaKind, Option<u32>, Ipv4Addr, Ipv4Addr);
+
+/// What a change of the lab did to an LSA.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StampEvent {
+    /// The advertising router originated it (again), with this sequence number; `first` for the
+    /// first time.
+    Originated { key: LsaKey, seq: u32, first: bool },
+    /// The advertising router withdrew it: it is flushed from the other routers' databases.
+    Withdrawn { key: LsaKey },
 }
 
 impl Stamp {
@@ -154,7 +172,8 @@ pub type Stamps = BTreeMap<(LsaKind, Option<u32>, Ipv4Addr, Ipv4Addr), Stamp>;
 /// Brings the history up to date with the LSAs in the lab now, at simulated time `now`: a new
 /// LSA starts at 0x80000001, one whose content changed is originated again (the number goes up
 /// and the age restarts), one that left is remembered as gone.
-pub fn restamp(stamps: &mut Stamps, now: u64, lsas: &[Lsa]) {
+pub fn restamp(stamps: &mut Stamps, now: u64, lsas: &[Lsa]) -> Vec<StampEvent> {
+    let mut events = Vec::new();
     for s in stamps.values_mut() {
         s.present = false;
     }
@@ -170,18 +189,28 @@ pub fn restamp(stamps: &mut Stamps, now: u64, lsas: &[Lsa]) {
                 s.born = now;
                 s.digest = digest;
                 s.present = true;
+                s.body = Some(l.clone());
+                s.gone = None;
+                events.push(StampEvent::Originated { key: l.key(), seq: s.seq, first: false });
             }
             None => {
-                stamps.insert(l.key(), Stamp { seq: INITIAL_SEQ, born: now, digest, present: true, present_before: false });
+                let stamp = Stamp { seq: INITIAL_SEQ, born: now, digest, present: true, present_before: false, body: Some(l.clone()), gone: None };
+                stamps.insert(l.key(), stamp);
+                events.push(StampEvent::Originated { key: l.key(), seq: INITIAL_SEQ, first: true });
             }
         }
     }
-    for s in stamps.values_mut() {
+    for (k, s) in stamps.iter_mut() {
+        if s.present_before && !s.present {
+            s.gone = Some(now);
+            events.push(StampEvent::Withdrawn { key: *k });
+        }
         s.present_before = s.present;
     }
     if stamps.len() > MAX_STAMPS {
         stamps.retain(|_, s| s.present);
     }
+    events
 }
 
 /// The sequence number the router-LSA of router `rid` has in `area` as of `now`, for the database
@@ -462,30 +491,190 @@ pub(crate) fn keep_elections(old: &OspfState, new: &mut OspfState) {
     }
 }
 
+/// Simulated microseconds one hop of flooding takes: a new instance of an LSA reaches a router
+/// this long after its originator, per router on the way (the LSU, the acknowledgement and the
+/// neighbour's own flooding).
+pub const FLOOD_HOP_US: u64 = 10_000;
+/// How long a withdrawn LSA stays in the other routers' databases at MaxAge before every router has
+/// acknowledged the flush and removed it.
+pub const FLUSH_US: u64 = 2_000_000;
+
+/// How many adjacencies away each router is from `me`, counting only the adjacencies LSAs of
+/// `area` travel over (every one for an AS-external LSA).
+fn flood_distances(st: &OspfState, me: DeviceId, area: Option<u32>) -> BTreeMap<DeviceId, u32> {
+    let mut dist = BTreeMap::from([(me, 0u32)]);
+    let mut todo = std::collections::VecDeque::from([me]);
+    while let Some(d) = todo.pop_front() {
+        let here = dist.get(&d).copied().unwrap_or(0);
+        for n in st.neighbors.get(&d).into_iter().flatten() {
+            let in_area = area.is_none_or(|a| st.segments.get(&(d, n.iface.clone())).is_some_and(|s| s.area == a));
+            if in_area && !dist.contains_key(&n.device) {
+                dist.insert(n.device, here.saturating_add(1));
+                todo.push_back(n.device);
+            }
+        }
+    }
+    dist
+}
+
+/// Turns the originators' LSAs into the copies router `me` holds: a copy that came over `h`
+/// adjacencies is `h` seconds older (every hop adds the transmit delay, RFC 2328 §13.3), the
+/// router still holds the previous instance of an LSA that was originated again until the new
+/// one has been flooded to it, and an LSA that was withdrawn is held at MaxAge for a moment
+/// before every router removes it (the flush, RFC 2328 §14.1).
+fn copy_for(st: &OspfState, stamps: &Stamps, now: u64, me: DeviceId, lsas: &mut Vec<Lsa>) {
+    let by_rid: BTreeMap<Ipv4Addr, DeviceId> = st.router_ids.iter().map(|(d, r)| (*r, *d)).collect();
+    let mut dists: BTreeMap<Option<u32>, BTreeMap<DeviceId, u32>> = BTreeMap::new();
+    for l in lsas.iter_mut() {
+        let Some(adv) = by_rid.get(&l.adv).copied().filter(|a| *a != me) else { continue };
+        let d = dists.entry(l.area).or_insert_with(|| flood_distances(st, me, l.area));
+        let Some(h) = d.get(&adv).copied() else { continue };
+        l.age = l.age.saturating_add(u16::try_from(h).unwrap_or(u16::MAX)).min(MAX_AGE_SECS - 1);
+        let born = stamps.get(&l.key()).map_or(0, |s| s.born);
+        if l.seq > INITIAL_SEQ && now < born.saturating_add(u64::from(h) * FLOOD_HOP_US) {
+            l.seq -= 1;
+        }
+    }
+    let my_areas: BTreeSet<u32> = st.segments.iter().filter(|((d, _), _)| *d == me).map(|(_, s)| s.area).collect();
+    let domain = flooding_domain(st, me);
+    for (key, s) in stamps.iter().filter(|(_, s)| !s.present) {
+        let (Some(gone), Some(body)) = (s.gone, &s.body) else { continue };
+        let Some(adv) = by_rid.get(&key.3).copied().filter(|a| *a != me && domain.contains(a)) else { continue };
+        if key.1.is_some_and(|a| !my_areas.contains(&a)) || lsas.iter().any(|l| l.key() == *key) {
+            continue;
+        }
+        let d = dists.entry(key.1).or_insert_with(|| flood_distances(st, me, key.1));
+        let Some(h) = d.get(&adv).copied() else { continue };
+        let reached = gone.saturating_add(u64::from(h) * FLOOD_HOP_US);
+        if now >= reached && now < gone.saturating_add(FLUSH_US) {
+            let mut flushed = body.clone();
+            flushed.seq = s.seq_at(gone);
+            flushed.age = MAX_AGE_SECS;
+            lsas.push(flushed);
+        }
+    }
+    lsas.sort();
+}
+
+fn router_digest(lsas: &[Lsa]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    let mut each: Vec<(LsaKey, u64)> = lsas.iter().map(|l| (l.key(), l.digest())).collect();
+    each.sort();
+    each.hash(&mut h);
+    h.finish()
+}
+
 impl crate::Sim {
-    /// The LSAs `me` holds, with the sequence number and age each has now.
+    /// The LSAs `me` holds, with the sequence number and age each has now: its own copies, not
+    /// the originators' (see [`copy_for`]).
     pub fn lsdb(&mut self, t: &Topology, me: DeviceId) -> Vec<Lsa> {
         let st = self.ospf_state(t);
         let mut lsas = database(t, &st, me);
         apply_stamps(&self.lsa_stamps, self.now, &mut lsas);
+        copy_for(&st, &self.lsa_stamps, self.now, me, &mut lsas);
         lsas
     }
 
     /// Records, for every router, what its database holds now: a new LSA, or one that changed
     /// since the last time, is originated (a new sequence number, age zero) at the current
     /// simulated time. Called each time OSPF's state is recomputed, so each change of the lab is
-    /// one re-origination, however long it is before anyone looks.
+    /// one re-origination, however long it is before anyone looks. A router whose database
+    /// changed runs SPF (counted, and throttled by `timers throttle spf`), and the originations
+    /// and floods are reported to the routers that have `debug ip ospf lsa-generation` or
+    /// `flood` on.
     pub(crate) fn ospf_restamp(&mut self, t: &Topology) {
         let Some(st) = self.ospf.take() else { return };
         let mut all: BTreeMap<_, Lsa> = BTreeMap::new();
+        let mut digests: BTreeMap<DeviceId, u64> = BTreeMap::new();
+        let mut holders: BTreeMap<LsaKey, Vec<DeviceId>> = BTreeMap::new();
         for d in st.router_ids.keys() {
-            for l in database(t, &st, *d) {
+            let db = database(t, &st, *d);
+            digests.insert(*d, router_digest(&db));
+            for l in db {
+                holders.entry(l.key()).or_default().push(*d);
                 all.entry(l.key()).or_insert(l);
             }
         }
         let list: Vec<Lsa> = all.into_values().collect();
-        restamp(&mut self.lsa_stamps, self.now, &list);
+        let events = restamp(&mut self.lsa_stamps, self.now, &list);
+        self.ospf_report(t, &st, &events, &holders);
+        for (d, digest) in digests {
+            if self.ospf_db_hash.get(&d) != Some(&digest) {
+                self.ospf_db_hash.insert(d, digest);
+                self.spf_scheduled(t, d);
+            }
+        }
         self.ospf = Some(st);
+    }
+
+    /// A router's database changed: it runs SPF. With `timers throttle spf START HOLD MAX` the run
+    /// waits START ms; one that follows another within the hold interval waits that long, and the
+    /// hold interval doubles each time up to MAX (RFC 2328 leaves the pacing to the vendor, so
+    /// this is a model of ours).
+    fn spf_scheduled(&mut self, t: &Topology, d: DeviceId) {
+        let Some(conf) = t.device(d).and_then(|x| x.ospf.as_ref()) else { return };
+        let (start, hold, max) = conf.spf_throttle.unwrap_or((SPF_START_MS, SPF_HOLD_MS, SPF_MAX_MS));
+        let now = self.now;
+        let (events, wait) = {
+            let s = self.st(d);
+            let recent = s.spf_last_us.is_some_and(|last| now.saturating_sub(last) < u64::from(s.spf_hold_ms.max(hold)) * 1_000);
+            let wait = if recent { s.spf_hold_ms.max(hold) } else { start };
+            s.spf_hold_ms = if recent { s.spf_hold_ms.max(hold).saturating_mul(2).min(max.max(hold)) } else { hold };
+            s.spf_runs = s.spf_runs.saturating_add(1);
+            s.spf_last_us = Some(now);
+            (s.debug_ospf_events, wait)
+        };
+        if events {
+            let runs = self.state(d).map_or(0, |s| s.spf_runs);
+            self.log(d, &format!("OSPF event: the database changed, SPF run {runs} scheduled in {wait} ms"));
+        }
+    }
+
+    fn ospf_report(&mut self, t: &Topology, st: &OspfState, events: &[StampEvent], holders: &BTreeMap<LsaKey, Vec<DeviceId>>) {
+        if !self.state.values().any(|s| s.debug_ospf_lsa || s.debug_ospf_flood) {
+            return;
+        }
+        let by_rid: BTreeMap<Ipv4Addr, DeviceId> = st.router_ids.iter().map(|(d, r)| (*r, *d)).collect();
+        for ev in events {
+            let (key, what) = match ev {
+                StampEvent::Originated { key, seq, first } => {
+                    (key, if *first { format!("originated, sequence 0x{seq:08x}") } else { format!("originated again, sequence 0x{seq:08x}") })
+                }
+                StampEvent::Withdrawn { key } => (key, "withdrawn: flushed with the age MaxAge".to_string()),
+            };
+            let title =
+                format!("{} LSA {} advertised by {}{}", kind_name(key.0), key.2, key.3, key.1.map_or(String::new(), |a| format!(" in area {a}")));
+            let Some(origin) = by_rid.get(&key.3).copied() else { continue };
+            if self.state(origin).is_some_and(|s| s.debug_ospf_lsa) {
+                self.log(origin, &format!("OSPF lsa-generation: {title} {what}"));
+            }
+            let reached = holders.get(key).cloned().unwrap_or_default();
+            let recipients: Vec<DeviceId> = st.router_ids.keys().copied().filter(|d| *d != origin).collect();
+            if self.state(origin).is_some_and(|s| s.debug_ospf_flood) {
+                let out = st.neighbors.get(&origin).into_iter().flatten().map(|n| n.iface.clone()).collect::<BTreeSet<_>>().len();
+                self.log(origin, &format!("OSPF flood: {title}: sent in an update out of {out} interface{}", if out == 1 { "" } else { "s" }));
+            }
+            for d in recipients {
+                if !self.state(d).is_some_and(|s| s.debug_ospf_flood) {
+                    continue;
+                }
+                let dist = flood_distances(st, d, key.1).get(&origin).copied();
+                let Some(h) = dist else { continue };
+                let msg = match ev {
+                    StampEvent::Originated { .. } if reached.contains(&d) => {
+                        format!(
+                            "OSPF flood: {title} received, {h} adjacenc{} from its router; installed and acknowledged",
+                            if h == 1 { "y" } else { "ies" }
+                        )
+                    }
+                    StampEvent::Withdrawn { .. } => format!("OSPF flood: {title} received with MaxAge; removed from the database once acknowledged"),
+                    StampEvent::Originated { .. } => continue,
+                };
+                self.log(d, &msg);
+            }
+        }
+        let _ = t;
     }
 
     /// OSPF's state for the lab, keeping the DR elections already made.
@@ -502,7 +691,31 @@ impl crate::Sim {
     pub fn clear_ospf(&mut self) {
         self.ospf = None;
         self.ospf_adjacent.clear();
-        // The process starts over: every router originates its LSAs afresh.
+        // The process starts over: every router originates its LSAs afresh and runs SPF again.
         self.lsa_stamps.clear();
+        self.ospf_db_hash.clear();
+        for s in self.state.values_mut() {
+            s.spf_runs = 0;
+            s.spf_last_us = None;
+            s.spf_hold_ms = 0;
+        }
+    }
+}
+
+/// The SPF delays when `timers throttle spf` is not set: milliseconds before the first run, the
+/// hold between runs and the longest wait.
+pub const SPF_START_MS: u32 = 50;
+pub const SPF_HOLD_MS: u32 = 200;
+pub const SPF_MAX_MS: u32 = 5_000;
+
+/// The name of an LSA type in the debug output.
+fn kind_name(k: LsaKind) -> &'static str {
+    match k {
+        LsaKind::Router => "router",
+        LsaKind::Network => "network",
+        LsaKind::Summary => "summary",
+        LsaKind::AsbrSummary => "ASBR-summary",
+        LsaKind::External => "external",
+        LsaKind::Nssa => "NSSA-external",
     }
 }

@@ -806,6 +806,12 @@ pub enum DebugKind {
     OspfAdj,
     /// `debug ip ospf events`: interface, DR election, SPF and timer events.
     OspfEvents,
+    /// `debug ip ospf lsa-generation`: the LSAs this router originates and flushes.
+    OspfLsa,
+    /// `debug ip ospf flood`: LSAs sent and received in updates.
+    OspfFlood,
+    /// `debug ip ospf packet`: every OSPF packet this router hears.
+    OspfPacket,
     Eigrp,
     /// `debug ip bgp`: the messages a BGP speaker hears and its session changes.
     Bgp,
@@ -815,12 +821,15 @@ pub enum DebugKind {
 }
 
 impl DebugKind {
-    pub const ALL: [DebugKind; 10] = [
+    pub const ALL: [DebugKind; 13] = [
         DebugKind::Icmp,
         DebugKind::Rip,
         DebugKind::OspfHello,
         DebugKind::OspfAdj,
         DebugKind::OspfEvents,
+        DebugKind::OspfLsa,
+        DebugKind::OspfFlood,
+        DebugKind::OspfPacket,
         DebugKind::Eigrp,
         DebugKind::Bgp,
         DebugKind::Packet,
@@ -956,6 +965,15 @@ pub struct DevState {
     pub debug_ospf_hello: bool,
     pub debug_ospf_adj: bool,
     pub debug_ospf_events: bool,
+    /// `debug ip ospf lsa-generation`, `flood` and `packet`.
+    pub debug_ospf_lsa: bool,
+    pub debug_ospf_flood: bool,
+    pub debug_ospf_packet: bool,
+    /// How many times SPF ran here (its database changed), when it last ran (simulated µs) and
+    /// the hold interval now in force (ms; see `timers throttle spf`).
+    pub spf_runs: u32,
+    pub spf_last_us: Option<u64>,
+    pub spf_hold_ms: u32,
     /// `debug eigrp packets`.
     pub debug_eigrp: bool,
     /// `debug ip bgp`.
@@ -1185,6 +1203,8 @@ pub struct Sim {
     ospf: Option<ospf::OspfState>,
     /// The sequence numbers and ages of OSPF's LSAs.
     lsa_stamps: ospf_lsdb::Stamps,
+    /// What each router's database held when SPF last ran for it.
+    ospf_db_hash: BTreeMap<DeviceId, u64>,
     ospf6_for: u64,
     ospf6: Option<ospf6::Ospf6State>,
     eigrp6_for: u64,
@@ -1381,6 +1401,9 @@ impl Sim {
             DebugKind::OspfHello => st.debug_ospf_hello = on,
             DebugKind::OspfAdj => st.debug_ospf_adj = on,
             DebugKind::OspfEvents => st.debug_ospf_events = on,
+            DebugKind::OspfLsa => st.debug_ospf_lsa = on,
+            DebugKind::OspfFlood => st.debug_ospf_flood = on,
+            DebugKind::OspfPacket => st.debug_ospf_packet = on,
             DebugKind::Eigrp => st.debug_eigrp = on,
             DebugKind::Bgp => st.debug_bgp = on,
             DebugKind::Packet => st.debug_packet = on,
@@ -1398,6 +1421,9 @@ impl Sim {
             (s.debug_ospf_hello, "OSPF hellos"),
             (s.debug_ospf_adj, "OSPF adjacencies"),
             (s.debug_ospf_events, "OSPF events"),
+            (s.debug_ospf_lsa, "OSPF LSA generation"),
+            (s.debug_ospf_flood, "OSPF flooding"),
+            (s.debug_ospf_packet, "OSPF packets"),
             (s.debug_eigrp, "EIGRP"),
             (s.debug_bgp, "BGP"),
             (s.debug_packet, "IP packets"),
@@ -2954,6 +2980,30 @@ impl Sim {
                 .state
                 .get(&d.id)
                 .map_or((false, false, false, false), |s| (s.debug_rip, s.debug_ospf_hello, s.debug_ospf_adj, s.debug_ospf_events));
+            if ip.protocol == netlabcraft_wire::control::PROTO_OSPF && d.ospf.is_some() && self.state.get(&d.id).is_some_and(|s| s.debug_ospf_packet)
+            {
+                let p = &ip.payload;
+                let kind = match p.get(1) {
+                    Some(1) => "hello",
+                    Some(2) => "database description",
+                    Some(3) => "link-state request",
+                    Some(4) => "link-state update",
+                    Some(5) => "link-state acknowledgement",
+                    _ => "packet of an unknown type",
+                };
+                let word = |at: usize| p.get(at..at + 4).and_then(|b| <[u8; 4]>::try_from(b).ok());
+                let rid = word(4).map_or("?".to_string(), |b| Ipv4Addr::from(b).to_string());
+                let area = word(8).map_or(0, u32::from_be_bytes);
+                let auth = p.get(14..16).and_then(|b| <[u8; 2]>::try_from(b).ok()).map_or(0, u16::from_be_bytes);
+                let msg = format!(
+                    "OSPF packet: {kind} from {} to {} on {}, {} bytes, router ID {rid}, area {area}, authentication type {auth}",
+                    ip.src,
+                    ip.dst,
+                    ifc.name,
+                    p.len()
+                );
+                self.log(d.id, &msg);
+            }
             if (debug.1 || debug.2 || debug.3)
                 && ip.protocol == netlabcraft_wire::control::PROTO_OSPF
                 && d.ospf.is_some()
