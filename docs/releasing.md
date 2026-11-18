@@ -1,6 +1,6 @@
 # Releasing NetLabCraft
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (eighth release, 0.8.0) · earlier: minor (a workflow that regenerates the contributors file in CI) · earlier: minor (no reference to a repository that is not public) · earlier: minor (consistency pass: revision rows in date order) · also merged with minor (seventh release, 0.7.0) · earlier: minor (sixth release, 0.6.0) · earlier: minor (fifth release, 0.5.0) · earlier: minor (fourth release, 0.4.0) · earlier: minor (a FreeBSD package) · earlier: minor (third release, 0.3.0) · earlier: major (the release pipeline exists and ran end to end; first release)
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the review line names only the latest change)
 
 The recipe follows the release playbook the Crafting Apps share: a
 release is whatever is on the `release` branch. Pushing to it makes `.github/workflows/release.yml`
@@ -65,6 +65,7 @@ distributions.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Final consistency pass: the review line names only the latest change; the revision rows are in date order, newest first. |
 | 2026-11-17 | minor | Eighth release, 0.8.0, cut with the flow above, with the contributors file refreshed by the `Contributors` workflow. |
 | 2026-11-17 | minor | The `Contributors` workflow regenerates contributors/contributors.json in CI for the release step; it had not been refreshed since 0.2.0. |
 | 2026-11-17 | minor | The recipe no longer points at a playbook in a repository that is not public. |

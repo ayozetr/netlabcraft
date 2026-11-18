@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-17 · **Last updated:** 2026-11-17 · **Change:** minor (multicast routing with PIM, `debug ip pim`, lab 87) · also merged with minor (a sub-mode can share its parent's command bit) · also merged with minor (stored-only commands that get a real effect; VRF-aware interface lists) · also merged with minor (a model listed in more than one device-box group) · also merged with minor (Preferences: Administrative, Show/Hide, Font, Miscellaneous, Answer Tree, Custom Interfaces, Publishers and Image Cleanup tabs) · also merged with minor (a request path cannot hold a space; a raw string ends at `"#`) · also merged with minor (a file handed to the system's opener is not a way to print or keep it) · earlier: minor (a galley that carries its own colour ignores the painter's fallback) · earlier: minor (an interface derived from a session record cannot depend on state the device does not hold) · earlier: minor (a wait for frames must look at what already arrived) · earlier: minor (in BGP a confederation session is external for the session and internal for the path) · earlier: minor (a lost path does not end a BGP session at once) · earlier: minor (a rule that acts at a switch port must cover the timed control frames too) · earlier: minor (redistribution is part of every protocol's computation) · earlier: minor (policy edits must reach the routing fingerprint) · earlier: minor (BGP needs simulated time) · earlier: minor (a derived-state pitfall (M9.10)) · also merged with M9.9 (RSA, X.509, certificates in TLS and SSH) · earlier: minor (four pitfalls from M9.7: counters keyed by position, a stale checksum, a database that lists unreachable routers, a `Rest` that needs a word) · also merged with M9.5, M9.6, M9.8 and M9.11 · earlier: minor (two test pitfalls from M9.4) · also merged with M9.2 and M9.3 (routing timers; real DES, 3DES, AH and elliptic-curve Diffie-Hellman) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the `Modes` width and conflicting pull requests)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -62,10 +62,15 @@ new mistake worth not repeating, add it in the same change.
   `try_run` takes one line: a `\n` inside it is not a second command, it is a parse error.
 
 - **A sub-mode that shares its parent's command bit accepts every command of the parent.** `address-family ipv6` under
-  `router bgp` is `Mode::BgpAf6` with the same `Modes::BGP` bit (every bit of `Modes` was taken), so the console takes
+  `router bgp` is `Mode::BgpAf6` with the same `Modes::BGP` bit (every bit of the `u64` `Modes` was taken then; it is a `u128`
+  now, see the next entry), so the console takes
   `bgp router-id` there as it would in the process, and a command that differs per family (`network`, `neighbor … route-map`,
   `activate`) has to read `c.cli.mode` and act on the family's settings. The `exit` list sends the sub-mode back to its
   parent, and the hostile-arguments fuzz has a setup line that enters it.
+- **`Modes` ran out of bits once, and two modes shared the last one.** It was a `u64` with every bit taken, so the
+  tracked-object and IP SLA modes shared bit 63 (`Modes::TRACK`, as `Object` and `ObjectGroup` share `OBJECT`): a command of
+  one was offered in the other and its handler refused it. It is a `u128` now (bits 64 and up are free): give a new console
+  mode a bit of its own instead of sharing one, and widen the type again before it fills up.
 
 ## Simulator
 
@@ -202,3 +207,12 @@ new mistake worth not repeating, add it in the same change.
   request. Check `git branch --show-current` before every commit and push by name.
 - **The secret scan only protects clones that enable it.** Run `git config core.hooksPath .githooks` once per clone.
 - **Deleting a branch closes its pull request.** Check open PRs before deleting a remote branch.
+- **A pull request that conflicts with `main` gets no CI at all.** GitHub runs the checks on the merge result, so a push to
+  a conflicting branch starts nothing and the check list stays empty or stale. Merge `origin/main` first, and put new
+  lines (an `Id` arm, a `Mode` variant) where other work is not adding its own: the end of a list is where everyone adds.
+
+## Revision history
+
+| Date | Change | Summary |
+|---|---|---|
+| 2026-11-18 | minor | Final consistency pass: the pitfall about the width of `Modes` (it is a `u128` now) and the one about pull requests that conflict with `main` and get no CI; the review line names only the latest change. |

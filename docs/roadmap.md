@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (lab count measured again: 77) · also merged with minor (consistency pass: the beta gate counts the 48 numbered labs and 16 over MCP, the current focus lists gaps 1 to 16, the packaging hold wording dropped) · earlier: minor (BGP session passwords, a route map on `default-originate` and lab 47) · also merged with minor (OSPF stub, NSSA and virtual-link areas, LSA ages and lab 45) · also merged with minor (route tags and BGP peer groups, lab 46) · also merged with minor (PPPoE on routers and lab 43) · also merged with minor (wireless security and lab 44) · earlier: minor (real PPPoE frames and lab 41) · earlier: minor (BGP route reflectors, confederations and lab 42) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (port mirroring and lab 38) · earlier: minor (redistribution, distribute lists and lab 39) · earlier: minor (prefix lists, route maps and lab 37) · earlier: minor (BGP and lab 36) · earlier: minor (labs 32 to 35) · earlier: minor (focus paragraph updated for release 0.2.0; M9.7: four more labs, console depth second round) · earlier: minor (M9.4: seven troubleshooting labs) · earlier: minor (M7 first release done: packages and the release workflow), major (alpha gate 1 met through the lab book; every beta gate met; milestone states and estimates after the security, instructor, Simulation-mode, wireless, end-device, automation and routing rounds) · **Target:** Cisco Packet Tracer 9.0
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the lab book holds 85 numbered labs) · **Target:** Cisco Packet Tracer 9.0
 
 Milestones, the current focus and what comes next. The summary is in
 [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [gaps.md](gaps.md).
@@ -53,7 +53,7 @@ the reference app:
 
 1. A CCNA-style lab book (VLANs, inter-VLAN routing, DHCP, OSPF, ACLs, NAT, IPv6, WAN, switch
    security, HSRP) runs end to end by hand and through MCP (gaps table, item 1): **met**.
-   [docs/labs/](labs/README.md) holds 77 numbered original labs (counted as the numbered files of the directory; the course
+   [docs/labs/](labs/README.md) holds 85 numbered original labs (counted as the numbered files of the directory; the course
    column of its table has the split; 19 of them run over MCP) and one unnumbered cellular lab; each one's blocks run as
    written in `crates/engine/tests/lab_book.rs`, and 19 of them over `netlabcraft-cli mcp` in `apps/netlabcraft-cli/tests/mcp_lab_book.rs`. The fixes they
    turned up landed with regression tests (M8.1).
@@ -68,11 +68,12 @@ the reference app:
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Final consistency pass: gate 1 counts 85 numbered labs (it said 77); the revision history is in date order; the review line names only the latest change. |
+| 2026-11-18 | minor | Labs 61 to 72 join the lab book: the beta gate counts 63 numbered labs (4, 24 and 32 by course, and three follow-ups) and 19 over MCP. The console has a `debug` framework. |
 | 2026-11-17 | minor | Consistency pass: the beta gate counts the 48 numbered labs (4, 17 and 26 by course) and 16 over MCP, the current focus lists gaps 1 to 16, and the packaging hold wording is dropped (packages are built). |
 | 2026-11-16 | minor | BGP session passwords and a route map on `default-originate`, and lab 47 join the lab book (47 labs). |
 | 2026-11-16 | minor | OSPF NSSA and virtual-link areas, LSA sequence numbers and ages, and lab 45 (OSPF stub, NSSA and virtual-link areas) join the lab book (45 labs, 16 over MCP); the gaps table's item 1 narrowed. |
 | 2026-11-16 | minor | Route tags and BGP peer groups and lab 46 join the lab book (46 labs). |
-| 2026-11-18 | minor | Labs 61 to 72 join the lab book: the beta gate counts 63 numbered labs (4, 24 and 32 by course, and three follow-ups) and 19 over MCP. The console has a `debug` framework. |
 | 2026-11-16 | minor | PPPoE on routers (a concentrator and a client) and lab 43 (PPPoE with routers) join the lab book (43 labs, 16 over MCP); the gaps table's item 8 narrowed again. |
 | 2026-11-16 | minor | Wireless security settings of access points and home routers (WEP, WPA, WPA2 and enterprise, AES or TKIP, coverage range) and lab 44 join the lab book (43 labs); WPA3 is not in the reference app, not planned. |
 | 2026-11-16 | minor | Real PPPoE frames and lab 41 (PPPoE client and access concentrator) join the lab book (42 labs, 16 over MCP); the gaps table's item 8 narrowed. |

@@ -1,6 +1,6 @@
 # Board languages: BoardScript, Python and JavaScript
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (created: the Python and JavaScript subsets boards run) · **Target:** the programmable boards of the reference app (Python on the single-board computer, JavaScript on the microcontroller)
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the review line names only the latest change) · **Target:** the programmable boards of the reference app (Python on the single-board computer, JavaScript on the microcontroller)
 
 A programmable board runs one program, written in one of three languages. The language is part of the
 board: it is chosen on the **Programming** tab (the Language list, shown when the board runs more than one),
@@ -130,4 +130,5 @@ hostile programs). Labs: [73](labs/73-python-on-a-board.md) and [74](labs/74-jav
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Final consistency pass: the review line names only the latest change; the revision rows are in date order, newest first. |
 | 2026-11-18 | minor | Created: Python for the single-board computer and JavaScript for the microcontroller board, as bounded subsets on one machine, with the board functions, the language list on the Programming tab and `board.language` in the lab file. |

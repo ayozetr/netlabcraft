@@ -1,6 +1,6 @@
 # Translating NetLabCraft
 
-> **Last reviewed:** 2026-11-14 · **Last updated:** 2026-11-14 · **Change:** major (created: catalogs move to `locales/<locale>/netlabcraft.tsv`, the languages on offer come from them) · **Target:** the storytold `craft-i18n` catalog format
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the review line names only the latest change) · **Target:** the storytold `craft-i18n` catalog format
 
 NetLabCraft's interface is translated the way the storytold Crafting Apps' is
 ([`storytold/craft-i18n`](https://github.com/storytold/craft-i18n)): plain-text catalogs keyed by

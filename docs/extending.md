@@ -1,6 +1,6 @@
 # Extending NetLabCraft
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (physical workspace: Grid Preferences and a grid per level) · also merged with minor (the debug framework: how a protocol adds a `debug` topic) · earlier: minor (device windows: every port of the Physical tab drawn as its real connector) · earlier: minor (the closet sheets at three zooms) · earlier: minor (how to render the contact sheets through CI) · earlier: minor (first version)
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the review line names only the latest change)
 
 Where each kind of addition goes. Layers are enforced by `cargo xtask layers`; put code at the lowest layer that can
 own it.
