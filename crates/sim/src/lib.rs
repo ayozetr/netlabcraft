@@ -37,6 +37,8 @@ mod mtu;
 pub mod bgp;
 pub mod channel;
 pub mod control;
+pub mod debug;
+pub use debug::DebugKind;
 pub mod dhcpsrv;
 pub mod eigrp;
 pub mod eigrp6;
@@ -821,40 +823,6 @@ struct Pending {
     since: u64,
 }
 
-/// What a `debug` command reports.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DebugKind {
-    Icmp,
-    Rip,
-    /// `debug ip ospf hello`: the hellos this router hears.
-    OspfHello,
-    /// `debug ip ospf adj`: each neighbour's walk through the adjacency states.
-    OspfAdj,
-    /// `debug ip ospf events`: interface, DR election, SPF and timer events.
-    OspfEvents,
-    Eigrp,
-    /// `debug ip bgp`: the messages a BGP speaker hears and its session changes.
-    Bgp,
-    Packet,
-    Nat,
-    Dhcp,
-}
-
-impl DebugKind {
-    pub const ALL: [DebugKind; 10] = [
-        DebugKind::Icmp,
-        DebugKind::Rip,
-        DebugKind::OspfHello,
-        DebugKind::OspfAdj,
-        DebugKind::OspfEvents,
-        DebugKind::Eigrp,
-        DebugKind::Bgp,
-        DebugKind::Packet,
-        DebugKind::Nat,
-        DebugKind::Dhcp,
-    ];
-}
-
 /// What came back for one of our echo requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IcmpKind {
@@ -974,29 +942,17 @@ pub struct DevState {
     pub log: VecDeque<(u64, String)>,
     /// Messages waiting to be printed on the device's console.
     console: Vec<String>,
-    /// `debug ip icmp`.
-    pub debug_icmp: bool,
-    /// `debug ip rip`.
-    pub debug_rip: bool,
-    /// `debug ip ospf adj|events|hello`.
-    pub debug_ospf_hello: bool,
-    pub debug_ospf_adj: bool,
-    pub debug_ospf_events: bool,
+    /// The `debug` flags that are on (see [`debug`]).
+    pub debug: std::collections::BTreeSet<DebugKind>,
+    /// `debug ip packet ACL`: only packets this access list permits are reported.
+    pub debug_packet_acl: Option<String>,
+    /// Messages waiting for the terminal-monitor sessions of this device.
+    monitor: Vec<String>,
     /// The highest message-digest sequence number heard from each sender, by (port, sender
     /// address, key id): a packet below it is a replay.
     ospf_seq: BTreeMap<(String, Ipv4Addr, u8), u32>,
     /// OSPF packets thrown away as replays.
     pub ospf_replays: u32,
-    /// `debug eigrp packets`.
-    pub debug_eigrp: bool,
-    /// `debug ip bgp`.
-    pub debug_bgp: bool,
-    /// `debug ip packet`.
-    pub debug_packet: bool,
-    /// `debug ip nat`.
-    pub debug_nat: bool,
-    /// `debug ip dhcp server events`.
-    pub debug_dhcp: bool,
     /// Log lines waiting to go to syslog servers.
     syslog_out: Vec<String>,
     /// Syslog servers: messages received (µs, sender, text).
@@ -1345,9 +1301,15 @@ impl Sim {
     /// Each copy (buffer, console, syslog servers) takes the message only when its severity is
     /// within that copy's `logging` level.
     pub fn log(&mut self, d: DeviceId, msg: &str) {
+        self.log_at(d, msg, logcfg::severity(msg));
+    }
+
+    /// [`Sim::log`] with the severity given (`debug` output is always 7). Each copy (buffer,
+    /// console, monitor sessions, syslog servers) takes the message only when `sev` is within
+    /// that copy's `logging` level, and each queue holds at most [`MAX_LOG`] messages.
+    pub(crate) fn log_at(&mut self, d: DeviceId, msg: &str, sev: u8) {
         let (unix, _) = self.clock(d);
         let cfg = self.log_cfg.get(&d).copied().unwrap_or_default();
-        let sev = logcfg::severity(msg);
         let line = format!("{} {msg}", logcfg::stamp(unix, self.now, if sev == 7 { cfg.ts_debug } else { cfg.ts_log }));
         let now = self.now;
         let st = self.st(d);
@@ -1360,9 +1322,20 @@ impl Sim {
         if sev <= cfg.trap && st.syslog_out.len() < MAX_LOG {
             st.syslog_out.push(msg.to_string());
         }
+        if sev <= cfg.monitor {
+            if st.monitor.len() >= MAX_LOG {
+                st.monitor.remove(0);
+            }
+            st.monitor.push(line.clone());
+        }
         if sev <= cfg.console && st.console.len() < MAX_LOG {
             st.console.push(line);
         }
+    }
+
+    /// Messages for the terminal-monitor sessions of a device since the last call.
+    pub fn take_monitor(&mut self, d: DeviceId) -> Vec<String> {
+        self.state.get_mut(&d).map(|s| std::mem::take(&mut s.monitor)).unwrap_or_default()
     }
 
     /// Messages for a device's console since the last call.
@@ -1372,7 +1345,7 @@ impl Sim {
 
     /// Devices with console messages waiting.
     pub fn console_pending(&self) -> Vec<DeviceId> {
-        self.state.iter().filter(|(_, s)| !s.console.is_empty()).map(|(id, _)| *id).collect()
+        self.state.iter().filter(|(_, s)| !s.console.is_empty() || !s.monitor.is_empty()).map(|(id, _)| *id).collect()
     }
 
     pub fn clear_log(&mut self, d: DeviceId) {
@@ -1402,43 +1375,6 @@ impl Sim {
             return Some(secs);
         }
         None
-    }
-
-    pub fn set_debug(&mut self, d: DeviceId, what: DebugKind, on: bool) {
-        let st = self.st(d);
-        match what {
-            DebugKind::Icmp => st.debug_icmp = on,
-            DebugKind::Rip => st.debug_rip = on,
-            DebugKind::OspfHello => st.debug_ospf_hello = on,
-            DebugKind::OspfAdj => st.debug_ospf_adj = on,
-            DebugKind::OspfEvents => st.debug_ospf_events = on,
-            DebugKind::Eigrp => st.debug_eigrp = on,
-            DebugKind::Bgp => st.debug_bgp = on,
-            DebugKind::Packet => st.debug_packet = on,
-            DebugKind::Nat => st.debug_nat = on,
-            DebugKind::Dhcp => st.debug_dhcp = on,
-        }
-    }
-
-    /// The debugs that are on, by name.
-    pub fn debugs(&self, d: DeviceId) -> Vec<&'static str> {
-        let Some(s) = self.state.get(&d) else { return Vec::new() };
-        [
-            (s.debug_icmp, "ICMP"),
-            (s.debug_rip, "RIP"),
-            (s.debug_ospf_hello, "OSPF hellos"),
-            (s.debug_ospf_adj, "OSPF adjacencies"),
-            (s.debug_ospf_events, "OSPF events"),
-            (s.debug_eigrp, "EIGRP"),
-            (s.debug_bgp, "BGP"),
-            (s.debug_packet, "IP packets"),
-            (s.debug_nat, "NAT"),
-            (s.debug_dhcp, "DHCP server"),
-        ]
-        .into_iter()
-        .filter(|x| x.0)
-        .map(|x| x.1)
-        .collect()
     }
 
     /// Logs link changes on routers and switches since the last look.
@@ -1975,7 +1911,7 @@ impl Sim {
             }
         };
         let out = rewrite(ip, true, entry.inside_global, entry.global_id);
-        if self.state.get(&d.id).is_some_and(|s| s.debug_nat) {
+        if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Nat)) {
             self.log(d.id, &format!("NAT debug: new translation, source {} → {}, to {}", ip.src, entry.inside_global, ip.dst));
         }
         let st = self.st(d.id);
@@ -2981,10 +2917,9 @@ impl Sim {
             if d.kind.is_host() {
                 return Ok(());
             }
-            let debug = self
-                .state
-                .get(&d.id)
-                .map_or((false, false, false, false), |s| (s.debug_rip, s.debug_ospf_hello, s.debug_ospf_adj, s.debug_ospf_events));
+            let debug = self.state.get(&d.id).map_or((false, false, false, false), |s| {
+                (s.debug_on(DebugKind::Rip), s.debug_on(DebugKind::OspfHello), s.debug_on(DebugKind::OspfAdj), s.debug_on(DebugKind::OspfEvents))
+            });
             // Message-digest packets carry a sequence number that never goes back: one below the
             // highest heard from that sender under that key is a replay and is thrown away.
             if ip.protocol == netlabcraft_wire::control::PROTO_OSPF
@@ -3040,7 +2975,7 @@ impl Sim {
             }
             if ip.protocol == netlabcraft_wire::eigrp::PROTO_EIGRP
                 && d.eigrp.is_some()
-                && self.state.get(&d.id).is_some_and(|s| s.debug_eigrp)
+                && self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Eigrp))
                 && let Ok(p) = netlabcraft_wire::eigrp::EigrpPacket::decode(&ip.payload)
             {
                 let msg = match netlabcraft_wire::eigrp::EigrpHello::decode(&ip.payload) {
@@ -3147,7 +3082,7 @@ impl Sim {
             self.bump(d.id, "forwarded");
             return r;
         }
-        let debug = self.state.get(&d.id).is_some_and(|s| s.debug_packet);
+        let debug = self.debug_packet_wanted(d, &ip);
         match self.route_flow(t, d, ip.src, ip.dst) {
             Some((out, nh)) => {
                 if debug {
@@ -3330,7 +3265,7 @@ impl Sim {
         };
         match icmp {
             Icmp::EchoRequest { id, seq, data } => {
-                if self.state.get(&d.id).is_some_and(|s| s.debug_icmp) {
+                if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Icmp)) {
                     self.log(d.id, &format!("ICMP debug: echo request from {} to {} (id {id}, seq {seq})", ip.src, ip.dst));
                 }
                 let src = if ip.dst == Ipv4Addr::BROADCAST || ip.dst == ifc.net.broadcast() { ifc.net.addr } else { ip.dst };
@@ -3346,7 +3281,7 @@ impl Sim {
             }
             Icmp::EchoReply { id, seq, .. } => {
                 note(id, seq, IcmpKind::Reply);
-                if self.state.get(&d.id).is_some_and(|s| s.debug_icmp) {
+                if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Icmp)) {
                     self.log(d.id, &format!("ICMP debug: echo reply from {} (id {id}, seq {seq})", ip.src));
                 }
                 Ok(())
@@ -3611,7 +3546,7 @@ impl Sim {
                 if ok {
                     let now = self.now;
                     self.st(d.id).leases.insert(wanted, Lease { mac: msg.client_mac, pool: pool.name.clone(), since_us: now });
-                    if self.state.get(&d.id).is_some_and(|s| s.debug_dhcp) {
+                    if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Dhcp)) {
                         self.log(d.id, &format!("DHCP debug: {wanted} given to {} from pool {}", msg.client_mac, pool.name));
                     }
                     reply.kind = DhcpKind::Ack;
@@ -3624,7 +3559,7 @@ impl Sim {
             }
             DhcpKind::Release => {
                 let mac = msg.client_mac;
-                if self.state.get(&d.id).is_some_and(|s| s.debug_dhcp) {
+                if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Dhcp)) {
                     self.log(d.id, &format!("DHCP debug: {mac} released its address"));
                 }
                 self.st(d.id).leases.retain(|_, l| l.mac != mac);

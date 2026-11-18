@@ -20,7 +20,7 @@ use netlabcraft_wire::ipfrag::{dont_fragment, frag_needed, fragment, tcp_mss};
 use netlabcraft_wire::tcp::{self, Tcp};
 use netlabcraft_wire::{Icmp, Ipv4, PROTO_ICMP};
 
-use crate::{L3If, Sim, l3_ifaces};
+use crate::{DebugKind, L3If, Sim, l3_ifaces};
 
 impl Sim {
     /// Whether an encoded datagram's destination is one of this device's addresses (or a
@@ -155,7 +155,7 @@ impl Sim {
         let (Some(sp), Some(dp), Some(seq)) = (port(0), port(2), seq) else { return };
         let Some(at) = p.sent.iter().position(|(_, to, s)| *to == dst && s.src_port == sp && s.dst_port == dp && s.seq == seq) else { return };
         let Some((src, dst, seg)) = p.sent.remove(at) else { return };
-        if self.state.get(&d.id).is_some_and(|s| s.debug_packet) {
+        if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Packet)) {
             self.log(d.id, &format!("IP debug: the path MTU to {dst} is {mtu}; a TCP segment goes again in smaller pieces"));
         }
         let piece = usize::from(mtu.saturating_sub(40).max(8));

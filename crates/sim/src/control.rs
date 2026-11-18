@@ -13,7 +13,7 @@ use netlabcraft_wire::control::{self, Bpdu, BridgeId, OspfHello};
 use netlabcraft_wire::ospfdb::{DBD_INIT, DBD_MASTER, DBD_MORE, OspfDb, RouterLink, RouterLsa};
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
-use crate::{Sim, l3_ifaces, port_up};
+use crate::{DebugKind, Sim, l3_ifaces, port_up};
 
 /// Hello time of spanning tree.
 pub const BPDU_EVERY_US: u64 = 2_000_000;
@@ -302,7 +302,8 @@ impl Sim {
         fresh: &[(DeviceId, String, Ipv4Addr)],
         gone: &[(DeviceId, String, Ipv4Addr)],
     ) {
-        let flags = |s: &Self, id: DeviceId| s.state.get(&id).map_or((false, false), |x| (x.debug_ospf_adj, x.debug_ospf_events));
+        let flags =
+            |s: &Self, id: DeviceId| s.state.get(&id).map_or((false, false), |x| (x.debug_on(DebugKind::OspfAdj), x.debug_on(DebugKind::OspfEvents)));
         for (id, iface, nbr) in fresh {
             let (adj, events) = flags(self, *id);
             let Some(d) = t.device(*id) else { continue };
