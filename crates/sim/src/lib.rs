@@ -2687,7 +2687,16 @@ impl Sim {
 
     /// A device's dynamic IPv6 routes (OSPFv3, EIGRP for IPv6, RIPng), as routing-table lines.
     pub fn dynamic_routes6(&mut self, t: &Topology, d: &Device) -> Vec<v6::Route6Entry> {
-        self.dynamic_routes6_without_bgp(t, d)
+        let mut out = self.dynamic_routes6_without_bgp(t, d);
+        out.extend(self.bgp6_routes(t, d).into_iter().map(|r| v6::Route6Entry {
+            code: 'B',
+            net: r.net,
+            iface: Some(r.iface),
+            next_hop: Some(r.via).filter(|v| !v.is_unspecified()),
+            distance: r.distance,
+            tag: 0,
+        }));
+        out
     }
 
     /// [`Sim::dynamic_routes6`] without BGP's routes: what BGP resolves its next hops through.
