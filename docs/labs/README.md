@@ -1,19 +1,19 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (lab 49: OSPF authentication rollover, key chains and OSPFv3 with AH) · also merged with minor (labs 73 and 74: Python and JavaScript on boards) · also merged with minor (lab 48: Dial-up) · also merged with minor (lab 47: BGP session passwords and a conditional default route) · also merged with minor (lab 45: OSPF stub, NSSA and virtual-link areas) · also merged with minor (lab 46: route tags and BGP peer groups) · earlier: minor (lab 43: PPPoE with routers) · also merged with minor (lab 44: secure a wireless network) · earlier: minor (lab 41: PPPoE client and access concentrator) · earlier: minor (lab 42: BGP route reflectors) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
-Fifty-one hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
-from scratch. Labs 1 to 20, 32, 33 and 36 to 49, 73 and 74 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (lab 75: reverse Telnet through an octal card) · also merged with minor (labs 61 to 72: VPN, wireless, voice, IPv6, HSRP, DHCP snooping, ACL order and `debug` output) · also merged with minor (lab 49: OSPF authentication rollover, key chains and OSPFv3 with AH) · also merged with minor (labs 73 and 74: Python and JavaScript on boards) · also merged with minor (lab 48: Dial-up) · also merged with minor (lab 47: BGP session passwords and a conditional default route) · also merged with minor (lab 45: OSPF stub, NSSA and virtual-link areas) · also merged with minor (lab 46: route tags and BGP peer groups) · earlier: minor (lab 43: PPPoE with routers) · also merged with minor (lab 44: secure a wireless network) · earlier: minor (lab 41: PPPoE client and access concentrator) · earlier: minor (lab 42: BGP route reflectors) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+Sixty-three hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
+from scratch. Labs 1 to 20, 32, 33 and 36 to 49, 73 and 74 each build one topic; labs 21 to 29, 34, 35, 61 to 64 and 68 to 71 are troubleshooting labs: they
 build a working network, break it with commands, and walk the symptoms, the `show` commands
 that tell the faults apart, and the repairs; labs 30 and 31 are inspection labs that teach
 reading a protocol's own views (spanning-tree roles and states, the OSPF database), the second
-with a fault found from what is missing in the database. Each lab starts from an empty lab and lists its
+with a fault found from what is missing in the database; labs 65 to 67 and 72 read what `debug` prints (ICMP, ARP and routed packets, RIP and EIGRP, the spanning-tree root, NAT) and find the fault from a line that is there or one that is missing. Each lab starts from an empty lab and lists its
 objectives, the topology with device models and an addressing table, the steps with every
 command to type, and what to check with which command.
 
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it; 16 of the 49). A lab that passes there works when typed by hand.
+agent drives it; 19 of the 63). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -86,8 +86,21 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 47 | [BGP session passwords and a conditional default route](47-bgp-passwords-and-conditional-default.md) | CCNA 3 follow-up | `neighbor … password` (TCP MD5), why a mismatch leaves a session in Active, what the console shows of a password, `service password-encryption`, `neighbor … default-originate`, `default-originate route-map`, a default route that follows a prefix list |
 | 48 | [Dial-up: a modem, the telephone network and an access server](48-dial-up.md) | CCNA 3 follow-up | `cloud.number`, `modem inout` with a `bba-group` and a virtual template, `dialup.connect` and `dialup.disconnect`, a busy line, a missing number, a wrong password, a line that stops answering |
 | 49 | [OSPF authentication: rolling a key over, key chains and OSPFv3 with AH](49-ospf-authentication-rollover-key-chains-ospfv3-ah.md) | CCNA 3 follow-up | `ip ospf message-digest-key` rollover, `key chain` with `send-lifetime` and `accept-lifetime`, `ip ospf authentication key-chain`, `show key chain`, `clock set`, `ospfv3 authentication ipsec spi`, `show ipv6 ospf neighbor` |
+| 61 | [Troubleshooting: a site-to-site IPsec VPN that will not come up](61-troubleshoot-site-to-site-vpn.md) | CCNA 3 | a pre-shared key that differs, transform sets that differ, a crypto ACL that matches nothing, `show crypto isakmp sa` and `ipsec sa`, `clear crypto sa` |
+| 62 | [Troubleshooting: a remote-access VPN client that cannot connect](62-troubleshoot-remote-access-vpn.md) | CCNA 3 | a server missing its transform set or pool, a wrong group, key, user or password, `vpnclient.connect` |
+| 63 | [Troubleshooting: four laptops that will not join the Wi-Fi](63-troubleshoot-wireless-clients.md) | CCNA 2 | a mistyped SSID, WPA against WPA2, TKIP against AES, a laptop out of range, the reason a join is refused |
+| 64 | [Troubleshooting: IP phones that will not register](64-troubleshoot-ip-phones.md) | CCNA 2 | voice VLAN, DHCP option 150, `telephony-service`, `max-ephones`, `ephone-dn`, `show ephone`, a call |
+| 65 | [Reading `debug` output: ICMP, ARP and routed packets](65-debug-icmp-arp-and-packets.md) | CCNA 2 | `debug ip icmp`, `debug ip packet [ACL]`, `debug arp`, a missing return route, a wrong gateway, `undebug all` |
+| 66 | [Reading `debug` output: RIP updates and EIGRP hellos](66-debug-rip-and-eigrp.md) | CCNA 3 | `debug ip rip [events]`, `debug ip routing`, `debug eigrp packets` and `neighbors`, a network not advertised, an AS mismatch |
+| 67 | [Reading `debug` output: the spanning-tree root](67-debug-spanning-tree-root.md) | CCNA 2 | `debug spanning-tree bpdu`, `root` and `events`, a rogue root, root guard, `show spanning-tree inconsistentports` |
+| 68 | [Troubleshooting: IPv6 that does not cross the routers](68-troubleshoot-ipv6.md) | CCNA 2 | `ipv6 unicast-routing`, a static route with a next hop nobody owns, a wrong host gateway, `show ipv6 route` |
+| 69 | [Troubleshooting HSRP with `debug standby`](69-troubleshoot-hsrp.md) | CCNA 2 | a group number mismatch, hellos, a failover, `preempt`, `debug standby` |
+| 70 | [Troubleshooting: DHCP snooping that blocks the real server](70-troubleshoot-dhcp-snooping.md) | CCNA 2 | an untrusted uplink, dropped DHCP messages, `show ip dhcp snooping` and `binding` |
+| 71 | [Troubleshooting: an ACL entry that can never match](71-troubleshoot-acl-order.md) | CCNA 3 | match counters, entry order, `no SEQ`, `resequence`, `debug ip packet ACL` |
+| 72 | [Reading `debug ip nat`: translations that never happen](72-debug-nat.md) | CCNA 3 | `debug ip nat [detailed]`, a wrong NAT ACL, a missing `ip nat outside`, ports and identifiers |
 | 73 | [Python on a single-board computer](73-python-on-a-board.md) | IoT follow-up | the board's language, `analogRead`, `digitalWrite`, `time.sleep` in simulated time, `print`, run-time errors with their line, the step cap |
 | 74 | [JavaScript on a microcontroller board](74-javascript-on-a-microcontroller.md) | IoT follow-up | a `loop` function the board calls again and again, `delay`, `console.log`, template literals, the subset's limits |
+| 75 | [Reverse Telnet through an octal card](75-reverse-telnet-through-an-octal-card.md) | CCNA 3 follow-up | `Card-8A`, the octal cable, `line 1 8`, `transport input telnet`, `modem inout`, `telnet <address> 2001`, `show line`, `show users`, the escape sequence, `clear line`, the console password |
 
 ## Running the scripts
 
@@ -111,6 +124,8 @@ A failing step names its line in the lab's Markdown.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Lab 75 (reverse Telnet through an octal card) joins the book. |
+| 2026-11-18 | minor | Labs 61 to 72 join the book: 63 labs with 49, 73 and 74. Site-to-site and remote-access VPN faults, wireless clients, IP phones, five labs on reading `debug` output, IPv6, HSRP, DHCP snooping and ACL order. |
 | 2026-11-18 | minor | Lab 49 (OSPF authentication: rolling a key over, key chains and OSPFv3 with AH) joins the book: 49 labs. |
 | 2026-11-16 | minor | Lab 48 (Dial-up) joins the book: 48 labs. |
 | 2026-11-16 | minor | Lab 47 (BGP session passwords and a conditional default route) joins the book: 47 labs. |

@@ -797,6 +797,9 @@ pub enum Id {
     LoginAuthentication,
     TransportInput,
     Telnet,
+    TelnetPort,
+    LineAsync,
+    ClearLine,
     Ssh,
     ShowIpSsh,
     IpAddressDhcp,
@@ -1030,6 +1033,8 @@ pub enum Id {
     BgpMaximumPathsIbgp,
     NoBgpMaximumPathsIbgp,
     ShowIpBgpReceived,
+    ShowIpBgpAdvertised,
+    ShowIpBgpNeighborRoutes,
     ShowIpBgpRegexp,
     ShowIpBgpFilterList,
     BgpOption,
@@ -1299,18 +1304,30 @@ pub enum Id {
     CryptoPkiAuthenticate,
     CryptoPkiServer,
     NoCryptoPkiServer,
+    CryptoPkiImportCertificate,
+    CryptoPkiImportCrl,
+    CryptoPkiCrlRequest,
+    CryptoPkiServerRequest,
+    CryptoPkiServerGrantRequest,
+    CryptoPkiServerReject,
+    CryptoPkiServerRevoke,
     PkiEnrollment,
     PkiSubjectName,
     PkiRsakeypair,
     PkiRevocationCheck,
+    PkiFqdn,
+    PkiIpAddress,
     PkiServerIssuer,
     PkiServerGrant,
+    PkiServerNoGrant,
     PkiServerLifetime,
+    PkiServerLifetimeCrl,
     PkiServerShutdown,
     NoPkiServerShutdown,
     ShowCryptoPkiTrustpoints,
     ShowCryptoPkiCertificates,
     ShowCryptoPkiServer,
+    ShowCryptoPkiCrls,
     PowerInline,
     ShowPowerInline,
     VoiceRegGlobal,
@@ -2460,6 +2477,7 @@ pub static SPECS: &[Spec] = &[
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("ssh")], "Report SSH logins to this device"),
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("isakmp")], "Report the IKE exchanges of this device"),
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("ipsec")], "Report IPsec SAs coming and going"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("pki")], "Report certificates checked, requests, grants and revocations"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
@@ -2497,6 +2515,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("ssh")], "Stop reporting SSH"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("isakmp")], "Stop reporting ISAKMP"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("ipsec")], "Stop reporting IPsec"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("pki")], "Stop reporting PKI"),
     spec!(
         DebugDhcpPacket,
         Modes::EXEC,
@@ -2674,7 +2693,12 @@ pub static SPECS: &[Spec] = &[
         AreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        [
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("nssa"),
+            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+        ],
         "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
     spec!(NoAreaNssa, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa")], "A normal area again"),
@@ -2682,7 +2706,13 @@ pub static SPECS: &[Spec] = &[
         NoAreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        [
+            K("no"),
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("nssa"),
+            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+        ],
         "Undo only those options of the NSSA"
     ),
     spec!(
@@ -3819,6 +3849,20 @@ pub static SPECS: &[Spec] = &[
         "What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound)"
     ),
     spec!(
+        ShowIpBgpAdvertised,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D"), K("advertised-routes")],
+        "What this router sends a neighbour after the outbound policy"
+    ),
+    spec!(
+        ShowIpBgpNeighborRoutes,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("neighbors"), Arg("A.B.C.D"), K("routes")],
+        "The paths accepted from a neighbour after the inbound policy"
+    ),
+    spec!(
         ShowIpBgpRegexp,
         EXECS,
         Modes::BOTH,
@@ -4302,6 +4346,14 @@ pub static SPECS: &[Spec] = &[
     spec!(NoEnablePassword, Modes::CONFIG, BOTH_FW, [K("no"), K("enable"), K("password")], "Remove the enable password"),
     spec!(LineConsole, Modes::CONFIG, Modes::BOTH, [K("line"), K("console"), Arg("0")], "Configure the console line"),
     spec!(LineVty, Modes::CONFIG, Modes::BOTH, [K("line"), K("vty"), Rest("<first> [<last>]")], "Configure the remote-access lines"),
+    spec!(LineAsync, Modes::CONFIG, Modes::ROUTER, [K("line"), Arg("<1-16>")], "Configure one asynchronous line of an octal card"),
+    spec!(
+        LineAsync,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("line"), Arg("<first>"), Arg("<last>")],
+        "Configure a range of asynchronous lines of an octal card"
+    ),
     spec!(LinePassword, Modes::LINE, Modes::BOTH, [K("password"), Rest("[0|7] PASSWORD")], "Set the line password"),
     spec!(NoLinePassword, Modes::LINE, Modes::BOTH, [K("no"), K("password")], "Remove the line password"),
     spec!(Login, Modes::LINE, Modes::BOTH, [K("login")], "Ask for the line password"),
@@ -4642,6 +4694,8 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("nrzi-encoding")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::ROUTER, [K("loopback")], "Loop the serial line back on itself"),
     spec!(NoKnob, KNOB_IF, Modes::ROUTER, [K("no"), K("loopback")], "Return this setting to its default"),
+    spec!(Knob, Modes::LINE, Modes::BOTH, [K("modem"), Arg("{inout|in|out}")], "Let a modem or a reverse Telnet use this line (kept, not simulated)"),
+    spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("modem"), Arg("{inout|in|out}")], "Return this setting to its default"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("exec")], "Start an EXEC session on this line (on)"),
     spec!(NoKnob, Modes::LINE, Modes::BOTH, [K("no"), K("exec")], "Turn this off (it is on by default)"),
     spec!(Knob, Modes::LINE, Modes::BOTH, [K("session-timeout"), Arg("<0-35791>")], "Minutes an outgoing session may sit idle"),
@@ -5057,6 +5111,20 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security")], "Secured ports"),
     spec!(ShowPortSecurity, EXECS, Modes::SWITCH, [K("show"), K("port-security"), Rest("{interface X | address}")], "Secured ports"),
     spec!(Telnet, EXECS, Modes::BOTH, [K("telnet"), Arg("A.B.C.D")], "Log in to another device with Telnet"),
+    spec!(
+        TelnetPort,
+        EXECS,
+        Modes::ROUTER,
+        [K("telnet"), Arg("A.B.C.D"), Arg("<port>")],
+        "Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it)"
+    ),
+    spec!(
+        ClearLine,
+        Modes::EXEC,
+        Modes::ROUTER,
+        [K("clear"), K("line"), Arg("<1-16>")],
+        "End the reverse Telnet session held on a line of an octal card"
+    ),
     spec!(Ssh, EXECS, Modes::BOTH, [K("ssh"), Rest("-l USER A.B.C.D")], "Log in to another device with SSH"),
     spec!(ShowIpSsh, EXECS, Modes::BOTH, [K("show"), K("ip"), K("ssh")], "SSH status"),
     spec!(ShowSsh, EXECS, Modes::BOTH, [K("show"), K("ssh")], "SSH sessions open to this device"),
@@ -6286,10 +6354,59 @@ pub static SPECS: &[Spec] = &[
         "Delete the certificate authority"
     ),
     spec!(
+        CryptoPkiImportCertificate,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("import"), Arg("NAME"), K("certificate")],
+        "Paste the certificate a CA signed for a trustpoint"
+    ),
+    spec!(
+        CryptoPkiImportCrl,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("import"), Arg("NAME"), K("crl")],
+        "Paste the revocation list of a trustpoint's CA"
+    ),
+    spec!(
+        CryptoPkiCrlRequest,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("crl"), K("request"), Arg("NAME")],
+        "Fetch the revocation list of a trustpoint's CA"
+    ),
+    spec!(
+        CryptoPkiServerRequest,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("request"), K("pkcs10"), K("terminal")],
+        "Paste a certificate request to the certificate authority"
+    ),
+    spec!(
+        CryptoPkiServerGrantRequest,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("grant"), Arg("{ID|all}")],
+        "Sign a pending certificate request"
+    ),
+    spec!(
+        CryptoPkiServerReject,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("reject"), Arg("{ID|all}")],
+        "Refuse a pending certificate request"
+    ),
+    spec!(
+        CryptoPkiServerRevoke,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("pki"), K("server"), Arg("NAME"), K("revoke"), Arg("SERIAL")],
+        "Revoke a certificate the authority signed"
+    ),
+    spec!(
         PkiEnrollment,
         Modes::PKI_TRUSTPOINT,
         Modes::ROUTER,
-        [K("enrollment"), Rest("{selfsigned|url http://A.B.C.D[:PORT]}")],
+        [K("enrollment"), Rest("{selfsigned|terminal|url http://A.B.C.D[:PORT]}")],
         "Where the certificate comes from"
     ),
     spec!(
@@ -6300,10 +6417,26 @@ pub static SPECS: &[Spec] = &[
         "The name in the certificate"
     ),
     spec!(PkiRsakeypair, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("rsakeypair"), Arg("LABEL")], "The key pair the certificate is for"),
-    spec!(PkiRevocationCheck, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("revocation-check"), Arg("none")], "Do not check for revoked certificates"),
+    spec!(
+        PkiRevocationCheck,
+        Modes::PKI_TRUSTPOINT,
+        Modes::ROUTER,
+        [K("revocation-check"), Rest("{none|crl [none]}")],
+        "How revoked certificates are found"
+    ),
+    spec!(PkiFqdn, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("fqdn"), Arg("NAME")], "A DNS name the certificate is also for"),
+    spec!(PkiIpAddress, Modes::PKI_TRUSTPOINT, Modes::ROUTER, [K("ip-address"), Arg("A.B.C.D")], "An address the certificate is also for"),
     spec!(PkiServerIssuer, Modes::PKI_SERVER, Modes::ROUTER, [K("issuer-name"), Rest("CN=NAME[, O=ORG]")], "The CA's name"),
     spec!(PkiServerGrant, Modes::PKI_SERVER, Modes::ROUTER, [K("grant"), Arg("auto")], "Sign requests as they arrive"),
+    spec!(PkiServerNoGrant, Modes::PKI_SERVER, Modes::ROUTER, [K("no"), K("grant"), K("auto")], "Hold requests until an administrator grants them"),
     spec!(PkiServerLifetime, Modes::PKI_SERVER, Modes::ROUTER, [K("lifetime"), K("certificate"), Arg("DAYS")], "How long issued certificates last"),
+    spec!(
+        PkiServerLifetimeCrl,
+        Modes::PKI_SERVER,
+        Modes::ROUTER,
+        [K("lifetime"), K("crl"), Arg("HOURS")],
+        "How long a published revocation list is good for"
+    ),
     spec!(PkiServerShutdown, Modes::PKI_SERVER, Modes::ROUTER, [K("shutdown")], "Stop the certificate authority"),
     spec!(NoPkiServerShutdown, Modes::PKI_SERVER, Modes::ROUTER, [K("no"), K("shutdown")], "Start the certificate authority"),
     spec!(
@@ -6321,6 +6454,13 @@ pub static SPECS: &[Spec] = &[
         "The certificates this router holds"
     ),
     spec!(ShowCryptoPkiServer, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("pki"), K("server")], "The certificate authority"),
+    spec!(
+        ShowCryptoPkiCrls,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("crypto"), K("pki"), K("crls")],
+        "The revocation lists this router holds or publishes"
+    ),
     spec!(ShowCryptoIkev2Proposal, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("proposal")], "IKEv2 proposals"),
     spec!(ShowCryptoIkev2Profile, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("profile")], "IKEv2 profiles"),
     spec!(PowerInline, Modes::IF, Modes::SWITCH, [K("power"), K("inline"), Arg("{auto|never}")], "Power over Ethernet on this port (PoE switches)"),

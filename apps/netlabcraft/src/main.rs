@@ -282,6 +282,19 @@ impl App {
                         }
                     }
                 }
+                UiRequest::PickImage => {
+                    if let Some(p) = self.dialog().add_filter("Picture", &["png", "jpg", "jpeg"]).pick_file() {
+                        let limit = netlabcraft_engine::images::MAX_SOURCE_BYTES as u64;
+                        match std::fs::metadata(&p).map(|m| m.len()) {
+                            Ok(n) if n <= limit => match std::fs::read(&p) {
+                                Ok(b) => self.app.image_picked(b),
+                                Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                            },
+                            Ok(_) => self.app.ui.status = Some(("That file is too large to open as a picture.".into(), true)),
+                            Err(e) => self.app.ui.status = Some((format!("{}: {e}", p.display()), true)),
+                        }
+                    }
+                }
                 UiRequest::PickFolder => {
                     if let Some(p) = self.dialog().pick_folder() {
                         self.app.folder_picked(&p.to_string_lossy());

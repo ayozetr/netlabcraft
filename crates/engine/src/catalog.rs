@@ -1168,7 +1168,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Terminal (octal cable)",
         "",
         None,
-        r#"{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)"#,
+        r#"{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (from a router's own console it is reached by reverse Telnet: telnet to the router's address and port 2000 plus the line number)"#,
         false
     ),
     c!("cli.exec", "Type a command", "", None, r#"{"device", "line"} → {"output", "prompt", "clear"}"#, true),
@@ -1310,7 +1310,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "HTTP request (Programming)",
         "",
         None,
-        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login, "trust"?: "R1" or ["R1", …] (https only: the client trusts the CA certificates held in those routers' trustpoints and refuses a server whose certificate chain does not verify against them, at the client's clock)} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}], "tls"?: {"version", "cipher", "certificate": null | {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}, "verified": bool}}: over TCP through the lab, IPv4 or IPv6 ([2001:db8::1] in the URL); https:// runs a TLS 1.2 handshake first: DHE-RSA with the server's certificate when the router has `ip http secure-trustpoint`, otherwise anonymous Diffie-Hellman (AES-128-CBC either way)"#,
+        r#"{"pc": "PC, laptop or server", "method"?: "GET"|"PUT"|"PATCH"|"POST"|"DELETE"|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login, "trust"?: "R1" or ["R1", …] (https only: the client trusts the CA certificates held in those routers' trustpoints and refuses a server whose certificate chain does not verify against them, at the client's clock), "verify_host"?: true or false (with `trust`: also refuse a server whose certificate is not for the host in the URL: an address must be among the certificate's address entries, a name among its DNS names or its common name)} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}], "tls"?: {"version", "cipher", "certificate": null | {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}, "verified": bool}}: over TCP through the lab, IPv4 or IPv6 ([2001:db8::1] in the URL); https:// runs a TLS 1.2 handshake first: DHE-RSA with the server's certificate when the router has `ip http secure-trustpoint`, otherwise anonymous Diffie-Hellman (AES-128-CBC either way)"#,
         true
     ),
     c!(

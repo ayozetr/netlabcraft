@@ -226,19 +226,25 @@ pub fn kind_problem(mine: AreaKind, theirs: AreaKind) -> Option<String> {
 }
 
 /// The area border router that translates an NSSA's type 7 LSAs into type 5: among the routers
-/// in the area that also have an interface in another area, the one with the highest router ID.
+/// in the area that also have an interface in another area, the one with the highest router ID
+/// (RFC 3101 §3.1); a border router set to `translate type7 always` comes first, the highest
+/// router ID among those. (RFC 3101 lets every such router translate, and this simulator keeps
+/// one translator per area.)
 pub fn translator_of(
     t: &Topology,
     areas_of: &BTreeMap<DeviceId, BTreeSet<u32>>,
     router_ids: &BTreeMap<DeviceId, Ipv4Addr>,
     area: u32,
 ) -> Option<DeviceId> {
-    areas_of
+    let candidates: Vec<(bool, Ipv4Addr, DeviceId)> = areas_of
         .iter()
         .filter(|(d, a)| a.contains(&area) && a.len() > 1 && t.device(**d).is_some_and(|x| area_kind(x, area) == AreaKind::Nssa))
-        .filter_map(|(d, _)| router_ids.get(d).map(|r| (*r, *d)))
-        .max()
-        .map(|(_, d)| d)
+        .filter_map(|(d, _)| {
+            let always = t.device(*d).and_then(|x| x.ospf.as_ref()).is_some_and(|o| o.area(area).nssa_translate_always);
+            router_ids.get(d).map(|r| (always, *r, *d))
+        })
+        .collect();
+    candidates.into_iter().max().map(|(_, _, d)| d)
 }
 
 /// Why a router on the same link is not a neighbour.

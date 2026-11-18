@@ -34,9 +34,12 @@
 //! 4302, `netlabcraft_wire::ah`): on its own for a transform set of `ah-*` transforms, and next
 //! to ESP in one set, where quick mode (or a second IKEv2 child SA) negotiates an AH SA and an
 //! ESP SA, each direction with a pair of SPIs and keys, and the packet leaves with AH outside
-//! ESP (ESP in tunnel mode, AH in transport mode over the ESP packet, RFC 4301 §4.5). Only a
-//! transform set with no cipher (`esp-sha-hmac` alone) keeps the stand-in cipher of
-//! `netlabcraft_wire::vpn`.
+//! ESP (ESP in tunnel mode, AH in transport mode over the ESP packet, RFC 4301 §4.5). A set with
+//! an integrity transform and no cipher (`esp-sha-hmac` alone) is ESP with null encryption
+//! (RFC 2410), and `mode transport` in the set protects only the payload of traffic between the
+//! two peers, with the packet's own header kept (RFC 4303 §3.1.1). Only a set with nothing real
+//! to run (`esp-null` with no integrity, or no ESP transform at all) keeps the stand-in cipher
+//! of `netlabcraft_wire::vpn`.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
@@ -50,7 +53,7 @@ use netlabcraft_model::{Device, DeviceKind, End, NextHop, Topology, ifname};
 use netlabcraft_wire::ah::PROTO_AH;
 use netlabcraft_wire::ike::{self, Isakmp, Payload, Proposal, Transform};
 use netlabcraft_wire::suite::Integ;
-use netlabcraft_wire::vpn::{Gre, NEXT_IPV4, PROTO_ESP, PROTO_GRE};
+use netlabcraft_wire::vpn::{Gre, PROTO_ESP, PROTO_GRE};
 use netlabcraft_wire::{ETHERTYPE_IPV4, Ipv4, PROTO_UDP, Udp};
 
 use crate::ikev1::{P1Suite, V1State};
@@ -746,6 +749,26 @@ fn child_offer(v1: &V1State, ts: Option<&netlabcraft_model::vpn::TransformSet>) 
         .collect()
 }
 
+/// Whether a transform set has an ESP integrity transform and no cipher at all (`esp-sha-hmac`
+/// alone): ESP with null encryption.
+pub(crate) fn no_cipher(ts: &netlabcraft_model::vpn::TransformSet) -> bool {
+    let first = |t: &String| t.split_whitespace().next().unwrap_or_default().to_string();
+    let words: Vec<String> = ts.transforms.iter().map(first).collect();
+    !words.iter().any(|w| ["esp-aes", "esp-des", "esp-3des", "esp-null"].contains(&w.as_str()))
+        && words.iter().any(|w| ["esp-sha-hmac", "esp-sha256-hmac", "esp-md5-hmac"].contains(&w.as_str()))
+        && ah_integ(ts).is_none()
+}
+
+/// Whether a crypto map entry protects only the payload (`mode transport` in its transform set).
+pub(crate) fn entry_transport(d: &Device, e: &CryptoMapEntry) -> bool {
+    e.transform_set.as_deref().and_then(|n| d.crypto.transform_set(n)).is_some_and(|t| t.transport)
+}
+
+/// Whether the crypto map entry for a peer says transport mode (for the packets that come back).
+pub fn peer_uses_transport(d: &Device, peer: Ipv4Addr) -> bool {
+    d.crypto.applied.values().any(|m| d.crypto.map(m).any(|e| e.peer == Some(peer) && entry_transport(d, e)))
+}
+
 /// ESP transform from a transform set (RFC 2407 §4.4.4 and §4.5).
 fn esp_transform(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Transform {
     let has = |w: &str| ts.is_some_and(|t| t.transforms.iter().any(|x| x.split_whitespace().next() == Some(w)));
@@ -754,7 +777,7 @@ fn esp_transform(ts: Option<&netlabcraft_model::vpn::TransformSet>) -> Transform
         12
     } else if has("esp-3des") {
         3
-    } else if has("esp-null") {
+    } else if has("esp-null") || ts.is_some_and(no_cipher) {
         11
     } else {
         2
@@ -798,7 +821,7 @@ fn p1_check(d: &Device, now: i64, v1: &V1State, from_initiator: bool, ic: &[u8; 
         return if crate::ikev1::hash_of(list) == Some(&want[..]) { Ok(String::new()) } else { Err(crate::ikev1::OPEN_FAILED.to_string()) };
     }
     let sig = ike::sig_of(list).ok_or("the message carries no signature")?;
-    crate::pki::verify_peer(d, now, &ike::certs_of(list), &want, sig).map(|c| c.subject.text())
+    crate::pki::verify_peer(d, now, &ike::certs_of(list), &want, sig, crate::pki::ip_of_id_body(&id)).map(|c| c.subject.text())
 }
 
 /// Whether a packet is ISAKMP (UDP port 500), which crypto maps never protect.
@@ -811,8 +834,9 @@ fn is_isakmp(ip: &Ipv4) -> bool {
 /// (AES-CBC of any key size, DES-CBC, 3DES-CBC or NULL, with HMAC-SHA1-96, HMAC-SHA-256-128,
 /// HMAC-MD5-96 or no integrity check) or AH on its own (HMAC-SHA1-96, HMAC-MD5-96 or
 /// HMAC-SHA-256-128). In a set with AH next to ESP this is the ESP half ([`bundle_ah`] is the
-/// AH one). `None` for a set with no cipher (`esp-sha-hmac` alone) or `esp-null` without
-/// integrity: those keep the stand-in cipher of `netlabcraft_wire::vpn`.
+/// AH one). A set with an integrity transform and no cipher is ESP with null encryption.
+/// `None` for `esp-null` without integrity and for a set with no ESP transform: those keep the
+/// stand-in cipher of `netlabcraft_wire::vpn`.
 pub(crate) fn esp_suite(ts: &netlabcraft_model::vpn::TransformSet) -> Option<netlabcraft_wire::vpn::EspSuite> {
     use netlabcraft_wire::vpn::{EspEncr, EspSuite};
     if let Some(integ) = ah_integ(ts) {
@@ -841,7 +865,13 @@ pub(crate) fn esp_suite(ts: &netlabcraft_model::vpn::TransformSet) -> Option<net
             _ => return None,
         }
     }
-    let encr = encr?;
+    // A set with an integrity transform and no cipher (`esp-sha-hmac` alone) is ESP with null
+    // encryption (RFC 2410): authenticated, not encrypted.
+    let encr = match encr {
+        Some(e) => e,
+        None if integ != Integ::None => EspEncr::Null,
+        None => return None,
+    };
     if encr == EspEncr::Null && integ == Integ::None {
         return None;
     }
@@ -1005,7 +1035,17 @@ impl Sim {
                 let spi = sa.spi_out;
                 let ah = sa.ah.clone();
                 let id = self.ip_id();
-                Ok(Some((crate::ikev2::ipsec_seal_bundle(suite, &key, spi, seq, id, local, peer, datagram, ah.as_ref()), peer)))
+                let sealed = crate::ikev2::ipsec_seal_mode(entry_transport(d, &entry), suite, &key, spi, seq, id, local, peer, datagram, ah.as_ref());
+                match sealed {
+                    Ok(packet) => Ok(Some((packet, peer))),
+                    Err(why) => {
+                        if let Some(sa) = self.st(d.id).ipsec.get_mut(&peer) {
+                            sa.encaps = sa.encaps.saturating_sub(1);
+                            sa.drops = sa.drops.saturating_add(1);
+                        }
+                        Err(why)
+                    }
+                }
             }
         }
     }
@@ -1042,24 +1082,42 @@ impl Sim {
         sa.started_us = now;
         sa.v1 = Some(Box::new(V1State::new(None, sa_payload.body())));
         let m = Isakmp::clear(icookie, [0; 8], ike::EXCH_MAIN, 0, vec![sa_payload]);
+        let offered = d.crypto.policies.len().max(1);
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIsakmp,
+            &format!("main mode with {peer} starts: message 1 offers {offered} polic{}", if offered == 1 { "y" } else { "ies" }),
+        );
         if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Packet)) {
             self.log(d.id, &format!("IKE: starting main mode with {peer} for traffic a crypto map protects"));
         }
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIsakmp,
+            &format!(
+                "main mode starts with {peer}: this router offers {} IKE polic{}",
+                d.crypto.policies.len().max(1),
+                if d.crypto.policies.len() > 1 { "ies" } else { "y" }
+            ),
+        );
         self.ike_send(t, d, local, peer, &m);
     }
 
     /// Records a failed exchange and logs why. A failed rekey leaves the SA it would have
     /// renewed as it is.
     fn ike_fail(&mut self, d: &Device, peer: Ipv4Addr, why: String) {
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the exchange with {peer} failed: {why}"));
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         if sa.phase == IkePhase::Established {
             sa.rekey_us = 0;
             self.log(d.id, &format!("IKE with {peer}: renewing the IPsec keys failed: {why}"));
+            self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("renewing the keys with {peer} failed: {why}"));
             return;
         }
         sa.phase = IkePhase::Failed;
         sa.failed = Some(why.clone());
         self.log(d.id, &format!("IKE with {peer} failed: {why}"));
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the exchange with {peer} is abandoned: {why}"));
     }
 
     /// Keeps the exchange state; a quick mode under an SA that is up (a rekey) leaves it up.
@@ -1237,6 +1295,20 @@ impl Sim {
     fn ike_in_inner(&mut self, t: &Topology, d: &Device, ip: &Ipv4, payload: &[u8]) -> Result<(), String> {
         let m = Isakmp::decode(payload).map_err(|e| e.to_string())?;
         let (peer, local) = (ip.src, ip.dst);
+        if self.debug_on(d.id, DebugKind::CryptoIsakmp) {
+            let what = match m.exchange {
+                ike::EXCH_MAIN => "main mode",
+                ike::EXCH_QUICK => "quick mode",
+                ike::EXCH_INFO => "informational",
+                _ => "unknown exchange",
+            };
+            let body = if m.payloads.is_empty() {
+                "encrypted payloads".to_string()
+            } else {
+                m.payloads.iter().map(Payload::name).collect::<Vec<_>>().join(", ")
+            };
+            self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("{what} message from {peer}: {body}"));
+        }
         if d.crypto.applied.is_empty() && d.crypto.key_for(peer).is_none() {
             return Err(format!("ISAKMP from {peer}: IPsec is not configured here"));
         }
@@ -1371,8 +1443,20 @@ impl Sim {
                 let opened = v1.open(&m, false);
                 let verdict = opened.and_then(|list| p1_check(d, clock, &v1, true, &ic, &rc, &list));
                 match verdict {
-                    Ok(subject) => v1.peer_cert = subject,
+                    Ok(subject) => {
+                        if v1.rsa() {
+                            self.debug_log(
+                                d.id,
+                                DebugKind::CryptoPki,
+                                &format!("the certificate of {subject} from {peer} chains to a trusted authority and its signature checks out"),
+                            );
+                        }
+                        v1.peer_cert = subject;
+                    }
                     Err(e) => {
+                        if v1.rsa() {
+                            self.debug_log(d.id, DebugKind::CryptoPki, &format!("the certificate check of {peer} failed: {e}"));
+                        }
                         // The configurations say why, when the peer is known.
                         let own = if v1.rsa() { e } else { format!("main mode message 5 {e}") };
                         let why = other.and_then(|o| auth_check(o, peer, d, local).err()).unwrap_or(own);
@@ -1399,8 +1483,20 @@ impl Sim {
             // proposes ESP.
             (ike::EXCH_MAIN, true, IkePhase::Main(5)) => {
                 match v1.open(&m, false).and_then(|list| p1_check(d, clock, &v1, false, &ic, &rc, &list)) {
-                    Ok(subject) => v1.peer_cert = subject,
+                    Ok(subject) => {
+                        if v1.rsa() {
+                            self.debug_log(
+                                d.id,
+                                DebugKind::CryptoPki,
+                                &format!("the certificate of {subject} from {peer} chains to a trusted authority and its signature checks out"),
+                            );
+                        }
+                        v1.peer_cert = subject;
+                    }
                     Err(e) => {
+                        if v1.rsa() {
+                            self.debug_log(d.id, DebugKind::CryptoPki, &format!("the certificate check of {peer} failed: {e}"));
+                        }
                         let why = if v1.rsa() { e } else { format!("main mode message 6 {e}") };
                         self.ike_fail(d, peer, why);
                         return Ok(());
@@ -1609,6 +1705,12 @@ impl Sim {
         sa.spi_in = v1.spi_mine;
         sa.v1 = Some(Box::new(v1));
         self.log(d.id, &format!("IKE with {peer}: main mode and quick mode complete, IPsec security association up"));
+        let (spi_in, spi_out) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).map_or((0, 0), |s| (s.spi_in, s.spi_out));
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIpsec,
+            &format!("IPsec SA with {peer} is up: inbound SPI 0x{spi_in:08x}, outbound SPI 0x{spi_out:08x}"),
+        );
     }
 
     /// An ESP or AH packet addressed to this router. For a peer whose transform set puts AH
@@ -1668,11 +1770,7 @@ impl Sim {
         let opened = if spi != spi_in {
             Err(format!("IPsec SPI 0x{spi:08x} from {} matches no security association", ip.src))
         } else {
-            match crate::ikev2::ipsec_open(suite, &key, ip) {
-                Ok((NEXT_IPV4, inner)) => Ok(inner),
-                Ok((next, _)) => Err(format!("ESP carrying next header {next} is not understood")),
-                Err(_) => Err(format!("ESP from {} failed its integrity check (the keys differ?)", ip.src)),
-            }
+            crate::ikev2::ipsec_open_mode(peer_uses_transport(d, ip.src), suite, &key, ip).map_err(|e| format!("{e} (from {})", ip.src))
         };
         let sa = self.st(d.id).ipsec.entry(ip.src).or_default();
         match opened {

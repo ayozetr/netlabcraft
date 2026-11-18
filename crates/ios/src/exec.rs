@@ -237,6 +237,8 @@ pub struct Cli {
     pub modulus_prompt: bool,
     /// `copy running-config tftp:` typed without a server: asking for it, then the file name.
     pub copy_prompt: Option<CopyPrompt>,
+    /// Collecting pasted PEM text for a certificate command, until a line that says `quit`.
+    pub paste: Option<Paste>,
     /// A Telnet or SSH session this console opened to another device.
     pub remote: Option<Box<Remote>>,
     /// A host's `ftp` session.
@@ -245,7 +247,35 @@ pub struct Cli {
     pub history_cap: Option<usize>,
     /// `terminal monitor` in a remote session: log and debug messages of the device appear in it.
     pub monitor: bool,
+    /// `line 1 8` in configuration: the asynchronous lines of an octal card the line mode edits
+    /// (1-based, first and last); `line console 0` and `line vty` clear it.
+    pub async_lines: Option<(u8, u8)>,
 }
+
+/// What a block of pasted PEM text is for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PasteKind {
+    /// The CA certificate of a trustpoint (`crypto pki authenticate` with `enrollment terminal`).
+    CaCertificate,
+    /// The certificate a CA signed for a trustpoint (`crypto pki import NAME certificate`).
+    Certificate,
+    /// The revocation list of a trustpoint's CA (`crypto pki import NAME crl`).
+    Crl,
+    /// A request for this router's own CA (`crypto pki server NAME request pkcs10 terminal`).
+    Request,
+}
+
+/// Text being pasted: for which command, under which name, and what has come so far.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Paste {
+    pub kind: PasteKind,
+    /// The trustpoint, or for a request the certificate authority.
+    pub name: String,
+    pub text: String,
+}
+
+/// Most pasted text kept for one command, in bytes.
+pub const MAX_PASTE: usize = 24 * 1024;
 
 /// The questions a TFTP copy asks when the server isn't on the command line.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -266,6 +296,8 @@ pub struct Remote {
     pub stage: LoginStage,
     pub cli: Cli,
     tries: u8,
+    /// A reverse Telnet: the router and the line (1-based) of its octal card the session holds.
+    pub via: Option<(DeviceId, u8)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -311,7 +343,7 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         let from = t.device(dev).map_or_else(String::new, |d| d.name.clone());
         sim.debug_log(target, DebugKind::Ssh, &format!("a session is opened from {from}; the key exchange is done and the login follows"));
     }
-    cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0 }));
+    cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0, via: None }));
     let banner = t.device(target).map(|d| d.access.banner_motd.clone()).unwrap_or_default();
     let mut out = format!("Trying {dst} ... Open");
     if !banner.is_empty() {
@@ -321,6 +353,59 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         out.push_str("\n\nUser access over Telnet (unencrypted)");
     }
     out
+}
+
+/// Reverse Telnet: `telnet <router address> <2000 + N>` opens a session on the Console port that
+/// the octal cable of line N of that router's octal card reaches. The session is the console
+/// session of the far device (its own prompt, banner and console password), held on the line
+/// until it is closed or `clear line N` cuts it.
+pub fn connect_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, dst: Ipv4Addr, port: u16) -> String {
+    let Some(router) = t.devices.iter().find(|d| netlabcraft_sim::l3_ifaces(d).iter().any(|i| i.net.addr == dst)).map(|d| d.id) else {
+        return format!("Trying {dst}, {port} ...\n% {dst} is not an address of a device in this lab");
+    };
+    let Some((line, cable)) = t.octal_at_port(router, port).map(|(l, o)| (l, *o)) else {
+        return format!(
+            "Trying {dst}, {port} ...\n% Port {port} is no line: lines are reached at 2001, 2002 ... on a router with an octal card and a cable on that line"
+        );
+    };
+    if let Some(why) = t.run_problem(netlabcraft_model::cable::Cable::Octal, router, cable.device) {
+        return format!("Trying {dst}, {port} ...\n% Line {line}: the octal cable carries nothing ({why})");
+    }
+    if let Err(e) = sim.tcp_connect(t, dev, dst, port) {
+        let e = e.to_string();
+        let name = t.device(router).map_or(String::new(), |d| d.name.clone());
+        let hint = if t.device(router).is_some_and(|d| d.access.async_transport.get(&line).is_none_or(|l| l.is_empty())) {
+            format!("\n(line {line} of {name} takes no connection: `line {line}` then `transport input telnet`)")
+        } else if sim.async_owner(router, line).is_some() {
+            format!("\n(line {line} of {name} is in use: `clear line {line}` there frees it)")
+        } else {
+            String::new()
+        };
+        return if e.contains("refused") {
+            format!("Trying {dst}, {port} ...\n% Connection refused by remote host{hint}")
+        } else {
+            format!("Trying {dst}, {port} ...\n% {e}")
+        };
+    }
+    if !sim.async_claim(router, line, dev) {
+        return format!("Trying {dst}, {port} ...\n% Connection refused by remote host (line {line} is in use)");
+    }
+    let target = cable.device;
+    let secured = t.device(target).is_some_and(console_login);
+    let stage = if secured { LoginStage::Password(None) } else { LoginStage::Ready };
+    let remote_cli = Cli { vty: false, logged_in: true, ..Cli::default() };
+    cli.remote = Some(Box::new(Remote { target, proto: RemoteProto::Telnet, stage, cli: remote_cli, tries: 0, via: Some((router, line)) }));
+    let hello = greeting(t, target);
+    format!("Trying {dst}, {port} ... Open\n\n{hello}(close the session with `^^x`, or `exit` from the first level)")
+}
+
+/// Ends a Telnet or SSH session of this console, freeing the asynchronous line a reverse Telnet held.
+fn end_remote(sim: &mut Sim, cli: &mut Cli) {
+    if let Some(r) = cli.remote.take()
+        && let Some((router, line)) = r.via
+    {
+        sim.async_release(router, line);
+    }
 }
 
 /// Runs DHCP on every `ip address dhcp` port that is up and has no address yet; returns a line
@@ -379,10 +464,19 @@ fn aaa_login(t: &Topology, sim: &mut Sim, target: &netlabcraft_model::Device, us
 }
 
 /// A line typed while a remote session is open.
-fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Outcome {
+fn remote_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> Outcome {
+    let Some(r) = cli.remote.as_mut() else { return Outcome::default() };
+    let via = r.via;
+    // A reverse Telnet whose line was cleared (or taken by another session) is over.
+    if let Some((router, ln)) = via
+        && sim.async_owner(router, ln) != Some(dev)
+    {
+        cli.remote = None;
+        return Outcome { output: "[Connection closed by a `clear line` on the router]".into(), ..Outcome::default() };
+    }
     let Some(r) = cli.remote.as_mut() else { return Outcome::default() };
     let Some(target) = t.device(r.target).cloned() else {
-        cli.remote = None;
+        end_remote(sim, cli);
         return Outcome { output: "% The remote device is gone; connection closed".into(), ..Outcome::default() };
     };
     match r.stage.clone() {
@@ -391,7 +485,9 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
             Outcome::default()
         }
         LoginStage::Password(user) => {
-            let ok = if target.access.aaa {
+            let ok = if via.is_some() {
+                target.access.console.password.as_deref() == Some(line)
+            } else if target.access.aaa {
                 aaa_login(t, sim, &target, user.as_deref().unwrap_or(""), line)
             } else {
                 match (&user, target.access.vty.login_local) {
@@ -415,7 +511,7 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
                 return Outcome::default();
             }
             if let Some(secs) = sim.login_failed(target.id, target.access.login_block) {
-                cli.remote = None;
+                end_remote(sim, cli);
                 return Outcome {
                     output: format!("% Login invalid\n% Too many failed logins: logins are blocked for {secs} seconds"),
                     ..Outcome::default()
@@ -423,21 +519,24 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
             }
             r.tries += 1;
             if r.tries >= 3 {
-                cli.remote = None;
+                end_remote(sim, cli);
                 return Outcome { output: "% Login failed three times; connection closed".into(), ..Outcome::default() };
             }
-            r.stage = if target.access.vty.login_local || target.access.aaa { LoginStage::Username } else { LoginStage::Password(None) };
+            r.stage =
+                if via.is_none() && (target.access.vty.login_local || target.access.aaa) { LoginStage::Username } else { LoginStage::Password(None) };
             Outcome { output: "% Login invalid".into(), ..Outcome::default() }
         }
         LoginStage::Ready => {
             let word = line.split_whitespace().next().unwrap_or("").to_ascii_lowercase();
-            let leaving = matches!(r.cli.mode, Mode::User | Mode::Exec)
-                && r.cli.enable_prompt.is_none()
-                && !word.is_empty()
-                && ["exit", "logout", "quit"].iter().any(|w| w.starts_with(&word) && word.len() >= 2);
+            let escape = via.is_some() && line.trim().eq_ignore_ascii_case("^^x");
+            let leaving = escape
+                || (matches!(r.cli.mode, Mode::User | Mode::Exec)
+                    && r.cli.enable_prompt.is_none()
+                    && !word.is_empty()
+                    && ["exit", "logout", "quit"].iter().any(|w| w.starts_with(&word) && word.len() >= 2));
             if leaving {
                 let name = target.name.clone();
-                cli.remote = None;
+                end_remote(sim, cli);
                 return Outcome { output: format!("Connection to {name} closed."), ..Outcome::default() };
             }
             let target_id = r.target;
@@ -531,6 +630,9 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
     }
     if d.kind == DeviceKind::Hub {
         return format!("{}> ", d.name);
+    }
+    if cli.paste.is_some() {
+        return String::new();
     }
     if cli.modulus_prompt {
         return MODULUS_PROMPT.into();
@@ -630,7 +732,19 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, li
     let Some(d) = t.device(dev) else { return Outcome { output: "% That device no longer exists".into(), ..Outcome::default() } };
     let line = line.trim_end_matches(['\r', '\n']);
     if cli.remote.is_some() {
-        return remote_line(t, sim, cli, line);
+        return remote_line(t, sim, dev, cli, line);
+    }
+    // Pasted certificate text: every line is kept until `quit`.
+    if let Some(mut p) = cli.paste.take() {
+        if line.trim().eq_ignore_ascii_case("quit") {
+            return pki::paste_done(t, sim, dev, p);
+        }
+        if p.text.len() < MAX_PASTE {
+            p.text.push_str(line.trim());
+            p.text.push('\n');
+        }
+        cli.paste = Some(p);
+        return Outcome::default();
     }
     if cli.modulus_prompt {
         cli.modulus_prompt = false;
@@ -1294,7 +1408,16 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(String::new())
         }
         Id::ShowFlash => Ok(render::flash(c.d()?)),
-        Id::ShowUsers => Ok(render::users(c.cli)),
+        Id::ShowUsers => {
+            let mut s = render::users(c.cli);
+            for (line, owner) in c.sim.async_in_use(c.dev) {
+                let who = c.t.device(owner).map_or("?".to_string(), |d| d.name.clone());
+                let to =
+                    c.t.octal_at_line(c.dev, line.saturating_sub(1)).and_then(|o| c.t.device(o.device)).map_or("?".to_string(), |d| d.name.clone());
+                s.push_str(&format!("\n   {:<18} {:<10} reverse Telnet from {who} to the console of {to}", format!("tty {line}"), "-"));
+            }
+            Ok(s)
+        }
         Id::TerminalLength => {
             let w: Vec<&str> = arg(0).split_whitespace().collect();
             match w.as_slice() {
@@ -2284,18 +2407,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::CryptoPkiAuthenticate
         | Id::CryptoPkiServer
         | Id::NoCryptoPkiServer
+        | Id::CryptoPkiImportCertificate
+        | Id::CryptoPkiImportCrl
+        | Id::CryptoPkiCrlRequest
+        | Id::CryptoPkiServerRequest
+        | Id::CryptoPkiServerGrantRequest
+        | Id::CryptoPkiServerReject
+        | Id::CryptoPkiServerRevoke
         | Id::PkiEnrollment
         | Id::PkiSubjectName
         | Id::PkiRsakeypair
         | Id::PkiRevocationCheck
+        | Id::PkiFqdn
+        | Id::PkiIpAddress
         | Id::PkiServerIssuer
         | Id::PkiServerGrant
+        | Id::PkiServerNoGrant
         | Id::PkiServerLifetime
+        | Id::PkiServerLifetimeCrl
         | Id::PkiServerShutdown
         | Id::NoPkiServerShutdown
         | Id::ShowCryptoPkiTrustpoints
         | Id::ShowCryptoPkiCertificates
-        | Id::ShowCryptoPkiServer => pki::command(&mut c, spec.id, &args),
+        | Id::ShowCryptoPkiServer
+        | Id::ShowCryptoPkiCrls => pki::command(&mut c, spec.id, &args),
         Id::ClassMap
         | Id::NoClassMap
         | Id::PolicyMap
@@ -3303,6 +3438,14 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 }
             }
             list.dedup();
+            if let Some((first, last)) = c.cli.async_lines.filter(|_| !vty) {
+                // `line 1 8`: what a reverse Telnet to port 2000 plus the line may use.
+                let d = c.dm()?;
+                for n in first..=last {
+                    d.access.async_transport.insert(n, list.clone());
+                }
+                return Ok(String::new());
+            }
             let d = c.dm()?;
             let line = if vty { &mut d.access.vty } else { &mut d.access.console };
             line.transport = Some(list);
@@ -3408,6 +3551,42 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             };
             let dst = parse_ip(&addr).map_err(|e| format!("% {e}"))?;
             Ok(connect(c.t, c.sim, c.dev, c.cli, proto, dst, user))
+        }
+        Id::TelnetPort => {
+            let dst = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            let port: u16 = arg(1).parse().map_err(|_| "% The port is a number: 23, or 2001 and up for the lines of an octal card".to_string())?;
+            if port == 23 {
+                return Ok(connect(c.t, c.sim, c.dev, c.cli, RemoteProto::Telnet, dst, None));
+            }
+            Ok(connect_line(c.t, c.sim, c.dev, c.cli, dst, port))
+        }
+        Id::ClearLine => {
+            let n: u8 = arg(0).parse().ok().filter(|n| (1..=16).contains(n)).ok_or("% The line is 1-16")?;
+            if c.d()?.octal_lines() == 0 {
+                return Err("% This router has no octal card: there are no asynchronous lines".into());
+            }
+            Ok(match c.sim.async_owner(c.dev, n) {
+                Some(_) => {
+                    c.sim.async_release(c.dev, n);
+                    format!("[Line {n} cleared: its session is closed]")
+                }
+                None => format!("[Line {n} has no session]"),
+            })
+        }
+        Id::LineAsync => {
+            let lines = c.d()?.octal_lines();
+            if lines == 0 {
+                return Err("% This router has no octal card: fit one (a Card-8A) in a bay first".into());
+            }
+            let num = |w: &str| w.parse::<u8>().ok().filter(|n| (1..=lines).contains(n)).ok_or_else(|| format!("% The line is 1-{lines}"));
+            let first = num(arg(0))?;
+            let last = if arg(1).is_empty() { first } else { num(arg(1))? };
+            if last < first {
+                return Err("% The last line is before the first".into());
+            }
+            c.cli.async_lines = Some((first, last));
+            c.cli.mode = Mode::Line(false);
+            Ok(String::new())
         }
         Id::ShowIpSsh => {
             let a = &c.d()?.access;
@@ -4170,6 +4349,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::BgpMaximumPathsIbgp
         | Id::NoBgpMaximumPathsIbgp
         | Id::ShowIpBgpReceived
+        | Id::ShowIpBgpAdvertised
+        | Id::ShowIpBgpNeighborRoutes
         | Id::ShowIpBgpRegexp
         | Id::ShowIpBgpFilterList
         | Id::BgpPeerGroup
@@ -4692,6 +4873,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return Err("% There is one console line: `line console 0`".into());
             }
             c.cli.mode = Mode::Line(false);
+            c.cli.async_lines = None;
             Ok(String::new())
         }
         Id::LineVty => {
@@ -4701,6 +4883,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 return Err("% vty lines are 0-15: `line vty 0 4` or `line vty 0 15`".into());
             }
             c.cli.mode = Mode::Line(true);
+            c.cli.async_lines = None;
             Ok(String::new())
         }
         Id::LinePassword | Id::NoLinePassword | Id::Login | Id::NoLogin => {

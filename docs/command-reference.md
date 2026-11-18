@@ -197,7 +197,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "reach": {"max_m", "standard"} \| null, "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
 | `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
 | `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
-| `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)` |
+| `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (from a router's own console it is reached by reverse Telnet: telnet to the router's address and port 2000 plus the line number)` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |
 | `cli.script` | Run commands |  |  | `{"device", "lines": ["…"] or "text"} → {"outputs"}` |
 | `cli.help` | Command help (?) |  |  | `{"device", "line"} → {"help"}` |
@@ -234,7 +234,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `scenario.delete` | Delete scenario |  |  | `{"index"?: the one in use} → the scenarios (the last one is only emptied)` |
 | `scenario.select` | Switch scenario |  |  | `{"index"} → its PDU list` |
 | `sim.event` | PDU details |  |  | `{"id": event} → {id, at_us, from, to, protocol, summary, dropped, cause, "explain": [what the receiver decided], "osi": {"in": [{layer, lines}], "out": [...]}, "sent": [events it caused]}` |
-| `pc.http_request` | HTTP request (Programming) |  |  | `{"pc": "PC, laptop or server", "method"?: "GET"\|"PUT"\|"PATCH"\|"POST"\|"DELETE"\|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login, "trust"?: "R1" or ["R1", …] (https only: the client trusts the CA certificates held in those routers' trustpoints and refuses a server whose certificate chain does not verify against them, at the client's clock)} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}], "tls"?: {"version", "cipher", "certificate": null \| {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}, "verified": bool}}: over TCP through the lab, IPv4 or IPv6 ([2001:db8::1] in the URL); https:// runs a TLS 1.2 handshake first: DHE-RSA with the server's certificate when the router has `ip http secure-trustpoint`, otherwise anonymous Diffie-Hellman (AES-128-CBC either way)` |
+| `pc.http_request` | HTTP request (Programming) |  |  | `{"pc": "PC, laptop or server", "method"?: "GET"\|"PUT"\|"PATCH"\|"POST"\|"DELETE"\|…, "url": "https://10.0.0.1/restconf/data/ietf-interfaces:interfaces", "headers"?: {"Accept": "application/yang-data+json" or "application/yang-data+xml"} or [["Name", "value"]], "body"?: text, JSON or XML text (Content-Type follows it unless given), "user"?, "password"?: Basic login, "trust"?: "R1" or ["R1", …] (https only: the client trusts the CA certificates held in those routers' trustpoints and refuses a server whose certificate chain does not verify against them, at the client's clock), "verify_host"?: true or false (with `trust`: also refuse a server whose certificate is not for the host in the URL: an address must be among the certificate's address entries, a name among its DNS names or its common name)} → {"status", "reason", "headers", "body", "json", "applied": [{"device", "lines", "failed"}], "tls"?: {"version", "cipher", "certificate": null \| {"subject", "issuer", "serial", "not_before", "not_after", "key_bits", "chain_length"}, "verified": bool}}: over TCP through the lab, IPv4 or IPv6 ([2001:db8::1] in the URL); https:// runs a TLS 1.2 handshake first: DHE-RSA with the server's certificate when the router has `ip http secure-trustpoint`, otherwise anonymous Diffie-Hellman (AES-128-CBC either way)` |
 | `netconf.session` | NETCONF session |  |  | `{"pc": "PC, laptop or server", "target": "router address (IPv4 or IPv6) or name", "user", "password", "framing"?: "1.1"\|"1.0", "rpcs"?: ["<get-config><source><running/></source></get-config>", …] (bare operations are wrapped in <rpc message-id=…>), "keep_open"?: true (the session stays open: its number comes back as "session"), "session"?: number (go on with a kept session: no target or login), "close"?: true (end a kept session)} → {"connected", "error"?, "framing", "session", "session_id", "hello", "replies": [XML], "applied": [{"device", "lines", "failed"}]}: TCP port 830 with RFC 6242 framing; running and candidate datastores, locks` |
 | `controller.devices` | Controller: managed routers |  |  | `{"host": "the controller (PC, laptop or server)", "add"?: {"address" (IPv4 or IPv6), "user", "password", "vars"?: {"name": "value"}}, "remove"?: address, "set_vars"?: {"address", "vars": {"name": "value"}}, "refresh"?: true (read each router's hostname, model, software and interfaces over RESTCONF)} → {"devices": [{"address", "user", "vars", "reachable"?, "hostname"?, "model"?, "os"?, "interfaces"?, "up"?, "error"?}]}` |
 | `controller.push` | Controller: push a template |  |  | `{"host", "path": "/restconf/data/…", "method"?: "PATCH"\|"PUT"\|"POST"\|"DELETE", "body": JSON template with {{name}} variables ({{address}} and {{hostname}} built in), "variables"?: {"router address": {"name": "value"}} (on top of each router's stored vars), "devices"?: [addresses] (all managed routers when left out)} → {"results": [{"address", "status", "error"?, "applied"}]}` |
@@ -651,6 +651,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug ip ssh` | privileged | router, switch | Report SSH logins to this device |
 | `debug crypto isakmp` | privileged | router, switch | Report the IKE exchanges of this device |
 | `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
+| `debug crypto pki` | privileged | router, switch | Report certificates checked, requests, grants and revocations |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
@@ -688,6 +689,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug ip ssh` | privileged | router, switch | Stop reporting SSH |
 | `no debug crypto isakmp` | privileged | router, switch | Stop reporting ISAKMP |
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
+| `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
@@ -735,9 +737,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no area <0-4294967295> stub` |  | router, switch | A normal area again |
 | `no area <0-4294967295> stub no-summary` |  | router, switch | Let routes from other areas in again |
 | `area <1-4294967295> nssa` |  | router, switch | Not-so-stubby area: its routers' external routes travel as type 7 LSAs, and none come in |
-| `area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate]` |  | router, switch | Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area |
+| `area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate] [translate type7 always]` |  | router, switch | Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area |
 | `no area <1-4294967295> nssa` |  | router, switch | A normal area again |
-| `no area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate]` |  | router, switch | Undo only those options of the NSSA |
+| `no area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate] [translate type7 always]` |  | router, switch | Undo only those options of the NSSA |
 | `area <1-4294967295> default-cost <0-16777215>` |  | router, switch | Border router: the metric of the default route it sends into a stub area or NSSA |
 | `no area <1-4294967295> default-cost` |  | router, switch | Default route metric 1 again |
 | `area <1-4294967295> virtual-link A.B.C.D` |  | router, switch | Join the backbone through this area to the border router with that router ID |
@@ -1016,6 +1018,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `maximum-paths ibgp <1-32>` |  | router, switch | Put up to this many equal internal paths in the routing table |
 | `no maximum-paths ibgp` |  | router, switch | One internal path per prefix again |
 | `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
+| `show ip bgp neighbors A.B.C.D advertised-routes` | user, privileged | router, switch | What this router sends a neighbour after the outbound policy |
+| `show ip bgp neighbors A.B.C.D routes` | user, privileged | router, switch | The paths accepted from a neighbour after the inbound policy |
 | `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |
 | `show ip bgp filter-list <1-500>` | user, privileged | router, switch | The paths an AS-path list permits |
 | `bgp bestpath as-path multipath-relax` |  | router, switch | Let paths from different neighbouring ASes share the load |
@@ -1158,6 +1162,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no enable password` | config | router, switch, firewall | Remove the enable password |
 | `line console 0` | config | router, switch | Configure the console line |
 | `line vty <first> [<last>]` | config | router, switch | Configure the remote-access lines |
+| `line <1-16>` | config | router | Configure one asynchronous line of an octal card |
+| `line <first> <last>` | config | router | Configure a range of asynchronous lines of an octal card |
 | `password [0\|7] PASSWORD` |  | router, switch | Set the line password |
 | `no password` |  | router, switch | Remove the line password |
 | `login` |  | router, switch | Ask for the line password |
@@ -1390,6 +1396,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no nrzi-encoding` | interface, subinterface | router | Return this setting to its default |
 | `loopback` | interface, subinterface | router | Loop the serial line back on itself |
 | `no loopback` | interface, subinterface | router | Return this setting to its default |
+| `modem {inout\|in\|out}` |  | router, switch | Let a modem or a reverse Telnet use this line (kept, not simulated) |
+| `no modem {inout\|in\|out}` |  | router, switch | Return this setting to its default |
 | `exec` |  | router, switch | Start an EXEC session on this line (on) |
 | `no exec` |  | router, switch | Turn this off (it is on by default) |
 | `session-timeout <0-35791>` |  | router, switch | Minutes an outgoing session may sit idle |
@@ -1565,6 +1573,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show port-security` | user, privileged | switch | Secured ports |
 | `show port-security {interface X \| address}` | user, privileged | switch | Secured ports |
 | `telnet A.B.C.D` | user, privileged | router, switch | Log in to another device with Telnet |
+| `telnet A.B.C.D <port>` | user, privileged | router | Open a session on a port: 23, or 2000 plus a line of a router's octal card (reverse Telnet to the device behind it) |
+| `clear line <1-16>` | privileged | router | End the reverse Telnet session held on a line of an octal card |
 | `ssh -l USER A.B.C.D` | user, privileged | router, switch | Log in to another device with SSH |
 | `show ip ssh` | user, privileged | router, switch | SSH status |
 | `show ssh` | user, privileged | router, switch | SSH sessions open to this device |
@@ -1960,18 +1970,30 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `crypto pki authenticate NAME` | config | router | Fetch and trust the CA's certificate |
 | `crypto pki server NAME` | config | router | Define or edit the certificate authority |
 | `no crypto pki server NAME` | config | router | Delete the certificate authority |
-| `enrollment {selfsigned\|url http://A.B.C.D[:PORT]}` |  | router | Where the certificate comes from |
+| `crypto pki import NAME certificate` | config | router | Paste the certificate a CA signed for a trustpoint |
+| `crypto pki import NAME crl` | config | router | Paste the revocation list of a trustpoint's CA |
+| `crypto pki crl request NAME` | config | router | Fetch the revocation list of a trustpoint's CA |
+| `crypto pki server NAME request pkcs10 terminal` | config | router | Paste a certificate request to the certificate authority |
+| `crypto pki server NAME grant {ID\|all}` | config | router | Sign a pending certificate request |
+| `crypto pki server NAME reject {ID\|all}` | config | router | Refuse a pending certificate request |
+| `crypto pki server NAME revoke SERIAL` | config | router | Revoke a certificate the authority signed |
+| `enrollment {selfsigned\|terminal\|url http://A.B.C.D[:PORT]}` |  | router | Where the certificate comes from |
 | `subject-name CN=NAME[, O=ORG][, OU=UNIT][, C=XX]` |  | router | The name in the certificate |
 | `rsakeypair LABEL` |  | router | The key pair the certificate is for |
-| `revocation-check none` |  | router | Do not check for revoked certificates |
+| `revocation-check {none\|crl [none]}` |  | router | How revoked certificates are found |
+| `fqdn NAME` |  | router | A DNS name the certificate is also for |
+| `ip-address A.B.C.D` |  | router | An address the certificate is also for |
 | `issuer-name CN=NAME[, O=ORG]` |  | router | The CA's name |
 | `grant auto` |  | router | Sign requests as they arrive |
+| `no grant auto` |  | router | Hold requests until an administrator grants them |
 | `lifetime certificate DAYS` |  | router | How long issued certificates last |
+| `lifetime crl HOURS` |  | router | How long a published revocation list is good for |
 | `shutdown` |  | router | Stop the certificate authority |
 | `no shutdown` |  | router | Start the certificate authority |
 | `show crypto pki trustpoints` | user, privileged | router | Trustpoints and their certificates' state |
 | `show crypto pki certificates` | user, privileged | router | The certificates this router holds |
 | `show crypto pki server` | user, privileged | router | The certificate authority |
+| `show crypto pki crls` | user, privileged | router | The revocation lists this router holds or publishes |
 | `show crypto ikev2 proposal` | user, privileged | router | IKEv2 proposals |
 | `show crypto ikev2 profile` | user, privileged | router | IKEv2 profiles |
 | `power inline {auto\|never}` | interface | switch | Power over Ethernet on this port (PoE switches) |

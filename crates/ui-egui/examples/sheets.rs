@@ -13,6 +13,10 @@
 //!   family (hub, PoE and SFP switches, routers with serial ports and a module card, firewall, access point, home
 //!   router, server, PC, laptop, printer, IP phone, modems, clouds, cell tower, central office, an IoT thing and the
 //!   boards), built through engine commands, with the real connector drawn for every port;
+//! * `logical-light.png`, `logical-dark.png`: the logical workspace with a few devices;
+//! * `background-*-light.png`, `background-*-dark.png`: places with backgrounds and icons made from pictures drawn in
+//!   code (`city`: a city map under its buildings, `tiled`: a tiled logical background, `window`: the Set Background
+//!   Image window on a city and `window-icon` on its Place Icon tab, `button`: the bar's picture button enlarged).
 //! * `grid-window-*.png`: the Intercity map with the Grid Preferences window open (the four-squares button on the
 //!   bar), every level's grid ticked; `grid-intercity-*.png`, `grid-city-*.png`, `grid-building-*.png`: the grid of each
 //!   level with its spacing at the corner; `grid-colour-*.png`: the window with the colour palette open;
@@ -352,6 +356,60 @@ fn logical_sheet(dir: &str, dark: bool) {
     app_sheet(dir, &format!("logical-{suffix}"), s, (1200.0, 760.0), dark, |_| {});
 }
 
+/// A lab with a city (a generated map under it, 4 km wide), two buildings (one wearing a picture as its icon), a
+/// closet, and a tiled picture under the logical workspace. Returns the session and the city's number. Every picture
+/// is generated in code (`pattern_png`), none is downloaded.
+fn background_lab() -> (Session, u64) {
+    use netlabcraft_model::backdrop::base64_encode;
+    let mut s = Session::new();
+    cmd(&mut s, "file.new", json!({"sample": "two-subnets"}));
+    let city = cmd(&mut s, "place.add", json!({"kind": "city", "name": "Harbor Town"}))["id"].as_u64().unwrap_or(1);
+    let a = cmd(&mut s, "place.add", json!({"kind": "building", "name": "Library", "parent": city, "x": 220, "y": 180}))["id"].as_u64().unwrap_or(2);
+    cmd(&mut s, "place.add", json!({"kind": "building", "name": "Town hall", "parent": city, "x": 620, "y": 330}));
+    cmd(&mut s, "place.add", json!({"kind": "closet", "name": "Server room", "parent": a, "x": 300, "y": 200}));
+    let map = base64_encode(&netlabcraft_engine::images::pattern_png(800, 560));
+    let icon = base64_encode(&netlabcraft_engine::images::pattern_png(96, 96));
+    cmd(&mut s, "place.scene.set", json!({"place": city, "background": {"data": map, "mode": "original"}, "size": {"width": 4000, "height": 100}}));
+    cmd(&mut s, "place.icon.set", json!({"place": a, "data": icon}));
+    cmd(&mut s, "workspace.background.set", json!({"data": base64_encode(&netlabcraft_engine::images::pattern_png(120, 90)), "mode": "tiled"}));
+    (s, city)
+}
+
+fn background_sheets(dir: &str, dark: bool) {
+    let suffix = if dark { "dark" } else { "light" };
+    let (s, city) = background_lab();
+    app_sheet(dir, &format!("background-city-{suffix}"), s, (1200.0, 760.0), dark, move |app| {
+        app.set_physical(true);
+        app.enter_place(city as u32);
+    });
+    let (s, _) = background_lab();
+    app_sheet(dir, &format!("background-tiled-{suffix}"), s, (1200.0, 760.0), dark, |_| {});
+    let (s, city) = background_lab();
+    app_sheet(dir, &format!("background-window-{suffix}"), s, (1200.0, 900.0), dark, move |app| {
+        app.set_physical(true);
+        app.enter_place(city as u32);
+        app.open_pictures(false, city as u32);
+    });
+    let (s, city) = background_lab();
+    app_sheet(dir, &format!("background-window-icon-{suffix}"), s, (1200.0, 900.0), dark, move |app| {
+        app.set_physical(true);
+        let library = app.session.topology.places().iter().find(|p| p.name == "Library").map(|p| p.id).unwrap_or(2);
+        app.enter_place(city as u32);
+        app.open_pictures(false, library);
+        app.ui.pictures.window.tab = netlabcraft_ui_egui::pictures::Tab::Icon;
+    });
+    // The bar's button, enlarged, on the bar's blue.
+    painted(dir, &format!("background-button-{suffix}"), (220.0, 120.0), dark, move |p, at, tk| {
+        let r = Rect::from_min_size(at, vec2(220.0, 120.0));
+        p.rect_filled(r, 8.0, tk.bar);
+        for (i, scale) in [32.0f32, 64.0, 96.0].into_iter().enumerate() {
+            let cell = Rect::from_min_size(r.min + vec2(12.0 + i as f32 * 70.0, 12.0), vec2(scale.min(66.0), scale.min(66.0)));
+            p.rect_filled(cell, 8.0, tk.pill);
+            netlabcraft_ui_egui::icons::glyph(p, cell, netlabcraft_ui_egui::icons::Glyph::Picture, tk.pill_text);
+        }
+    });
+}
+
 /// The physical workspace with the grid of every level ticked: the window, the colour palette and each level.
 fn grid_sheets(dir: &str, dark: bool) {
     let suffix = if dark { "dark" } else { "light" };
@@ -467,6 +525,7 @@ fn main() {
         closet_zoom_steps(&dir, dark);
         device_physical_sheets(&dir, dark);
         logical_sheet(&dir, dark);
+        background_sheets(&dir, dark);
         grid_sheets(&dir, dark);
         create_menu_sheets(&dir, dark);
         create_kinds_sheet(&dir, dark);
