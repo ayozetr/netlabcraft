@@ -273,6 +273,26 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
 | `clear mac address-table` | privileged | switch | Forget learned MAC addresses |
 | `clear arp-cache` | privileged | router | Forget ARP entries |
+| `show mac-address-table` | user, privileged | switch | Learned MAC addresses |
+| `show mac-address-table dynamic` | user, privileged | switch | Learned MAC addresses |
+| `clear mac-address-table dynamic` | privileged | switch | Forget learned MAC addresses |
+| `clear arp` | privileged | router | Forget ARP entries |
+| `show derived-config` | privileged | router, switch, firewall | Current configuration (the same text as running-config) |
+| `write terminal` | privileged | router, switch, firewall | Show the current configuration |
+| `write erase` | privileged | router, switch, firewall | Delete the saved configuration |
+| `erase nvram:` | privileged | router, switch, firewall | Delete the saved configuration |
+| `configure memory` | privileged | router, switch | Merge the saved configuration into the running one |
+| `show terminal` | user, privileged | router, switch | Terminal length, width and history of this session |
+| `show line` | user, privileged | router, switch | How the console and the remote login lines are set up |
+| `show cdp interface` | user, privileged | router, switch | CDP timers on each interface that sends them |
+| `show mac address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `show mac-address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `more system:running-config\|nvram:startup-config` | privileged | router, switch | Show the running or the saved configuration |
+| `pwd` | privileged | router, switch | The file system commands work in |
+| `show snmp community` | user, privileged | router, switch | SNMP communities and what they may do |
+| `show snmp host` | user, privileged | router, switch | The managers that get SNMP notifications |
+| `show snmp group` | user, privileged | router, switch | SNMPv3 groups |
+| `show snmp user` | user, privileged | router, switch | SNMPv3 users |
 | `hostname WORD` | config | router, switch, firewall | Set the device name |
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
@@ -365,6 +385,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `show ip ospf maxage-database` | user, privileged | router, switch | LSAs this router still holds at MaxAge, withdrawn by their originator |
+| `timers throttle spf <0-600000> <0-600000> <0-600000>` |  | router, switch | Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to |
+| `no timers throttle spf` |  | router, switch | The default SPF delays again (50, 200 and 5000 ms) |
 | `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |
 | `no ip ospf authentication key-chain` | interface, subinterface | router, switch | Stop reading the keys from a key chain |
 | `key chain NAME` | config | router, switch | Create or edit a chain of keys with lifetimes |
@@ -655,8 +678,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
-| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
+| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
+| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
@@ -1339,6 +1362,60 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no transport output {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
 | `transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Protocol assumed for a host name typed alone |
 | `no transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
+| `maximum-paths <1-32>` |  | router, switch | Most equal-cost routes RIP installs |
+| `no maximum-paths` |  | router, switch | Return this setting to its default |
+| `distance <1-255>` |  | router, switch | Administrative distance of RIP routes |
+| `no distance` |  | router, switch | Return this setting to its default |
+| `output-delay <8-50>` |  | router, switch | Milliseconds between the packets of an update |
+| `no output-delay` |  | router, switch | Return this setting to its default |
+| `validate-update-source` |  | router, switch | Accept updates only from a neighbour on the same subnet (on) |
+| `no validate-update-source` |  | router, switch | Turn this off (it is on by default) |
+| `eigrp stub` |  | router, switch | Act as a stub router that advertises only what it is told to |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `eigrp stub [connected] [static] [summary] [receive-only] [redistributed]` |  | router, switch | Act as a stub router that advertises only the routes named |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `distance eigrp <1-255> <1-255>` |  | router, switch | Administrative distances of internal and external EIGRP routes |
+| `no distance eigrp` |  | router, switch | Return this setting to its default |
+| `eigrp log-neighbor-changes` |  | router, switch | Log the neighbours that come and go |
+| `no eigrp log-neighbor-changes` |  | router, switch | Return this setting to its default |
+| `metric weights <0-8> <0-255> <0-255> <0-255> <0-255> <0-255>` |  | router, switch | The K values of the metric |
+| `no metric weights` |  | router, switch | Return this setting to its default |
+| `ip rip send version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface sends |
+| `no ip rip send version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip receive version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface accepts |
+| `no ip rip receive version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication mode {md5\|text}` | interface, subinterface | router | How RIP updates are authenticated here |
+| `no ip rip authentication mode {md5\|text}` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication key-chain WORD` | interface, subinterface | router | The key chain that authenticates RIP updates here |
+| `no ip rip authentication key-chain` | interface, subinterface | router | Return this setting to its default |
+| `ip rip v2-broadcast` | interface, subinterface | router | Send RIP version 2 updates as broadcasts |
+| `no ip rip v2-broadcast` | interface, subinterface | router | Return this setting to its default |
+| `ip rip triggered` | interface, subinterface | router | Send RIP updates only when the table changes |
+| `no ip rip triggered` | interface, subinterface | router | Return this setting to its default |
+| `ip bandwidth-percent eigrp <1-65535> <1-999999>` | interface, subinterface | router | Percent of the bandwidth EIGRP may use |
+| `no ip bandwidth-percent eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Sign EIGRP packets here with MD5 |
+| `no ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication key-chain eigrp <1-65535> WORD` | interface, subinterface | router | The key chain that signs EIGRP packets here |
+| `no ip authentication key-chain eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers <1-254> <1-254>` | interface, subinterface | router | HSRP hello and hold times in seconds |
+| `no standby <0-255> timers` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers msec <15-999> msec <50-3000>` | interface, subinterface | router | HSRP hello and hold times in milliseconds |
+| `no standby <0-255> timers msec` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> authentication [text\|md5 key-string] KEY` | interface, subinterface | router | HSRP authentication string |
+| `no standby <0-255> authentication` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> name WORD` | interface, subinterface | router | A name for the HSRP group |
+| `no standby <0-255> name` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> preempt delay minimum <0-3600>` | interface, subinterface | router | Seconds to wait before taking over |
+| `no standby <0-255> preempt delay minimum` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> mac-address H.H.H` | interface, subinterface | router | The virtual MAC address of the HSRP group |
+| `no standby <0-255> mac-address` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> follow WORD` | interface, subinterface | router | Follow another HSRP group |
+| `no standby <0-255> follow` | interface, subinterface | router | Return this setting to its default |
+| `standby use-bia` | interface, subinterface | router | Use the interface MAC address as the virtual one |
+| `no standby use-bia` | interface, subinterface | router | Return this setting to its default |
+| `vrrp <1-255> description TEXT` | interface, subinterface | router | A note on the VRRP group |
+| `no vrrp <1-255> description` | interface, subinterface | router | Return this setting to its default |
 | `ipv6 access-list WORD` | config | router, switch | Create or edit an IPv6 access list |
 | `no ipv6 access-list WORD` | config | router, switch | Delete an IPv6 access list |
 | `permit {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Allow matching packets |

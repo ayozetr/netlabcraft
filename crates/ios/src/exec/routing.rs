@@ -907,3 +907,30 @@ pub(crate) fn ipv6_client_lines(s: &mut String, c: &netlabcraft_model::Ipv6Conf)
         s.push_str(" ipv6 address dhcp\n");
     }
 }
+
+/// `show ip ospf maxage-database`: the LSAs this router holds at MaxAge for a moment after their
+/// originator withdrew them.
+pub(super) fn ospf_maxage(c: &mut Ctx) -> R {
+    use std::fmt::Write as _;
+    let d = c.d()?.clone();
+    if d.ospf.is_none() {
+        return Ok("OSPF is not running here.".into());
+    }
+    let lsas = c.sim.lsdb_maxage(c.t, d.id);
+    if lsas.is_empty() {
+        return Ok(format!("No LSAs at MaxAge in the database of {}.", d.name));
+    }
+    let mut s = format!("{:<14} {:<16} {:<16} {:>5} {}\n", "Type", "Link ID", "Advertised by", "Age", "Seq#");
+    for l in &lsas {
+        let kind = match l.kind {
+            netlabcraft_sim::ospf_lsdb::LsaKind::Router => "router",
+            netlabcraft_sim::ospf_lsdb::LsaKind::Network => "network",
+            netlabcraft_sim::ospf_lsdb::LsaKind::Summary => "summary",
+            netlabcraft_sim::ospf_lsdb::LsaKind::AsbrSummary => "ASBR summary",
+            netlabcraft_sim::ospf_lsdb::LsaKind::External => "external",
+            netlabcraft_sim::ospf_lsdb::LsaKind::Nssa => "NSSA external",
+        };
+        let _ = writeln!(s, "{kind:<14} {:<16} {:<16} {:>5} 0x{:08x}", l.id.to_string(), l.adv.to_string(), l.age, l.seq);
+    }
+    Ok(s.trim_end().to_string())
+}
