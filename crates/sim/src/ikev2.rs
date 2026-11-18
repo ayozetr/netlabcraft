@@ -503,7 +503,10 @@ pub(crate) fn esp_open(suite: Option<EspSuite>, key: &[u8], esp: &netlabcraft_wi
 pub(crate) fn v2_local_check(d: &Device, e: &CryptoMapEntry, local: Ipv4Addr) -> Result<(), String> {
     let peer = e.peer.ok_or_else(|| format!("crypto map {} {} has no peer (`set peer`)", e.map, e.seq))?;
     let ts = e.transform_set.as_deref().ok_or_else(|| format!("crypto map {} {} has no transform set", e.map, e.seq))?;
-    d.crypto.transform_set(ts).ok_or_else(|| format!("transform set {ts} does not exist"))?;
+    let set = d.crypto.transform_set(ts).ok_or_else(|| format!("transform set {ts} does not exist"))?;
+    if crate::vpn::null_only(set) {
+        return Err(crate::vpn::NULL_ONLY.to_string());
+    }
     let name = e.ikev2_profile.as_deref().unwrap_or_default();
     let prof = d.crypto.ikev2.profile(name).ok_or_else(|| format!("IKEv2 profile {name} does not exist"))?;
     if !prof.matches(peer) {

@@ -8,6 +8,7 @@ use crate::*;
 mod acl_counters;
 mod acl_duplicates;
 mod acl_icmp;
+mod archive;
 mod bgp;
 mod bgp_communities;
 mod bgp_leftovers;
@@ -467,6 +468,7 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\ninterface virtual-template 1",
                     "en\nconf t\ninterface dialer 1",
                     "en\nconf t\nrouter rip",
+                    "en\nconf t\narchive",
                     "en\nconf t\nspanning-tree mst configuration",
                     "en\nconf t\nipv6 router rip R",
                 ] {
