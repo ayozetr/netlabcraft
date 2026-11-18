@@ -11,8 +11,8 @@ fn two_routers() -> (Lab, netlabcraft_core::DeviceId, netlabcraft_core::DeviceId
     let r1 = lab.add(DeviceKind::Router);
     let r2 = lab.add(DeviceKind::Router);
     lab.cable(r1, "g0/0", r2, "g0/0");
-    lab.run(r1, "en\nconf t\nint g0/0\nip add 10.0.0.1 255.255.255.252\nno shut\nint g0/1\nip add 192.168.5.1 255.255.255.0\nno shut\nend");
-    lab.run(r2, "en\nconf t\nint g0/0\nip add 10.0.0.2 255.255.255.252\nno shut\nend");
+    lab.run(r1, "en\nconf t\nint g0/0\nip add 10.0.0.1 255.255.255.248\nno shut\nint g0/1\nip add 192.168.5.1 255.255.255.0\nno shut\nend");
+    lab.run(r2, "en\nconf t\nint g0/0\nip add 10.0.0.2 255.255.255.248\nno shut\nend");
     (lab, r1, r2)
 }
 
@@ -61,8 +61,8 @@ fn commands_are_checked() {
     assert!(lab.try_run(r1, "delay up 999").starts_with("% "));
     lab.run(r1, "exit\ntrack 2 list boolean and");
     assert!(lab.try_run(r1, "object 2").starts_with("% "), "a list cannot hold itself");
-    assert!(lab.try_run(r1, "ip route 1.1.1.0 255.255.255.0 10.0.0.2 track 0").starts_with("% "));
     assert!(lab.prompt(r1).ends_with("(config-track)#"));
+    assert!(lab.try_run(r1, "ip route 1.1.1.0 255.255.255.0 10.0.0.2 track 0").starts_with("% "));
     lab.run(r1, "exit");
     assert!(lab.prompt(r1).ends_with("(config)#"));
 }
@@ -99,8 +99,11 @@ fn a_permanent_route_stays_in_the_table_when_its_interface_is_down() {
 #[test]
 fn hsrp_and_vrrp_follow_an_object_by_number() {
     let (mut lab, r1, _) = two_routers();
-    lab.run(r1, "conf t\ntrack 1 interface g0/1 line-protocol\nexit\nint g0/0\nstandby 1 ip 10.0.0.254\nstandby 1 priority 110\nstandby 1 track 1 decrement 25");
-    lab.run(r1, "vrrp 2 ip 10.0.0.253\nvrrp 2 track 1 decrement 30\nend");
+    lab.run(
+        r1,
+        "conf t\ntrack 1 interface g0/1 line-protocol\nexit\nint g0/0\nstandby 1 ip 10.0.0.6\nstandby 1 priority 110\nstandby 1 track 1 decrement 25",
+    );
+    lab.run(r1, "vrrp 2 ip 10.0.0.5\nvrrp 2 track 1 decrement 30\nend");
     let run = lab.run(r1, "show running-config");
     assert!(run.contains(" standby 1 track 1 decrement 25\n") && run.contains(" vrrp 2 track 1 decrement 30\n"), "{run}");
     // g0/1 has no cable, so object 1 is down and the priority drops.
