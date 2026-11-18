@@ -202,6 +202,14 @@ pub enum Id {
     ShowIpIntBrief,
     ShowIpRoute,
     ShowIpRouteTag,
+    // Forwarding table and candidate defaults (exec/cef.rs).
+    ShowIpCef,
+    ShowIpCefDetail,
+    ShowIpCefSummary,
+    ShowIpCefAddress,
+    ShowIpCefAddressDetail,
+    IpDefaultNetwork,
+    NoIpDefaultNetwork,
     ShowInterfaces,
     ShowInterface,
     ShowIntTrunk,
@@ -1619,6 +1627,43 @@ pub static SPECS: &[Spec] = &[
         "The route for exactly this network and mask"
     ),
     spec!(ShowIpRouteTag, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), K("tag"), Arg("<0-4294967295>")], "The routes that carry this tag"),
+    spec!(ShowIpCef, EXECS, Modes::BOTH, [K("show"), K("ip"), K("cef")], "The forwarding table: each prefix, its next hop and interface"),
+    spec!(ShowIpCefDetail, EXECS, Modes::BOTH, [K("show"), K("ip"), K("cef"), K("detail")], "The forwarding table with each next hop's adjacency"),
+    spec!(
+        ShowIpCefSummary,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("cef"), K("summary")],
+        "How many prefixes the forwarding table holds and of what kind"
+    ),
+    spec!(
+        ShowIpCefAddress,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("cef"), Arg("A.B.C.D")],
+        "The forwarding entry that carries traffic to an address"
+    ),
+    spec!(
+        ShowIpCefAddressDetail,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("cef"), Arg("A.B.C.D"), K("detail")],
+        "The forwarding entry for an address with its adjacency"
+    ),
+    spec!(
+        IpDefaultNetwork,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("default-network"), Arg("A.B.C.D")],
+        "Use the route to this network as the default route when there is none"
+    ),
+    spec!(
+        NoIpDefaultNetwork,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("default-network"), Arg("A.B.C.D")],
+        "Stop using this network as a candidate default"
+    ),
     spec!(ShowArp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp")], "ARP cache"),
     spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),

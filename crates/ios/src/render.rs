@@ -715,6 +715,9 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::sla::running_config(&mut s, d);
     crate::exec::pbr::local_line(&mut s, d);
+    for dn in &d.default_networks {
+        let _ = writeln!(s, "ip default-network {dn}");
+    }
     crate::exec::track::running_config(&mut s, d);
     for r in &d.routes {
         let via = match &r.via {
