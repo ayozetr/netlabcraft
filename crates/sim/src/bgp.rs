@@ -1477,6 +1477,15 @@ impl Sim {
         self.bgp.state.as_ref().and_then(|s| s.routers.get(&d.id)).map(|r| r.routes.clone()).unwrap_or_default()
     }
 
+    /// BGP's IPv6 routes for a device, for its IPv6 routing table and for forwarding.
+    pub(crate) fn bgp6_routes(&mut self, t: &Topology, d: &Device) -> Vec<crate::bgp6::Route6> {
+        if !d.bgp.as_ref().is_some_and(|b| b.uses_ipv6()) {
+            return Vec::new();
+        }
+        self.bgp_refresh(t);
+        self.bgp.state6.as_ref().and_then(|s| s.routers.get(&d.id)).map(|r| r.routes.clone()).unwrap_or_default()
+    }
+
     /// Brings BGP up to date at the current simulated time: works out which sessions can come up
     /// when the lab changed, lets them reach Established once their setup time has passed, logs
     /// the changes and puts the messages on the wire.

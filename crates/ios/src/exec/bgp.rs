@@ -992,9 +992,16 @@ pub(super) fn option_command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
             c.cli.mode = Mode::Bgp;
             Ok(String::new())
         }
-        Id::ShowBgpIpv6Summary => {
+        Id::ShowBgpIpv6Summary | Id::ShowBgpIpv6Table | Id::ShowBgpIpv6Prefix | Id::ShowBgpIpv6Neighbors | Id::ShowBgpIpv6Advertised => {
             let view = c.sim.bgp_state(c.t);
-            Ok(super::bgp6::summary(c.d()?, &view))
+            let d = c.d()?;
+            match spec.id {
+                Id::ShowBgpIpv6Summary => Ok(super::bgp6::summary(d, &view)),
+                Id::ShowBgpIpv6Table => super::bgp6::table(d, &view),
+                Id::ShowBgpIpv6Prefix => super::bgp6::entry(d, &view, arg(0)),
+                Id::ShowBgpIpv6Neighbors => super::bgp6::neighbors(d, &view, args.first().map(String::as_str)),
+                _ => super::bgp6::advertised(d, &view, arg(0)),
+            }
         }
         _ => Err("% Only the IPv4 and IPv6 unicast address families are simulated (no VPN address families)".into()),
     }
@@ -1326,7 +1333,7 @@ fn as_path_text(p: &Path) -> String {
 
 /// An AS path as `show ip bgp` writes it: the member autonomous systems of a confederation in
 /// parentheses first, then the path, an AS set in braces, and the origin letter.
-fn path_text(confed: &[u32], as_path: &[u32], as_set: &[u32], origin: u8) -> String {
+pub(super) fn path_text(confed: &[u32], as_path: &[u32], as_set: &[u32], origin: u8) -> String {
     let mut s = String::new();
     if !confed.is_empty() {
         s.push('(');

@@ -7,9 +7,9 @@ use netlabcraft_core::Ipv6Net;
 use netlabcraft_model::Device;
 use netlabcraft_model::bgp::{Aggregate6, Bgp, Family6, MAX_AGGREGATES, MAX_NETWORKS, Source};
 use netlabcraft_sim::bgp::{BgpView, SessionState};
-use netlabcraft_sim::bgp6::Peer;
+use netlabcraft_sim::bgp6::{Path6, Peer, RouterView6};
 
-use super::bgp::{hms, named, not_running, process};
+use super::bgp::{hms, named, not_running, path_text, process};
 use super::{Ctx, R};
 
 /// `neighbor WHO activate` and its `no` form under `address-family ipv6`: the neighbour (reached over
@@ -202,4 +202,172 @@ pub(super) fn summary(d: &Device, v: &BgpView) -> String {
         let _ = writeln!(s, "{:<40} {remote:>11} {transport:<9} {up:<9} {last}", n.peer.to_string());
     }
     s.trim_end().to_string()
+}
+
+fn router6<'a>(d: &Device, v: &'a BgpView) -> Result<&'a RouterView6, String> {
+    if d.bgp.is_none() {
+        return Err(not_running());
+    }
+    v.v6.routers.get(&d.id).ok_or_else(|| "IPv6 routing is not on here: BGP carries IPv6 prefixes once `ipv6 unicast-routing` is set.".to_string())
+}
+
+fn status(p: &Path6) -> String {
+    format!(
+        "{}{}{}",
+        if p.valid { '*' } else { ' ' },
+        if p.best {
+            '>'
+        } else if p.multi {
+            'm'
+        } else {
+            ' '
+        },
+        if p.internal() { 'i' } else { ' ' }
+    )
+}
+
+fn path_line(p: &Path6) -> String {
+    let nh = if p.next_hop.is_unspecified() { "::".to_string() } else { p.next_hop.to_string() };
+    format!(
+        "{} {:<30} {:<28} {:>6} {:>6} {:>6}  {}",
+        status(p),
+        p.net.to_string(),
+        nh,
+        p.med,
+        p.local_pref,
+        p.weight,
+        path_text(&[], &p.as_path, &p.as_set, p.origin)
+    )
+}
+
+/// `show bgp ipv6 unicast`.
+pub(super) fn table(d: &Device, v: &BgpView) -> R {
+    let r = router6(d, v)?;
+    let mut s = format!("BGP router id {}, local AS {}\nAddress family: IPv6 unicast\n", r.router_id, r.asn);
+    s.push_str(
+        "Status: * usable, > best, m one of several equal paths, i learned from an internal neighbour    Origin: i IGP, e EGP, ? incomplete\n\n",
+    );
+    if r.paths.is_empty() {
+        s.push_str("(the IPv6 table is empty: nothing is advertised and nothing was learned)");
+        return Ok(s);
+    }
+    let _ = writeln!(s, "    {:<30} {:<28} {:>6} {:>6} {:>6}  Path", "Network", "Next hop", "Metric", "LocPrf", "Weight");
+    for p in &r.paths {
+        let _ = writeln!(s, "{}", path_line(p));
+    }
+    Ok(s.trim_end().to_string())
+}
+
+/// `show bgp ipv6 unicast X:X::X[/LEN]`: the paths to one prefix, or to the most specific prefix
+/// that covers an address.
+pub(super) fn entry(d: &Device, v: &BgpView, text: &str) -> R {
+    let r = router6(d, v)?;
+    let text = text.trim();
+    let wanted: Vec<&Path6> = if text.contains('/') {
+        let net = text.parse::<Ipv6Net>().map_err(|e| format!("% {e}"))?.network();
+        r.paths.iter().filter(|p| p.net == net).collect()
+    } else {
+        let a: std::net::Ipv6Addr = text.parse().map_err(|_| format!("% `{text}` is not an IPv6 address or prefix"))?;
+        let longest = r.paths.iter().filter(|p| p.net.contains(a)).map(|p| p.net.prefix).max();
+        r.paths.iter().filter(|p| p.net.contains(a) && Some(p.net.prefix) == longest).collect()
+    };
+    let Some(first) = wanted.first() else { return Ok(format!("% Network not in the BGP IPv6 table: {text}")) };
+    let mut s = format!("BGP routing table entry for {}\n", first.net);
+    let best = wanted.iter().position(|p| p.best).map_or("none".to_string(), |i| format!("#{}", i + 1));
+    let _ = writeln!(s, "  Paths: {} available, best {best}", wanted.len());
+    for p in wanted {
+        let path = path_text(&[], &p.as_path, &p.as_set, p.origin);
+        let from = match p.from {
+            None => "local".to_string(),
+            Some(f) => format!("from {f}, router id {}", p.from_id),
+        };
+        let _ = writeln!(s, "  {path}  ({from})");
+        let ll = p.link_local.map_or(String::new(), |l| format!(" (link-local {l})"));
+        let nh = if p.next_hop.is_unspecified() { "::".to_string() } else { p.next_hop.to_string() };
+        let kind = if p.from.is_none() {
+            "local"
+        } else if p.ebgp {
+            "external"
+        } else {
+            "internal"
+        };
+        let valid = if p.valid { "valid" } else { "not usable: the next hop is not in the IPv6 routing table" };
+        let _ = writeln!(
+            s,
+            "    Next hop {nh}{ll}, metric {}, local preference {}, weight {}, {valid}, {kind}{}",
+            p.med,
+            p.local_pref,
+            p.weight,
+            if p.best { ", best" } else { "" }
+        );
+        if !p.communities.is_empty() {
+            let c: Vec<String> = p.communities.iter().map(|c| netlabcraft_model::policy::community_text(*c, false)).collect();
+            let _ = writeln!(s, "    Community: {}", c.join(" "));
+        }
+    }
+    Ok(s.trim_end().to_string())
+}
+
+/// `show bgp ipv6 unicast neighbors [ADDRESS]`.
+pub(super) fn neighbors(d: &Device, v: &BgpView, who: Option<&str>) -> R {
+    let r = router6(d, v)?;
+    let b = d.bgp.as_ref().ok_or_else(not_running)?;
+    let chosen: Vec<_> = r.neighbors.iter().filter(|n| who.is_none_or(|w| n.peer.to_string() == w.trim())).collect();
+    if chosen.is_empty() {
+        return Err(match who {
+            Some(w) => format!("% {w} is not a neighbour activated for IPv6"),
+            None => "(no neighbour is activated for IPv6)".to_string(),
+        });
+    }
+    let mut s = String::new();
+    for n in chosen {
+        let remote = n.remote_as.map_or("-".to_string(), |a| a.to_string());
+        let kind = if n.ebgp { "external link" } else { "internal link" };
+        let _ = writeln!(s, "BGP neighbor is {}, remote AS {remote}, {kind}", n.peer);
+        let _ = writeln!(s, "  Session over {}, state {}", if n.transport6 { "IPv6" } else { "IPv4" }, state_text(n.admin_down, n.state));
+        if let Some(id) = n.peer_router_id {
+            let _ = writeln!(s, "  Remote router id {id}");
+        }
+        if let Some(e) = &n.error {
+            let _ = writeln!(s, "  Last error: {e}");
+        }
+        let conf = match n.peer {
+            Peer::V4(a) => b.neighbor(a),
+            Peer::V6(a) => b.neighbor6(a),
+        };
+        let carries = if n.carries6 { "negotiated" } else { "not negotiated (the other end did not announce it)" };
+        let _ = writeln!(s, "  Address family IPv6 unicast: {carries}, {} prefixes received, {} sent", n.received, n.sent);
+        if let Some(f) = conf.map(|c| &c.af6) {
+            for (word, dir, name) in [
+                ("prefix list", "in", &f.prefix_list_in),
+                ("prefix list", "out", &f.prefix_list_out),
+                ("filter list", "in", &f.filter_list_in),
+                ("filter list", "out", &f.filter_list_out),
+                ("route map", "in", &f.route_map_in),
+                ("route map", "out", &f.route_map_out),
+            ] {
+                if let Some(x) = name {
+                    let _ = writeln!(s, "  Inbound and outbound policy: {word} {x} {dir}");
+                }
+            }
+            if f.next_hop_self {
+                s.push_str("  This router is the next hop of what it sends (next-hop-self)\n");
+            }
+        }
+        s.push('\n');
+    }
+    Ok(s.trim_end().to_string())
+}
+
+/// `show bgp ipv6 unicast neighbors ADDRESS advertised-routes`.
+pub(super) fn advertised(d: &Device, v: &BgpView, who: &str) -> R {
+    let r = router6(d, v)?;
+    let n = r.neighbors.iter().find(|n| n.peer.to_string() == who.trim()).ok_or_else(|| format!("% {who} is not a neighbour activated for IPv6"))?;
+    let Some(list) = r.adv.get(&n.peer) else { return Ok(format!("(the session with {who} is not Established: nothing is advertised)")) };
+    let mut s = format!("Advertised to {who}: {} prefix{}\n", list.len(), if list.len() == 1 { "" } else { "es" });
+    for (net, at) in list {
+        let nh = at.mp_reach6.as_ref().map_or("::".to_string(), |m| m.next_hop.to_string());
+        let _ = writeln!(s, "  {:<30} next hop {nh:<28} {}", net.to_string(), path_text(&[], &at.as_path, &at.as_set, at.origin));
+    }
+    Ok(s.trim_end().to_string())
 }

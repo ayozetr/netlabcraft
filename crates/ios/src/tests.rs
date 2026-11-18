@@ -15,6 +15,7 @@ mod bgp_dampening;
 mod bgp_extcommunities;
 mod bgp_ipv6;
 mod bgp_ipv6_routes;
+mod bgp_ipv6_table;
 mod bgp_leftovers;
 mod bgp_local_as;
 mod bgp_password;

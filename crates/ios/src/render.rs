@@ -2206,7 +2206,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
     let dynamic = sim.dynamic_routes6(t, d);
     let table = netlabcraft_sim::v6::routing_table6(t, d, &dynamic);
     let mut s = String::from(
-        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, R RIPng, ND default from a router advertisement\n",
+        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, R RIPng, B BGP, ND default from a router advertisement\n",
     );
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
