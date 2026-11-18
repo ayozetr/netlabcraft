@@ -41,12 +41,12 @@ pub struct BridgeId {
 }
 
 impl BridgeId {
-    fn encode(&self, out: &mut Vec<u8>) {
+    pub(crate) fn encode(&self, out: &mut Vec<u8>) {
         out.extend_from_slice(&self.priority.to_be_bytes());
         out.extend_from_slice(&self.mac.0);
     }
 
-    fn decode(b: &[u8], at: usize) -> Option<BridgeId> {
+    pub(crate) fn decode(b: &[u8], at: usize) -> Option<BridgeId> {
         Some(BridgeId { priority: be16(b, at)?, mac: mac_at(b, at + 2)? })
     }
 }
@@ -147,7 +147,8 @@ impl Bpdu {
         // Protocol id (2 bytes), version, type; then the flags.
         let rstp = match b.get(3..7).ok_or_else(t)? {
             [0, 0, 0, 0] => None,
-            [0, 0, 2, 2] => Some(*b.get(7).ok_or_else(t)?),
+            // Version 3 (multiple spanning tree) starts with the same fields as version 2.
+            [0, 0, 2 | 3, 2] => Some(*b.get(7).ok_or_else(t)?),
             _ => return Err(WireError::Unsupported("bpdu", "not a configuration or RST BPDU".into())),
         };
         if rstp.is_some() && b.len() < 3 + 36 {

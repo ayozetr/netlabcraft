@@ -10,6 +10,7 @@ use std::net::Ipv4Addr;
 use netlabcraft_core::{DeviceId, MacAddr, VlanId};
 use netlabcraft_model::{DeviceKind, End, Topology};
 use netlabcraft_wire::control::{self, Bpdu, BridgeId};
+use netlabcraft_wire::mst::{self, MstBpdu, MstConfigId, MstiRecord};
 use netlabcraft_wire::{Frame, Ipv4, PROTO_UDP, Udp};
 
 use crate::{Sim, l3_ifaces, port_up};
@@ -144,6 +145,10 @@ impl Sim {
         let switches: Vec<_> = t.devices.iter().filter(|d| d.kind == DeviceKind::Switch).map(|d| d.id).collect();
         for id in switches {
             let Some(d) = t.device(id) else { continue };
+            if d.mst.on {
+                self.send_mst_bpdus(t, id, at);
+                continue;
+            }
             let vlans: Vec<VlanId> = d.vlans.keys().copied().collect();
             for v in vlans {
                 let tree = self.spanning_tree(t, v).clone();
@@ -180,6 +185,73 @@ impl Sim {
         }
     }
 
+    /// A switch running MST sends one untagged MST BPDU per designated port of the common tree: the
+    /// CIST's root, its region's identity and a record for each instance that holds VLANs.
+    fn send_mst_bpdus(&mut self, t: &Topology, id: DeviceId, at: u64) {
+        let Some(d) = t.device(id) else { return };
+        let rep = |inst: u16| d.vlans.keys().copied().find(|v| d.mst.instance_of(v.get()) == inst);
+        let Some(v0) = rep(0) else { return };
+        let tree0 = self.spanning_tree(t, v0).clone();
+        let Some(me) = tree0.bridges.get(&id).copied() else { return };
+        let trees: Vec<(u16, crate::stp::VlanTree)> =
+            d.mst.used_instances().into_iter().filter_map(|i| rep(i).map(|v| (i, self.spanning_tree(t, v).clone()))).collect();
+        let wire = |b: crate::stp::BridgeId| BridgeId { priority: u16::try_from(b.priority).unwrap_or(u16::MAX), mac: b.mac };
+        let config = MstConfigId {
+            name: d.mst.name.chars().take(mst::MAX_NAME).collect(),
+            revision: d.mst.revision,
+            digest: mst::config_digest(|v| d.mst.instance_of(v)),
+        };
+        for ((_, p), info) in tree0.ports.iter().filter(|((dev, _), i)| *dev == id && i.role == crate::stp::Role::Designated) {
+            let Some(port) = d.ports.get(*p) else { continue };
+            if crate::stp::bpdufilter_on(d, *p) {
+                continue;
+            }
+            let state = match self.stp_transition(id, *p, v0) {
+                Some("LIS") => 0,
+                Some(_) => control::FLAG_LEARNING,
+                None => control::FLAG_LEARNING | control::FLAG_FORWARDING,
+            };
+            let mut msti = Vec::new();
+            for (_, tr) in &trees {
+                let Some(mi) = tr.bridges.get(&id) else { continue };
+                let (role, pid) = tr.ports.get(&(id, *p)).map_or((crate::stp::Role::Designated, 128_000), |x| (x.role, x.port_id));
+                let bits = match role {
+                    crate::stp::Role::Root => control::ROLE_ROOT,
+                    crate::stp::Role::Alternate => control::ROLE_ALTERNATE,
+                    _ => control::ROLE_DESIGNATED,
+                };
+                let fwd = if role.forwards() { control::FLAG_LEARNING | control::FLAG_FORWARDING } else { 0 };
+                msti.push(MstiRecord {
+                    flags: (bits << control::ROLE_SHIFT) | fwd,
+                    regional_root: wire(mi.root),
+                    internal_cost: mi.root_cost,
+                    bridge_priority: u8::try_from((mi.id.priority >> 12) & 0xf).unwrap_or(8) << 4,
+                    port_priority: u8::try_from(pid / 1000).unwrap_or(128),
+                    hops: 19,
+                });
+            }
+            let bpdu = MstBpdu {
+                base: Bpdu {
+                    root: wire(me.root),
+                    root_cost: me.root_cost,
+                    bridge: wire(me.root),
+                    port_id: wire_port_id(info.port_id, *p),
+                    message_age: u16::from(me.root != me.id),
+                    rstp: Some((control::ROLE_DESIGNATED << control::ROLE_SHIFT) | state),
+                },
+                config: config.clone(),
+                internal_cost: me.root_cost,
+                bridge: wire(me.id),
+                hops: 20,
+                msti,
+            };
+            let payload = bpdu.encode();
+            let frame =
+                Frame { dst: control::STP_GROUP, src: port.mac, vlan: None, ethertype: u16::try_from(payload.len()).unwrap_or(u16::MAX), payload };
+            self.queue_at(t, End { device: id, port: *p }, frame.encode(), at);
+        }
+    }
+
     /// Rapid spanning tree (802.1w): a designated port that just came up on a point-to-point
     /// link proposes (an RST BPDU with the proposal flag, discarding), and the switch at the
     /// far end, having put its other ports in sync, agrees from its root (or alternate) port.
@@ -200,6 +272,10 @@ impl Sim {
             let Some(vlan) = VlanId::new(v) else { continue };
             let tree = self.spanning_tree(t, vlan).clone();
             let (Some(d), Some(me)) = (t.device(dev), tree.bridges.get(&dev)) else { continue };
+            // An MST switch keeps its own BPDU format (`send_mst_bpdus`).
+            if d.mst.on {
+                continue;
+            }
             let Some(info) = tree.ports.get(&(dev, p)) else { continue };
             let Some(port) = d.ports.get(p) else { continue };
             let end = End { device: dev, port: p };

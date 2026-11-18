@@ -32,6 +32,7 @@ mod knobs;
 mod knobs_routing;
 mod leftovers;
 mod line_protocol;
+mod mst;
 mod name_resolution;
 mod nat_timeouts;
 mod nat_verbose;
@@ -463,6 +464,7 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\ninterface virtual-template 1",
                     "en\nconf t\ninterface dialer 1",
                     "en\nconf t\nrouter rip",
+                    "en\nconf t\nspanning-tree mst configuration",
                     "en\nconf t\nipv6 router rip R",
                 ] {
                     for l in setup.lines() {
