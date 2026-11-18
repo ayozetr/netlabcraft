@@ -5,11 +5,11 @@ use netlabcraft_core::DeviceId;
 
 use super::{Lab, ping_settled, two_sites};
 
-const SITE1: &str = "192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255";
-const SITE2: &str = "192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255";
+pub(super) const SITE1: &str = "192.168.1.0 0.0.0.255 192.168.2.0 0.0.0.255";
+pub(super) const SITE2: &str = "192.168.2.0 0.0.0.255 192.168.1.0 0.0.0.255";
 
 /// Gets a certificate for `r` from the CA at `ca` (a trustpoint named `T`).
-fn enroll(lab: &mut Lab, r: DeviceId, ca: &str, cn: &str) {
+pub(super) fn enroll(lab: &mut Lab, r: DeviceId, ca: &str, cn: &str) {
     lab.run(
         r,
         &format!(
@@ -19,7 +19,7 @@ fn enroll(lab: &mut Lab, r: DeviceId, ca: &str, cn: &str) {
 }
 
 /// The two sites of `two_sites`, the ISP running the certificate authority, both routers enrolled.
-fn sites_with_certificates() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
+pub(super) fn sites_with_certificates() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
     let (mut lab, r1, isp, r2, a) = two_sites();
     lab.run(isp, "conf t\nip http server\ncrypto pki server ROOT\nissuer-name CN=Lab Root, O=NetLab\ngrant auto\nno shutdown\nend");
     enroll(&mut lab, r1, "203.0.113.2", "r1.lab.test");
@@ -27,7 +27,7 @@ fn sites_with_certificates() -> (Lab, DeviceId, DeviceId, DeviceId, DeviceId) {
     (lab, r1, isp, r2, a)
 }
 
-fn v1_config(acl: &str, peer: &str, auth: &str) -> String {
+pub(super) fn v1_config(acl: &str, peer: &str, auth: &str) -> String {
     let key = if auth == "pre-share" { format!("crypto isakmp key unused address {peer}\n") } else { String::new() };
     format!(
         "conf t
@@ -50,7 +50,7 @@ end"
     )
 }
 
-fn v2_config(acl: &str, peer: &str) -> String {
+pub(super) fn v2_config(acl: &str, peer: &str) -> String {
     format!(
         "conf t
 access-list 110 permit ip {acl}
@@ -125,7 +125,9 @@ fn ikev1_signature_failures_say_why() {
     lab.run(r2, "conf t\ncrypto pki trustpoint SELF\nenrollment selfsigned\nsubject-name CN=r2.lab.test, O=NetLab\nexit\ncrypto pki enroll SELF\nno crypto pki trustpoint T\nend");
     assert!(ping_settled(&mut lab, a, "192.168.2.10").contains(" 0 answered"));
     let sa = lab.run(r1, "show crypto isakmp sa");
-    assert!(sa.contains("failed:") && sa.contains("does not trust the authority"), "{sa}");
+    // Which refusal comes first depends on who speaks first: this router's certificate is not
+    // from an authority the peer's request names, and the peer's is not from one it trusts.
+    assert!(sa.contains("failed:") && (sa.contains("does not trust the authority") || sa.contains("asked (CERTREQ)")), "{sa}");
     let _ = isp;
 
     // An expired certificate: the router whose clock is past its end refuses the peer.
