@@ -912,6 +912,9 @@ fn show_route_maps(d: &Device, only: Option<&str>, sim: &netlabcraft_sim::Sim) -
             if !c.acls.is_empty() {
                 let _ = writeln!(s, "    match access list: {}", c.acls.join(", "));
             }
+            if !c.prefix_lists6.is_empty() {
+                let _ = writeln!(s, "    match IPv6 prefix list: {}", c.prefix_lists6.join(", "));
+            }
             if !c.community_lists.is_empty() {
                 let _ = writeln!(s, "    match community list: {}", c.community_lists.join(", "));
             }
@@ -938,6 +941,7 @@ fn show_route_maps(d: &Device, only: Option<&str>, sim: &netlabcraft_sim::Sim) -
                 let _ = writeln!(s, "    policy routing took {packets} packets, {bytes} bytes");
             }
             if c.prefix_lists.is_empty()
+                && c.prefix_lists6.is_empty()
                 && c.acls.is_empty()
                 && c.length.is_none()
                 && c.metric.is_none()
@@ -983,6 +987,9 @@ fn set_lines(c: &Clause, new_format: bool) -> Vec<String> {
             Some(n) => v.push(format!("ip next-hop verify-availability {x} 10 track {n}")),
             None => v.push(format!("ip next-hop {x}")),
         }
+    }
+    if let Some(x) = c.sets.next_hop6 {
+        v.push(format!("ipv6 next-hop {x}"));
     }
     if let Some(x) = c.sets.default_next_hop {
         v.push(format!("ip default next-hop {x}"));
@@ -1051,6 +1058,7 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     if !d.prefix_lists.is_empty() {
         let _ = writeln!(s, "!");
     }
+    super::policy6::running_config(s, d);
     for m in &d.route_maps {
         for c in &m.clauses {
             let _ = writeln!(s, "route-map {} {} {}", m.name, if c.permit { "permit" } else { "deny" }, c.seq);
@@ -1059,6 +1067,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             }
             if !c.acls.is_empty() {
                 let _ = writeln!(s, " match ip address {}", c.acls.join(" "));
+            }
+            if !c.prefix_lists6.is_empty() {
+                let _ = writeln!(s, " match ipv6 address prefix-list {}", c.prefix_lists6.join(" "));
             }
             if !c.community_lists.is_empty() {
                 let _ = writeln!(s, " match community {}", c.community_lists.join(" "));

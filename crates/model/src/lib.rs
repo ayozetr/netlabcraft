@@ -45,9 +45,11 @@ pub mod mst;
 pub mod netflow;
 pub mod pbr;
 pub mod physical;
+pub mod pim;
 pub mod pki;
 pub mod poe;
 pub mod policy;
+pub mod policy6;
 pub mod pppoe;
 pub mod proximity;
 pub mod psu;
@@ -65,6 +67,7 @@ pub mod usb;
 pub mod voice;
 pub mod vpn;
 pub mod vpnclient;
+pub mod vrf;
 pub mod wlan;
 
 pub use drawing::{Cluster, MAX_CLUSTERS, MAX_FREEHAND_POINTS, MAX_POLYGON_POINTS, Shown};
@@ -979,6 +982,9 @@ pub struct Device {
     /// IGMP snooping on switches, joined groups on hosts.
     #[serde(default, skip_serializing_if = "is_default")]
     pub igmp: igmp::Igmp,
+    /// Routers: multicast routing and PIM.
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub pim: pim::Pim,
     /// Routers and switches: the configuration archive (kept in flash, so a reload keeps it).
     #[serde(default, skip_serializing_if = "is_default")]
     pub archive: archive::Archive,
@@ -991,6 +997,9 @@ pub struct Device {
     /// Switches: multiple spanning tree (`spanning-tree mode mst`, which also sets `rapid_stp`).
     #[serde(default, skip_serializing_if = "is_default")]
     pub mst: mst::Mst,
+    /// Routers: VRFs (`ip vrf NAME`), each with its interfaces, static routes, OSPF and BGP.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vrfs: Vec<vrf::Vrf>,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -1057,6 +1066,9 @@ pub struct Device {
     /// Routers: prefix lists (`ip prefix-list`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prefix_lists: Vec<policy::PrefixList>,
+    /// Routers: IPv6 prefix lists (`ipv6 prefix-list`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prefix_lists6: Vec<policy6::PrefixList6>,
     /// Routers: route maps (`route-map`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_maps: Vec<policy::RouteMap>,
@@ -2294,10 +2306,12 @@ impl Device {
             vtp: Vtp::default(),
             rapid_stp: false,
             igmp: igmp::Igmp::default(),
+            pim: pim::Pim::default(),
             archive: archive::Archive::default(),
             printer: usb::Printer::default(),
             usb: if model.id == usb::STICK_MODEL { usb::Stick::fresh() } else { usb::Stick::default() },
             mst: mst::Mst::default(),
+            vrfs: Vec::new(),
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
@@ -2319,6 +2333,7 @@ impl Device {
             eigrp: None,
             bgp: None,
             prefix_lists: Vec::new(),
+            prefix_lists6: Vec::new(),
             route_maps: Vec::new(),
             community_lists: Vec::new(),
             ext_community_lists: Vec::new(),
@@ -2427,6 +2442,7 @@ impl Device {
         self.access = Access::default();
         self.stp_priority.clear();
         self.igmp = igmp::Igmp::default();
+        self.pim = pim::Pim::default();
         self.mst = mst::Mst::default();
         self.svis.clear();
         self.ospf = None;
@@ -2434,6 +2450,7 @@ impl Device {
         self.eigrp = None;
         self.bgp = None;
         self.prefix_lists.clear();
+        self.prefix_lists6.clear();
         self.route_maps.clear();
         self.community_lists.clear();
         self.ext_community_lists.clear();
@@ -2579,6 +2596,10 @@ pub struct Topology {
     /// Why a cellular device has no link (data off, out of range, tower full).
     #[serde(skip)]
     pub cell_none: BTreeMap<DeviceId, cellular::NoLink>,
+    /// Cables that only work one way: the frames a port sends are lost (a cut fibre strand), while
+    /// what arrives at it still comes in.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub one_way: Vec<End>,
 }
 
 /// A note or drawing placed on the workspace.
@@ -2771,7 +2792,25 @@ impl Topology {
             scenarios: scenario::Scenarios::default(),
             cell_links: BTreeMap::new(),
             cell_none: BTreeMap::new(),
+            one_way: Vec::new(),
         }
+    }
+
+    /// Whether what this port sends is lost (see [`Topology::one_way`]).
+    pub fn tx_cut(&self, end: End) -> bool {
+        self.one_way.contains(&end) && self.peer(end).is_some()
+    }
+
+    /// Cuts (or restores) the strand a port sends on. Only a cabled port can be cut.
+    pub fn set_tx_cut(&mut self, end: End, cut: bool) -> Result<()> {
+        if self.peer(end).is_none() {
+            return Err(ModelError::Invalid(format!("{} has no cable", self.end_label(end))));
+        }
+        self.one_way.retain(|e| *e != end);
+        if cut {
+            self.one_way.push(end);
+        }
+        Ok(())
     }
 
     pub fn device(&self, id: DeviceId) -> Option<&Device> {
@@ -2839,6 +2878,7 @@ impl Topology {
     pub fn remove_device(&mut self, id: DeviceId) -> Result<Device> {
         let i = self.devices.iter().position(|d| d.id == id).ok_or_else(|| ModelError::NoDevice(id.to_string()))?;
         self.links.retain(|l| l.a.device != id && l.b.device != id);
+        self.one_way.retain(|e| e.device != id);
         self.consoles.retain(|c| c.pc != id && c.device != id);
         self.octals.retain(|o| o.router != id && o.device != id);
         self.usbs.retain(|c| c.host != id && c.device != id);
@@ -3016,6 +3056,7 @@ impl Topology {
     pub fn disconnect(&mut self, end: End) -> Option<Link> {
         let i = self.links.iter().position(|l| l.a == end || l.b == end)?;
         let l = self.links.remove(i);
+        self.one_way.retain(|e| *e != l.a && *e != l.b);
         self.prune_physical();
         Some(l)
     }
@@ -3118,6 +3159,7 @@ impl Topology {
                     b.sanitize();
                 }
                 policy::sanitize_prefix_lists(&mut d.prefix_lists);
+                policy6::sanitize_prefix_lists6(&mut d.prefix_lists6);
                 policy::sanitize_route_maps(&mut d.route_maps);
                 policy::sanitize_community_lists(&mut d.community_lists);
                 policy::sanitize_ext_community_lists(&mut d.ext_community_lists);

@@ -244,6 +244,10 @@ impl Sim {
     /// Queues an Ethernet frame for one hop, at `at`. Across the air it becomes an 802.11 data
     /// frame, and it waits while the host is still associating.
     pub(crate) fn push_hop(&mut self, t: &Topology, at: u64, from: End, to: End, frame: Vec<u8>, hops: u8) {
+        // A cable cut one way carries nothing out of this port (what it takes in still comes).
+        if t.tx_cut(from) {
+            return;
+        }
         if !air_hop(t, from, to) {
             self.enqueue(at, from, to, frame, hops);
             return;

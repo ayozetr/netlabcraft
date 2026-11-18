@@ -93,7 +93,9 @@ pub(crate) fn tunnel_ifaces(d: &Device) -> Vec<L3If> {
     d.tunnels
         .iter()
         .filter(|t| !t.shutdown)
-        .filter_map(|t| t.ip.map(|net| L3If { port: tunnel_port(t.number), sub: None, vlan: None, net, mac: tunnel_mac(d), name: t.name() }))
+        .filter_map(|t| {
+            t.ip.map(|net| L3If { port: tunnel_port(t.number), sub: None, vlan: None, net, mac: tunnel_mac(d), name: t.name(), vrf: None })
+        })
         .collect()
 }
 

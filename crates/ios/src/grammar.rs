@@ -14,7 +14,7 @@ pub enum Tok {
 
 /// Where a command is available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Modes(pub u64);
+pub struct Modes(pub u128);
 
 impl Modes {
     pub const USER: Modes = Modes(1);
@@ -67,7 +67,7 @@ impl Modes {
     pub const FIREWALL: Modes = Modes(1 << 29);
     /// `object network NAME` on the firewall.
     pub const OBJECT: Modes = Modes(1 << 30);
-    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u64).
+    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u128).
     pub const ZONE: Modes = Modes(1 << 40);
     /// `class-map type inspect NAME`.
     pub const INSPECT_CLASS: Modes = Modes(1 << 41);
@@ -113,6 +113,8 @@ impl Modes {
     pub const ARCHIVE: Modes = Modes(1 << 62);
     /// `spanning-tree mst configuration`.
     pub const MST: Modes = Modes(1 << 61);
+    /// `ip vrf NAME`.
+    pub const VRF: Modes = Modes(1 << 36);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         (1 << 63)
@@ -159,7 +161,8 @@ impl Modes {
             | (1 << 59)
             | (1 << 60)
             | (1 << 61)
-            | (1 << 62),
+            | (1 << 62)
+            | (1 << 36),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -428,6 +431,19 @@ pub enum Id {
     L2NoRecoveryCause,
     L2RecoveryInterval,
     L2NoRecoveryInterval,
+    StormLevel,
+    NoStormLevel,
+    StormAction,
+    NoStormAction,
+    ShowStormControl,
+    UdldGlobal,
+    NoUdldGlobal,
+    UdldMessageTime,
+    UdldReset,
+    UdldPort,
+    UdldPortAggressive,
+    NoUdldPort,
+    ShowUdld,
     L2ShowErrDisabled,
     L2ShowRecovery,
     L2DetectCause,
@@ -1042,6 +1058,14 @@ pub enum Id {
     ShowIpPrefixList,
     ShowRouteMap,
     RouteMapEnter,
+    Prefix6ListLine,
+    NoPrefix6List,
+    NoPrefix6ListLine,
+    ShowIpv6PrefixList,
+    RmMatchAddress6,
+    NoRmMatchAddress6,
+    RmSetNextHop6,
+    NoRmSetNextHop6,
     // Policy-based routing (exec/pbr.rs).
     IpPolicyRouteMap,
     NoIpPolicyRouteMap,
@@ -1202,6 +1226,12 @@ pub enum Id {
     BgpAddressFamily,
     BgpExitAddressFamily,
     BgpAddressFamilyOther,
+    BgpAddressFamily6,
+    ShowBgpIpv6Summary,
+    ShowBgpIpv6Table,
+    ShowBgpIpv6Prefix,
+    ShowBgpIpv6Neighbors,
+    ShowBgpIpv6Advertised,
     BgpNeighborDistribute,
     NoBgpNeighborDistribute,
     BgpPeerGroup,
@@ -1338,6 +1368,30 @@ pub enum Id {
     IpFtpPassword,
     NoIpFtpLogin,
     StpMode,
+    IpVrf,
+    NoIpVrf,
+    VrfRd,
+    NoVrfRd,
+    VrfRouteTarget,
+    NoVrfRouteTarget,
+    VrfDescription,
+    IpVrfForwarding,
+    NoIpVrfForwarding,
+    IpRouteVrf,
+    NoIpRouteVrf,
+    ShowIpRouteVrf,
+    ShowIpVrf,
+    ShowIpVrfDetail,
+    ShowIpVrfInterfaces,
+    ShowIpArpVrf,
+    PingVrf,
+    PingVrfRepeat,
+    RouterOspfVrf,
+    NoRouterOspfVrf,
+    BgpAddressFamilyVrf,
+    ShowIpBgpVrf,
+    ShowIpBgpVrfSummary,
+    ShowOspfNeighborVrf,
     MstConfiguration,
     NoMstConfiguration,
     MstName,
@@ -1549,6 +1603,29 @@ pub enum Id {
     SrNoVtpPruning,
     SrTrunkPruning,
     SrNoTrunkPruning,
+    // Multicast routing and PIM.
+    McRouting,
+    NoMcRouting,
+    McRpAddress,
+    NoMcRpAddress,
+    McPimSparse,
+    McPimDense,
+    McPimSparseDense,
+    NoMcPim,
+    McDrPriority,
+    NoMcDrPriority,
+    McJoinGroup,
+    NoMcJoinGroup,
+    ClearMroute,
+    ShowMroute,
+    ShowMrouteCount,
+    ShowMrouteSummary,
+    ShowMrouteGroup,
+    ShowPimNeighbor,
+    ShowPimInterface,
+    ShowPimRp,
+    ShowRouterIgmpGroups,
+    ShowRouterIgmpInterface,
     ShowDot1x,
     ShowDot1xAll,
     ShowDot1xInterface,
@@ -1596,6 +1673,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::KEYCHAIN_KEY)
     .or(Modes::ARCHIVE)
     .or(Modes::MST)
+    .or(Modes::VRF)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1620,6 +1698,7 @@ const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
 /// The site-to-site VPN sub-modes.
+const VRF_IFACES: Modes = Modes::IF.or(Modes::SUBIF).or(Modes::SVI).or(Modes::LOOPBACK);
 const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM).or(Modes::CLIENT_GROUP);
 /// The QoS sub-modes.
 const QOS_MODES: Modes = Modes::CLASS_MAP.or(Modes::POLICY_MAP).or(Modes::POLICY_CLASS);
@@ -3839,6 +3918,23 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(ShowIpPrefixList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("prefix-list")], "Every prefix list"),
     spec!(ShowIpPrefixList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("prefix-list"), Arg("NAME")], "One prefix list"),
+    spec!(
+        Prefix6ListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ipv6"), K("prefix-list"), Arg("NAME"), Rest("[seq <1-4294967294>] {permit|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]")],
+        "Add a line to an IPv6 prefix list"
+    ),
+    spec!(NoPrefix6List, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("prefix-list"), Arg("NAME")], "Delete an IPv6 prefix list"),
+    spec!(
+        NoPrefix6ListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ipv6"), K("prefix-list"), Arg("NAME"), Rest("{seq <1-4294967294>|{permit|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]}")],
+        "Delete one line of an IPv6 prefix list"
+    ),
+    spec!(ShowIpv6PrefixList, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("prefix-list")], "Every IPv6 prefix list"),
+    spec!(ShowIpv6PrefixList, EXECS, Modes::BOTH, [K("show"), K("ipv6"), K("prefix-list"), Arg("NAME")], "One IPv6 prefix list"),
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map")], "Every route map"),
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map"), Arg("NAME")], "One route map"),
     spec!(
@@ -4101,6 +4197,21 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("match"), K("ip"), K("address"), Rest("[prefix-list] <name> [<name>...]")],
         "Remove these names from the address match"
     ),
+    spec!(
+        RmMatchAddress6,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("ipv6"), K("address"), Rest("prefix-list <name> [<name>...]")],
+        "Match IPv6 prefixes that IPv6 prefix lists permit"
+    ),
+    spec!(NoRmMatchAddress6, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("ipv6"), K("address")], "Remove every IPv6 address match"),
+    spec!(
+        NoRmMatchAddress6,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("match"), K("ipv6"), K("address"), Rest("prefix-list <name> [<name>...]")],
+        "Remove these names from the IPv6 address match"
+    ),
     spec!(RmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("match"), K("metric"), Arg("<0-4294967295>")], "Match routes with this metric"),
     spec!(NoRmMatchMetric, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("metric")], "Remove the metric match"),
     spec!(RmMatchTag, Modes::ROUTE_MAP, Modes::BOTH, [K("match"), K("tag"), Rest("<tag> [<tag>...]")], "Match routes that carry one of these tags"),
@@ -4137,6 +4248,8 @@ pub static SPECS: &[Spec] = &[
     spec!(NoRmSetPrepend, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("as-path"), K("prepend")], "Leave the AS path alone"),
     spec!(RmSetNextHop, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("ip"), K("next-hop"), Arg("A.B.C.D")], "Give the paths this next hop"),
     spec!(NoRmSetNextHop, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ip"), K("next-hop")], "Leave the next hop alone"),
+    spec!(RmSetNextHop6, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("ipv6"), K("next-hop"), Arg("X:X::X")], "Give the IPv6 paths this next hop"),
+    spec!(NoRmSetNextHop6, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ipv6"), K("next-hop")], "Leave the IPv6 next hop alone"),
     spec!(RmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("origin"), Arg("{igp|egp|incomplete}")], "Give the paths this origin"),
     spec!(NoRmSetOrigin, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("origin")], "Leave the origin alone"),
     spec!(
@@ -4337,7 +4450,15 @@ pub static SPECS: &[Spec] = &[
         [K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D"), Rest("[summary-only] [as-set]")],
         "Advertise one summary while a more specific path exists"
     ),
+    spec!(
+        BgpAggregate,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("aggregate-address"), Arg("X:X::X/LEN")],
+        "Advertise one IPv6 summary while a more specific path exists"
+    ),
     spec!(NoBgpAggregate, Modes::BGP, Modes::BOTH, [K("no"), K("aggregate-address"), Arg("A.B.C.D"), Arg("A.B.C.D")], "Stop summarising"),
+    spec!(NoBgpAggregate, Modes::BGP, Modes::BOTH, [K("no"), K("aggregate-address"), Arg("X:X::X/LEN")], "Stop summarising"),
     spec!(
         NoBgpAggregate,
         Modes::BGP,
@@ -4875,14 +4996,14 @@ pub static SPECS: &[Spec] = &[
         Modes::BGP,
         Modes::BOTH,
         [K("neighbor"), Arg("A.B.C.D|NAME"), K("activate")],
-        "Exchange IPv4 routes with this neighbour"
+        "Exchange routes of this address family with this neighbour"
     ),
     spec!(
         NoBgpNeighborActivate,
         Modes::BGP,
         Modes::BOTH,
         [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("activate")],
-        "Stop exchanging IPv4 routes with this neighbour"
+        "Stop exchanging routes of this address family with this neighbour"
     ),
     spec!(
         BgpAddressFamily,
@@ -4898,8 +5019,77 @@ pub static SPECS: &[Spec] = &[
         [K("address-family"), K("ipv4"), K("unicast")],
         "Configure the IPv4 unicast address family (its commands apply to the process)"
     ),
+    spec!(
+        BgpAddressFamily6,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv6")],
+        "Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised"
+    ),
+    spec!(
+        BgpAddressFamily6,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv6"), K("unicast")],
+        "Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised"
+    ),
     spec!(BgpExitAddressFamily, Modes::BGP, Modes::BOTH, [K("exit-address-family")], "Leave the address family"),
-    spec!(BgpAddressFamilyOther, Modes::BGP, Modes::BOTH, [K("address-family"), Rest("<other address family>")], "Only IPv4 unicast is simulated"),
+    spec!(
+        BgpAddressFamilyOther,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("address-family"), Rest("<other address family>")],
+        "Only IPv4 and IPv6 unicast are simulated"
+    ),
+    spec!(
+        ShowBgpIpv6Summary,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("summary")],
+        "Each neighbour's session state and IPv6 prefix count"
+    ),
+    spec!(
+        ShowBgpIpv6Summary,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("summary")],
+        "Each neighbour's session state and IPv6 prefix count"
+    ),
+    spec!(
+        ShowBgpIpv6Table,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast")],
+        "Every IPv6 path BGP knows, the best of each prefix marked"
+    ),
+    spec!(
+        ShowBgpIpv6Prefix,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), Arg("X:X::X[/LEN]")],
+        "The paths to one IPv6 destination or prefix"
+    ),
+    spec!(
+        ShowBgpIpv6Neighbors,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("neighbors")],
+        "Every neighbour activated for IPv6, in detail"
+    ),
+    spec!(
+        ShowBgpIpv6Neighbors,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("neighbors"), Arg("A.B.C.D|X:X::X")],
+        "One neighbour activated for IPv6, in detail"
+    ),
+    spec!(
+        ShowBgpIpv6Advertised,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("bgp"), K("ipv6"), K("unicast"), K("neighbors"), Arg("A.B.C.D|X:X::X"), K("advertised-routes")],
+        "The IPv6 prefixes this router sends one neighbour"
+    ),
     spec!(
         BgpNeighborDistribute,
         Modes::BGP,
@@ -5175,8 +5365,6 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("source-route")], "Turn this off (it is on by default)"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ip"), K("gratuitous-arps")], "Answer gratuitous ARP and send it on address changes (on)"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("gratuitous-arps")], "Turn this off (it is on by default)"),
-    spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ip"), K("multicast-routing")], "Route IPv4 multicast"),
-    spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("multicast-routing")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("multicast-routing")], "Route IPv6 multicast"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("multicast-routing")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ip"), K("tcp"), K("synwait-time"), Arg("<5-300>")], "Seconds to wait for a TCP connection to open"),
@@ -5373,12 +5561,6 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("spanning-tree"), K("etherchannel"), K("guard"), K("misconfig")],
         "Turn this off (it is on by default)"
     ),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("enable")], "Detect one-way fibre links on every fibre port"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("enable")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("aggressive")], "Detect one-way links and shut the port"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("aggressive")], "Return this setting to its default"),
-    spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("message"), K("time"), Arg("<1-90>")], "Seconds between UDLD probes"),
-    spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("message"), K("time")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::SWITCH, [K("udld"), K("recovery")], "Bring a UDLD-disabled port back on a timer"),
     spec!(NoKnob, Modes::CONFIG, Modes::SWITCH, [K("no"), K("udld"), K("recovery")], "Return this setting to its default"),
     spec!(
@@ -5447,26 +5629,83 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("power"), K("efficient-ethernet")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("channel-protocol"), Arg("{lacp|pagp}")], "Protocol that bundles this port"),
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("channel-protocol"), Arg("{lacp|pagp}")], "Return this setting to its default"),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("udld"), K("port")], "Detect one-way links on this port"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port")], "Return this setting to its default"),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("udld"), K("port"), K("aggressive")], "Detect one-way links on this port and shut it"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port"), K("aggressive")], "Return this setting to its default"),
     spec!(
-        Knob,
+        StormLevel,
         KNOB_IF,
         Modes::SWITCH,
-        [K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level"), Arg("<0.00-100.00>")],
-        "Traffic level that starts a storm response"
+        [K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level"), Rest("{<0.00-100.00>|bps N|pps N} [FALLING]")],
+        "Level of this kind of traffic (percent of the link, bits or packets a second) above which the excess is dropped; a second level says when the storm ends"
     ),
     spec!(
-        NoKnob,
+        NoStormLevel,
         KNOB_IF,
         Modes::SWITCH,
         [K("no"), K("storm-control"), Arg("{broadcast|multicast|unicast}"), K("level")],
-        "Return this setting to its default"
+        "No limit for this kind of traffic"
     ),
-    spec!(Knob, KNOB_IF, Modes::SWITCH, [K("storm-control"), K("action"), Arg("{shutdown|trap}")], "What to do when a storm is detected"),
-    spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action"), Arg("{shutdown|trap}")], "Return this setting to its default"),
+    spec!(
+        StormAction,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("storm-control"), K("action"), Arg("{shutdown|trap}")],
+        "Err-disable the port, or log the storm, when a level is passed"
+    ),
+    spec!(NoStormAction, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action"), Arg("{shutdown|trap}")], "Only drop the excess"),
+    spec!(NoStormAction, KNOB_IF, Modes::SWITCH, [K("no"), K("storm-control"), K("action")], "Only drop the excess"),
+    spec!(
+        UdldGlobal,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("udld"), Arg("{enable|aggressive}")],
+        "Run UDLD on every port that has no setting of its own (aggressive also shuts a port whose neighbour falls silent)"
+    ),
+    spec!(
+        NoUdldGlobal,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("no"), K("udld"), Arg("{enable|aggressive}")],
+        "Stop running UDLD on the ports that have no setting of their own"
+    ),
+    spec!(
+        UdldMessageTime,
+        Modes::CONFIG,
+        Modes::SWITCH,
+        [K("udld"), K("message"), K("time"), Arg("<1-90>")],
+        "Seconds between UDLD probes (15 by default)"
+    ),
+    spec!(UdldReset, Modes::EXEC, Modes::SWITCH, [K("udld"), K("reset")], "Bring back the ports UDLD shut down"),
+    spec!(
+        UdldPort,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("udld"), K("port")],
+        "Detect one-way links on this port: probes are sent and heard, and a one-way link shuts the port"
+    ),
+    spec!(
+        UdldPortAggressive,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("udld"), K("port"), K("aggressive")],
+        "As `udld port`, and a neighbour that was heard and goes silent shuts the port too"
+    ),
+    spec!(NoUdldPort, KNOB_IF, Modes::SWITCH, [K("no"), K("udld"), K("port")], "No UDLD on this port, whatever the switch-wide setting says"),
+    spec!(
+        NoUdldPort,
+        KNOB_IF,
+        Modes::SWITCH,
+        [K("no"), K("udld"), K("port"), K("aggressive")],
+        "No UDLD on this port, whatever the switch-wide setting says"
+    ),
+    spec!(ShowUdld, EXECS, Modes::SWITCH, [K("show"), K("udld")], "Each UDLD port, its neighbour and whether the link works both ways"),
+    spec!(ShowUdld, EXECS, Modes::SWITCH, [K("show"), K("udld"), Rest("<interface>")], "One port's UDLD state"),
+    spec!(ShowStormControl, EXECS, Modes::SWITCH, [K("show"), K("storm-control")], "Each port's storm-control levels and what it measured"),
+    spec!(
+        ShowStormControl,
+        EXECS,
+        Modes::SWITCH,
+        [K("show"), K("storm-control"), Rest("<interface>|broadcast|multicast|unicast")],
+        "One port's, or one kind of traffic's, storm-control state"
+    ),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("switchport"), K("protected")], "Do not forward to other protected ports"),
     spec!(NoKnob, KNOB_IF, Modes::SWITCH, [K("no"), K("switchport"), K("protected")], "Return this setting to its default"),
     spec!(Knob, KNOB_IF, Modes::SWITCH, [K("switchport"), K("block"), Arg("{unicast|multicast}")], "Do not flood unknown traffic out of this port"),
@@ -5981,7 +6220,7 @@ pub static SPECS: &[Spec] = &[
         ShowIpv6Route,
         EXECS,
         Modes::BOTH,
-        [K("show"), K("ipv6"), K("route"), Arg("{connected|static|ospf|eigrp}")],
+        [K("show"), K("ipv6"), K("route"), Arg("{connected|static|ospf|eigrp|bgp}")],
         "Only the IPv6 routes one source gave"
     ),
     spec!(ClearCounters, Modes::EXEC, Modes::BOTH, [K("clear"), K("counters")], "Reset interface counters"),
@@ -6083,6 +6322,105 @@ pub static SPECS: &[Spec] = &[
         [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst|mst}")],
         "Classic (30 s to forward), rapid, or multiple spanning tree"
     ),
+    // ---- VRF-lite (exec/vrf.rs) ----
+    spec!(IpVrf, Modes::CONFIG, Modes::BOTH, [K("ip"), K("vrf"), Arg("NAME")], "Define a VRF and edit it: its own routing and ARP tables"),
+    spec!(NoIpVrf, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("vrf"), Arg("NAME")], "Delete a VRF; its interfaces go back to the global table"),
+    spec!(VrfRd, Modes::VRF, Modes::BOTH, [K("rd"), Arg("ASN:NN|A.B.C.D:NN")], "The route distinguisher that makes this VRF's prefixes unique"),
+    spec!(NoVrfRd, Modes::VRF, Modes::BOTH, [K("no"), K("rd")], "Remove the route distinguisher"),
+    spec!(
+        VrfRouteTarget,
+        Modes::VRF,
+        Modes::BOTH,
+        [K("route-target"), Arg("{import|export|both}"), Arg("ASN:NN|A.B.C.D:NN")],
+        "A route target this VRF imports or exports (kept and shown; VRF-lite does not move routes with it)"
+    ),
+    spec!(
+        NoVrfRouteTarget,
+        Modes::VRF,
+        Modes::BOTH,
+        [K("no"), K("route-target"), Arg("{import|export|both}"), Arg("ASN:NN|A.B.C.D:NN")],
+        "Remove a route target"
+    ),
+    spec!(VrfDescription, Modes::VRF, Modes::BOTH, [K("description"), Rest("TEXT")], "Describe the VRF"),
+    spec!(
+        IpVrfForwarding,
+        VRF_IFACES,
+        Modes::BOTH,
+        [K("ip"), K("vrf"), K("forwarding"), Arg("NAME")],
+        "Put this interface in a VRF (its IPv4 address is removed)"
+    ),
+    spec!(
+        NoIpVrfForwarding,
+        VRF_IFACES,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("vrf"), K("forwarding")],
+        "Back to the global table (its IPv4 address is removed)"
+    ),
+    spec!(
+        IpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>]")],
+        "Add a static route to a VRF's table"
+    ),
+    spec!(
+        NoIpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface>")],
+        "Remove a static route of a VRF"
+    ),
+    spec!(
+        NoIpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK")],
+        "Remove the static routes of a VRF to a network"
+    ),
+    spec!(ShowIpRouteVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), K("vrf"), Arg("NAME")], "A VRF's routing table"),
+    spec!(ShowIpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf")], "The VRFs: route distinguisher and interfaces"),
+    spec!(ShowIpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf"), K("brief")], "The VRFs: route distinguisher and interfaces"),
+    spec!(
+        ShowIpVrfDetail,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("vrf"), K("detail")],
+        "Every VRF with its route targets, interfaces and protocols"
+    ),
+    spec!(ShowIpVrfInterfaces, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf"), K("interfaces")], "Each VRF interface, its address and VRF"),
+    spec!(ShowIpArpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp"), K("vrf"), Arg("NAME")], "A VRF's ARP table"),
+    spec!(PingVrf, EXECS, Modes::BOTH, [K("ping"), K("vrf"), Arg("NAME"), Arg("A.B.C.D")], "Send echo requests through a VRF"),
+    spec!(
+        PingVrfRepeat,
+        EXECS,
+        Modes::BOTH,
+        [K("ping"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Rest("[repeat <1-1000>] [size <36-18024>] [source A.B.C.D] [timeout <0-3600>]")],
+        "Send echo requests through a VRF with options"
+    ),
+    spec!(
+        RouterOspfVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("router"), K("ospf"), Arg("<1-65535>"), K("vrf"), Arg("NAME")],
+        "Start or configure the OSPF process of a VRF"
+    ),
+    spec!(
+        NoRouterOspfVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("router"), K("ospf"), Arg("<1-65535>"), K("vrf"), Arg("NAME")],
+        "Remove the OSPF process of a VRF"
+    ),
+    spec!(ShowIpBgpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("vrf"), Arg("NAME")], "The BGP table of a VRF"),
+    spec!(ShowIpBgpVrfSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("vrf"), Arg("NAME"), K("summary")], "The BGP sessions of a VRF"),
+    spec!(
+        ShowOspfNeighborVrf,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("neighbor"), K("vrf"), Arg("NAME")],
+        "The OSPF neighbours of a VRF"
+    ),
+    spec!(BgpAddressFamilyVrf, Modes::BGP, Modes::BOTH, [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")], "Configure BGP inside a VRF"),
     spec!(
         MstConfiguration,
         Modes::CONFIG,
@@ -6503,14 +6841,20 @@ pub static SPECS: &[Spec] = &[
         L2RecoveryCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")],
         "Bring ports shut for this reason back by themselves"
     ),
     spec!(
         L2NoRecoveryCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("no"), K("errdisable"), K("recovery"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [
+            K("no"),
+            K("errdisable"),
+            K("recovery"),
+            K("cause"),
+            Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")
+        ],
         "Ports shut for this reason wait for shutdown / no shutdown"
     ),
     spec!(
@@ -6527,14 +6871,20 @@ pub static SPECS: &[Spec] = &[
         L2DetectCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")],
         "Shut ports for this cause again (detection is on unless turned off)"
     ),
     spec!(
         L2NoDetectCause,
         Modes::CONFIG,
         Modes::SWITCH,
-        [K("no"), K("errdisable"), K("detect"), K("cause"), Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|all}")],
+        [
+            K("no"),
+            K("errdisable"),
+            K("detect"),
+            K("cause"),
+            Arg("{bpduguard|psecure-violation|dhcp-rate-limit|arp-inspection|storm-control|udld|all}")
+        ],
         "Stop shutting ports for this cause: the frame is still dropped, the port stays up"
     ),
     spec!(L2ShowErrDetect, EXECS, Modes::SWITCH, [K("show"), K("errdisable"), K("detect")], "Which causes shut a port"),
@@ -7902,6 +8252,81 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowAaa, EXECS, Modes::BOTH, [K("show"), K("aaa")], "AAA settings: login methods, servers, privilege rules"),
     spec!(ShowAaaAuthorization, EXECS, Modes::BOTH, [K("show"), K("aaa"), K("authorization")], "The authorization lists"),
     spec!(ShowAaaAccounting, EXECS, Modes::BOTH, [K("show"), K("aaa"), K("accounting")], "The accounting lists and the records sent"),
+    // ---- Multicast routing and PIM ----
+    spec!(McRouting, Modes::CONFIG, Modes::BOTH, [K("ip"), K("multicast-routing")], "Route IPv4 multicast between the interfaces that run PIM"),
+    spec!(NoMcRouting, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("multicast-routing")], "Stop routing IPv4 multicast"),
+    spec!(McRpAddress, Modes::CONFIG, Modes::BOTH, [K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D")], "The rendezvous point for every group"),
+    spec!(
+        McRpAddress,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D"), Arg("ACL")],
+        "The rendezvous point for the groups a standard access list permits"
+    ),
+    spec!(NoMcRpAddress, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D")], "Remove a rendezvous point"),
+    spec!(
+        NoMcRpAddress,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D"), Arg("ACL")],
+        "Remove the rendezvous point of one access list"
+    ),
+    spec!(
+        McPimSparse,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("sparse-mode")],
+        "Run PIM here: trees are built only where a receiver asked for them"
+    ),
+    spec!(McPimDense, KNOB_IF, Modes::BOTH, [K("ip"), K("pim"), K("dense-mode")], "Run PIM here: flood every group, then prune where nobody listens"),
+    spec!(
+        McPimSparseDense,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("sparse-dense-mode")],
+        "Run PIM here: sparse for groups with a rendezvous point, dense for the rest"
+    ),
+    spec!(NoMcPim, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("sparse-mode")], "Stop PIM on this interface"),
+    spec!(NoMcPim, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("dense-mode")], "Stop PIM on this interface"),
+    spec!(NoMcPim, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("sparse-dense-mode")], "Stop PIM on this interface"),
+    spec!(
+        McDrPriority,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("dr-priority"), Arg("<0-4294967294>")],
+        "Priority in the designated router election of the link (higher wins)"
+    ),
+    spec!(NoMcDrPriority, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("dr-priority")], "Priority 1 again"),
+    spec!(
+        McJoinGroup,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("igmp"), K("join-group"), Arg("A.B.C.D")],
+        "Make this interface a member of a group: the router receives its packets and asks for them"
+    ),
+    spec!(NoMcJoinGroup, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("igmp"), K("join-group"), Arg("A.B.C.D")], "Leave the group"),
+    spec!(
+        ClearMroute,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("mroute"), Arg("*")],
+        "Forget the sources and counters of the multicast table"
+    ),
+    spec!(ShowMroute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute")], "The multicast routing table"),
+    spec!(ShowMrouteCount, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute"), K("count")], "Packets forwarded for each source and group"),
+    spec!(ShowMrouteSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute"), K("summary")], "One line for each entry of the multicast table"),
+    spec!(ShowMrouteGroup, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute"), Arg("A.B.C.D")], "The entries of one group"),
+    spec!(ShowPimNeighbor, EXECS, Modes::BOTH, [K("show"), K("ip"), K("pim"), K("neighbor")], "Routers heard on the interfaces that run PIM"),
+    spec!(
+        ShowPimInterface,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("pim"), K("interface")],
+        "Interfaces that run PIM, their mode and designated router"
+    ),
+    spec!(ShowPimRp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("pim"), K("rp"), K("mapping")], "Which rendezvous point serves which groups"),
+    spec!(ShowRouterIgmpGroups, EXECS, Modes::BOTH, [K("show"), K("ip"), K("igmp"), K("groups")], "Groups with a member on each interface"),
+    spec!(ShowRouterIgmpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("igmp"), K("interface")], "IGMP on each interface that runs PIM"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.
@@ -8208,6 +8633,7 @@ mod tests {
                 Modes::KEYCHAIN_KEY,
                 Modes::ARCHIVE,
                 Modes::MST,
+                Modes::VRF,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

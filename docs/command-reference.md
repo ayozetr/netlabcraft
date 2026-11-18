@@ -204,6 +204,7 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.list` | List devices |  |  | `{} → [{id, name, kind, x, y, cluster, place, ports: [{name, ip, shutdown, up, problem, peer, medium, cable}], console: {port, peer} \| null}]` |
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) \| "console" \| "straight-through" \| "cross-over" \| "fiber-single-mode" \| "fiber-multi-mode" \| "phone" \| "coaxial" \| "serial-dce" \| "serial-dte" \| "octal" \| "iot-custom" \| "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, or (a data cable) a host's USB port (PC, laptop, server: two each, router and switch: one) to a printer, a board, a USB stick, a tablet or a smartphone, the host's port named `USB1`, `USB2` in `a_port` or `b_port` (default: the first free one) and reaching 5 m, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable (a USB device's one port, or "USB1", "USB2" on a host), "Console" on the far device or "Async" on the card's router for an octal cable}` |
+| `link.one_way` | Cut a cable one way | Edit |  | `{"device", "port": "interface", "cut"?: true (default) \| false} → {"port", "cut"}: what this port sends is lost (a cut fibre strand), while what the far end sends still arrives, so the link stays up and only a protocol that checks both directions (UDLD) notices; `cut: false` restores it` |
 | `link.list` | List cables |  |  | `{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables and USB data cables "usb"; octal cables "octal")` |
 | `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "reach": {"max_m", "standard"} \| null, "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
 | `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
@@ -1005,6 +1006,11 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip prefix-list NAME {seq <1-4294967294>\|{permit\|deny} A.B.C.D/LEN [ge <0-32>] [le <0-32>]}` | config | router, switch | Delete one line of a prefix list |
 | `show ip prefix-list` | user, privileged | router, switch | Every prefix list |
 | `show ip prefix-list NAME` | user, privileged | router, switch | One prefix list |
+| `ipv6 prefix-list NAME [seq <1-4294967294>] {permit\|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]` | config | router, switch | Add a line to an IPv6 prefix list |
+| `no ipv6 prefix-list NAME` | config | router, switch | Delete an IPv6 prefix list |
+| `no ipv6 prefix-list NAME {seq <1-4294967294>\|{permit\|deny} X:X::X/LEN [ge <0-128>] [le <0-128>]}` | config | router, switch | Delete one line of an IPv6 prefix list |
+| `show ipv6 prefix-list` | user, privileged | router, switch | Every IPv6 prefix list |
+| `show ipv6 prefix-list NAME` | user, privileged | router, switch | One IPv6 prefix list |
 | `show route-map` | user, privileged | router, switch | Every route map |
 | `show route-map NAME` | user, privileged | router, switch | One route map |
 | `ip policy route-map NAME` | interface, subinterface | router | Route the packets that arrive here by a route map first |
@@ -1073,6 +1079,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `match ip address [prefix-list] <name> [<name>...]` |  | router, switch | Match prefixes that prefix lists or access lists permit |
 | `no match ip address` |  | router, switch | Remove every address match |
 | `no match ip address [prefix-list] <name> [<name>...]` |  | router, switch | Remove these names from the address match |
+| `match ipv6 address prefix-list <name> [<name>...]` |  | router, switch | Match IPv6 prefixes that IPv6 prefix lists permit |
+| `no match ipv6 address` |  | router, switch | Remove every IPv6 address match |
+| `no match ipv6 address prefix-list <name> [<name>...]` |  | router, switch | Remove these names from the IPv6 address match |
 | `match metric <0-4294967295>` |  | router, switch | Match routes with this metric |
 | `no match metric` |  | router, switch | Remove the metric match |
 | `match tag <tag> [<tag>...]` |  | router, switch | Match routes that carry one of these tags |
@@ -1091,6 +1100,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no set as-path prepend` |  | router, switch | Leave the AS path alone |
 | `set ip next-hop A.B.C.D` |  | router, switch | Give the paths this next hop |
 | `no set ip next-hop` |  | router, switch | Leave the next hop alone |
+| `set ipv6 next-hop X:X::X` |  | router, switch | Give the IPv6 paths this next hop |
+| `no set ipv6 next-hop` |  | router, switch | Leave the IPv6 next hop alone |
 | `set origin {igp\|egp\|incomplete}` |  | router, switch | Give the paths this origin |
 | `no set origin` |  | router, switch | Leave the origin alone |
 | `ip community-list {standard\|expanded} NAME {permit\|deny} <community>...\|<regular expression>` | config | router, switch | Add a line to a community list |
@@ -1130,7 +1141,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no neighbor A.B.C.D\|NAME filter-list <1-500> {in\|out}` |  | router, switch | Stop filtering with that AS-path list |
 | `aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Advertise one summary while a more specific path exists |
 | `aggregate-address A.B.C.D A.B.C.D [summary-only] [as-set]` |  | router, switch | Advertise one summary while a more specific path exists |
+| `aggregate-address X:X::X/LEN` |  | router, switch | Advertise one IPv6 summary while a more specific path exists |
 | `no aggregate-address A.B.C.D A.B.C.D` |  | router, switch | Stop summarising |
+| `no aggregate-address X:X::X/LEN` |  | router, switch | Stop summarising |
 | `no aggregate-address A.B.C.D A.B.C.D [summary-only] [as-set]` |  | router, switch | Stop summarising |
 | `maximum-paths <1-32>` |  | router, switch | Put up to this many equal external paths in the routing table |
 | `no maximum-paths` |  | router, switch | One path per prefix again |
@@ -1225,12 +1238,21 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no neighbor A.B.C.D\|NAME disable-connected-check` |  | router, switch | Return this setting to its default |
 | `neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Open the session or wait for the neighbour to |
 | `no neighbor A.B.C.D\|NAME transport connection-mode {active\|passive}` |  | router, switch | Return this setting to its default |
-| `neighbor A.B.C.D\|NAME activate` |  | router, switch | Exchange IPv4 routes with this neighbour |
-| `no neighbor A.B.C.D\|NAME activate` |  | router, switch | Stop exchanging IPv4 routes with this neighbour |
+| `neighbor A.B.C.D\|NAME activate` |  | router, switch | Exchange routes of this address family with this neighbour |
+| `no neighbor A.B.C.D\|NAME activate` |  | router, switch | Stop exchanging routes of this address family with this neighbour |
 | `address-family ipv4` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
 | `address-family ipv4 unicast` |  | router, switch | Configure the IPv4 unicast address family (its commands apply to the process) |
+| `address-family ipv6` |  | router, switch | Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised |
+| `address-family ipv6 unicast` |  | router, switch | Configure the IPv6 unicast address family: which neighbours exchange IPv6 prefixes, and what is advertised |
 | `exit-address-family` |  | router, switch | Leave the address family |
-| `address-family <other address family>` |  | router, switch | Only IPv4 unicast is simulated |
+| `address-family <other address family>` |  | router, switch | Only IPv4 and IPv6 unicast are simulated |
+| `show bgp ipv6 unicast summary` | user, privileged | router, switch | Each neighbour's session state and IPv6 prefix count |
+| `show bgp ipv6 summary` | user, privileged | router, switch | Each neighbour's session state and IPv6 prefix count |
+| `show bgp ipv6 unicast` | user, privileged | router, switch | Every IPv6 path BGP knows, the best of each prefix marked |
+| `show bgp ipv6 unicast X:X::X[/LEN]` | user, privileged | router, switch | The paths to one IPv6 destination or prefix |
+| `show bgp ipv6 unicast neighbors` | user, privileged | router, switch | Every neighbour activated for IPv6, in detail |
+| `show bgp ipv6 unicast neighbors A.B.C.D\|X:X::X` | user, privileged | router, switch | One neighbour activated for IPv6, in detail |
+| `show bgp ipv6 unicast neighbors A.B.C.D\|X:X::X advertised-routes` | user, privileged | router, switch | The IPv6 prefixes this router sends one neighbour |
 | `neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Filter the prefixes of this neighbour with a standard access list |
 | `no neighbor A.B.C.D\|NAME distribute-list <1-99>\|NAME {in\|out}` |  | router, switch | Stop filtering this neighbour's prefixes with the list |
 | `bandwidth <1-10000000>` | interface | router, switch | The bandwidth EIGRP's metric uses (kbit/s) |
@@ -1356,8 +1378,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip source-route` | config | router, switch | Turn this off (it is on by default) |
 | `ip gratuitous-arps` | config | router, switch | Answer gratuitous ARP and send it on address changes (on) |
 | `no ip gratuitous-arps` | config | router, switch | Turn this off (it is on by default) |
-| `ip multicast-routing` | config | router, switch | Route IPv4 multicast |
-| `no ip multicast-routing` | config | router, switch | Return this setting to its default |
 | `ipv6 multicast-routing` | config | router, switch | Route IPv6 multicast |
 | `no ipv6 multicast-routing` | config | router, switch | Return this setting to its default |
 | `ip tcp synwait-time <5-300>` | config | router, switch | Seconds to wait for a TCP connection to open |
@@ -1470,12 +1490,6 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree transmit hold-count` | config | switch | Return this setting to its default |
 | `spanning-tree etherchannel guard misconfig` | config | switch | Warn about a misconfigured EtherChannel (on) |
 | `no spanning-tree etherchannel guard misconfig` | config | switch | Turn this off (it is on by default) |
-| `udld enable` | config | switch | Detect one-way fibre links on every fibre port |
-| `no udld enable` | config | switch | Return this setting to its default |
-| `udld aggressive` | config | switch | Detect one-way links and shut the port |
-| `no udld aggressive` | config | switch | Return this setting to its default |
-| `udld message time <1-90>` | config | switch | Seconds between UDLD probes |
-| `no udld message time` | config | switch | Return this setting to its default |
 | `udld recovery` | config | switch | Bring a UDLD-disabled port back on a timer |
 | `no udld recovery` | config | switch | Return this setting to its default |
 | `mac address-table aging-time <0-1000000>` | config | switch | Seconds a learned address is kept (0: forever) |
@@ -1532,14 +1546,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no power efficient-ethernet` | interface, subinterface | switch | Return this setting to its default |
 | `channel-protocol {lacp\|pagp}` | interface, subinterface | switch | Protocol that bundles this port |
 | `no channel-protocol {lacp\|pagp}` | interface, subinterface | switch | Return this setting to its default |
-| `udld port` | interface, subinterface | switch | Detect one-way links on this port |
-| `no udld port` | interface, subinterface | switch | Return this setting to its default |
-| `udld port aggressive` | interface, subinterface | switch | Detect one-way links on this port and shut it |
-| `no udld port aggressive` | interface, subinterface | switch | Return this setting to its default |
-| `storm-control {broadcast\|multicast\|unicast} level <0.00-100.00>` | interface, subinterface | switch | Traffic level that starts a storm response |
-| `no storm-control {broadcast\|multicast\|unicast} level` | interface, subinterface | switch | Return this setting to its default |
-| `storm-control action {shutdown\|trap}` | interface, subinterface | switch | What to do when a storm is detected |
-| `no storm-control action {shutdown\|trap}` | interface, subinterface | switch | Return this setting to its default |
+| `storm-control {broadcast\|multicast\|unicast} level {<0.00-100.00>\|bps N\|pps N} [FALLING]` | interface, subinterface | switch | Level of this kind of traffic (percent of the link, bits or packets a second) above which the excess is dropped; a second level says when the storm ends |
+| `no storm-control {broadcast\|multicast\|unicast} level` | interface, subinterface | switch | No limit for this kind of traffic |
+| `storm-control action {shutdown\|trap}` | interface, subinterface | switch | Err-disable the port, or log the storm, when a level is passed |
+| `no storm-control action {shutdown\|trap}` | interface, subinterface | switch | Only drop the excess |
+| `no storm-control action` | interface, subinterface | switch | Only drop the excess |
+| `udld {enable\|aggressive}` | config | switch | Run UDLD on every port that has no setting of its own (aggressive also shuts a port whose neighbour falls silent) |
+| `no udld {enable\|aggressive}` | config | switch | Stop running UDLD on the ports that have no setting of their own |
+| `udld message time <1-90>` | config | switch | Seconds between UDLD probes (15 by default) |
+| `udld reset` | privileged | switch | Bring back the ports UDLD shut down |
+| `udld port` | interface, subinterface | switch | Detect one-way links on this port: probes are sent and heard, and a one-way link shuts the port |
+| `udld port aggressive` | interface, subinterface | switch | As `udld port`, and a neighbour that was heard and goes silent shuts the port too |
+| `no udld port` | interface, subinterface | switch | No UDLD on this port, whatever the switch-wide setting says |
+| `no udld port aggressive` | interface, subinterface | switch | No UDLD on this port, whatever the switch-wide setting says |
+| `show udld` | user, privileged | switch | Each UDLD port, its neighbour and whether the link works both ways |
+| `show udld <interface>` | user, privileged | switch | One port's UDLD state |
+| `show storm-control` | user, privileged | switch | Each port's storm-control levels and what it measured |
+| `show storm-control <interface>\|broadcast\|multicast\|unicast` | user, privileged | switch | One port's, or one kind of traffic's, storm-control state |
 | `switchport protected` | interface, subinterface | switch | Do not forward to other protected ports |
 | `no switchport protected` | interface, subinterface | switch | Return this setting to its default |
 | `switchport block {unicast\|multicast}` | interface, subinterface | switch | Do not flood unknown traffic out of this port |
@@ -1774,7 +1797,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show inventory` | user, privileged | router, switch | Hardware |
 | `delete flash:vlan.dat` | privileged | switch | Delete the VLAN database (takes effect at reload) |
 | `show ipv6 interface <interface>` | user, privileged | router, switch | One interface's IPv6 settings |
-| `show ipv6 route {connected\|static\|ospf\|eigrp}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
+| `show ipv6 route {connected\|static\|ospf\|eigrp\|bgp}` | user, privileged | router, switch | Only the IPv6 routes one source gave |
 | `clear counters` | privileged | router, switch | Reset interface counters |
 | `show sessions` | user, privileged | router, switch | Telnet and SSH sessions opened from here |
 | `show hosts` | user, privileged | router, switch | Name lookup settings |
@@ -1814,6 +1837,32 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
 | `spanning-tree mode {pvst\|rapid-pvst\|mst}` | config | switch | Classic (30 s to forward), rapid, or multiple spanning tree |
+| `ip vrf NAME` | config | router, switch | Define a VRF and edit it: its own routing and ARP tables |
+| `no ip vrf NAME` | config | router, switch | Delete a VRF; its interfaces go back to the global table |
+| `rd ASN:NN\|A.B.C.D:NN` |  | router, switch | The route distinguisher that makes this VRF's prefixes unique |
+| `no rd` |  | router, switch | Remove the route distinguisher |
+| `route-target {import\|export\|both} ASN:NN\|A.B.C.D:NN` |  | router, switch | A route target this VRF imports or exports (kept and shown; VRF-lite does not move routes with it) |
+| `no route-target {import\|export\|both} ASN:NN\|A.B.C.D:NN` |  | router, switch | Remove a route target |
+| `description TEXT` |  | router, switch | Describe the VRF |
+| `ip vrf forwarding NAME` | interface, subinterface | router, switch | Put this interface in a VRF (its IPv4 address is removed) |
+| `no ip vrf forwarding` | interface, subinterface | router, switch | Back to the global table (its IPv4 address is removed) |
+| `ip route vrf NAME A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>]` | config | router, switch | Add a static route to a VRF's table |
+| `no ip route vrf NAME A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route of a VRF |
+| `no ip route vrf NAME A.B.C.D MASK` | config | router, switch | Remove the static routes of a VRF to a network |
+| `show ip route vrf NAME` | user, privileged | router, switch | A VRF's routing table |
+| `show ip vrf` | user, privileged | router, switch | The VRFs: route distinguisher and interfaces |
+| `show ip vrf brief` | user, privileged | router, switch | The VRFs: route distinguisher and interfaces |
+| `show ip vrf detail` | user, privileged | router, switch | Every VRF with its route targets, interfaces and protocols |
+| `show ip vrf interfaces` | user, privileged | router, switch | Each VRF interface, its address and VRF |
+| `show ip arp vrf NAME` | user, privileged | router, switch | A VRF's ARP table |
+| `ping vrf NAME A.B.C.D` | user, privileged | router, switch | Send echo requests through a VRF |
+| `ping vrf NAME A.B.C.D [repeat <1-1000>] [size <36-18024>] [source A.B.C.D] [timeout <0-3600>]` | user, privileged | router, switch | Send echo requests through a VRF with options |
+| `router ospf <1-65535> vrf NAME` | config | router, switch | Start or configure the OSPF process of a VRF |
+| `no router ospf <1-65535> vrf NAME` | config | router, switch | Remove the OSPF process of a VRF |
+| `show ip bgp vrf NAME` | user, privileged | router, switch | The BGP table of a VRF |
+| `show ip bgp vrf NAME summary` | user, privileged | router, switch | The BGP sessions of a VRF |
+| `show ip ospf neighbor vrf NAME` | user, privileged | router, switch | The OSPF neighbours of a VRF |
+| `address-family ipv4 vrf NAME` |  | router, switch | Configure BGP inside a VRF |
 | `spanning-tree mst configuration` | config | switch | Edit the multiple spanning tree region: name, revision and which VLANs each instance holds |
 | `no spanning-tree mst configuration` | config | switch | Empty the region's name, revision and instance table |
 | `name NAME` |  | switch | Name the region (switches share a region only with the same name) |
@@ -1899,14 +1948,14 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show spanning-tree brief` | user, privileged | switch | One line per VLAN: the root, its cost, the root port and how many ports forward, learn or block |
 | `show spanning-tree detail` | user, privileged | switch | Every VLAN's tree, port by port |
 | `show spanning-tree interface <interface>` | user, privileged | switch | One port's role and state in every VLAN, and its protection settings (`detail` after the port: each VLAN in full) |
-| `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Bring ports shut for this reason back by themselves |
-| `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
+| `errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Bring ports shut for this reason back by themselves |
+| `no errdisable recovery cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Ports shut for this reason wait for shutdown / no shutdown |
 | `errdisable recovery interval <30-86400>` | config | switch | Seconds before an err-disabled port comes back |
 | `no errdisable recovery interval` | config | switch | Back to 300 seconds |
 | `show interfaces status err-disabled` | user, privileged | switch | Err-disabled ports and why |
 | `show errdisable recovery` | user, privileged | switch | Which causes recover by themselves, and when |
-| `errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Shut ports for this cause again (detection is on unless turned off) |
-| `no errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|all}` | config | switch | Stop shutting ports for this cause: the frame is still dropped, the port stays up |
+| `errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Shut ports for this cause again (detection is on unless turned off) |
+| `no errdisable detect cause {bpduguard\|psecure-violation\|dhcp-rate-limit\|arp-inspection\|storm-control\|udld\|all}` | config | switch | Stop shutting ports for this cause: the frame is still dropped, the port stays up |
 | `show errdisable detect` | user, privileged | switch | Which causes shut a port |
 | `monitor session <1-66> source interface <interfaces> [both\|rx\|tx]` | config | switch | Copy the frames that enter or leave these ports (ranges such as `fa0/1 - 3, fa0/5` work) to the session's destination |
 | `monitor session <1-66> source vlan <1-4094>[,-] [both\|rx\|tx]` | config | switch | Copy the frames of these VLANs, on every port, to the session's destination |
@@ -2332,6 +2381,32 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show aaa` | user, privileged | router, switch | AAA settings: login methods, servers, privilege rules |
 | `show aaa authorization` | user, privileged | router, switch | The authorization lists |
 | `show aaa accounting` | user, privileged | router, switch | The accounting lists and the records sent |
+| `ip multicast-routing` | config | router, switch | Route IPv4 multicast between the interfaces that run PIM |
+| `no ip multicast-routing` | config | router, switch | Stop routing IPv4 multicast |
+| `ip pim rp-address A.B.C.D` | config | router, switch | The rendezvous point for every group |
+| `ip pim rp-address A.B.C.D ACL` | config | router, switch | The rendezvous point for the groups a standard access list permits |
+| `no ip pim rp-address A.B.C.D` | config | router, switch | Remove a rendezvous point |
+| `no ip pim rp-address A.B.C.D ACL` | config | router, switch | Remove the rendezvous point of one access list |
+| `ip pim sparse-mode` | interface, subinterface | router, switch | Run PIM here: trees are built only where a receiver asked for them |
+| `ip pim dense-mode` | interface, subinterface | router, switch | Run PIM here: flood every group, then prune where nobody listens |
+| `ip pim sparse-dense-mode` | interface, subinterface | router, switch | Run PIM here: sparse for groups with a rendezvous point, dense for the rest |
+| `no ip pim sparse-mode` | interface, subinterface | router, switch | Stop PIM on this interface |
+| `no ip pim dense-mode` | interface, subinterface | router, switch | Stop PIM on this interface |
+| `no ip pim sparse-dense-mode` | interface, subinterface | router, switch | Stop PIM on this interface |
+| `ip pim dr-priority <0-4294967294>` | interface, subinterface | router, switch | Priority in the designated router election of the link (higher wins) |
+| `no ip pim dr-priority` | interface, subinterface | router, switch | Priority 1 again |
+| `ip igmp join-group A.B.C.D` | interface, subinterface | router, switch | Make this interface a member of a group: the router receives its packets and asks for them |
+| `no ip igmp join-group A.B.C.D` | interface, subinterface | router, switch | Leave the group |
+| `clear ip mroute *` | privileged | router, switch | Forget the sources and counters of the multicast table |
+| `show ip mroute` | user, privileged | router, switch | The multicast routing table |
+| `show ip mroute count` | user, privileged | router, switch | Packets forwarded for each source and group |
+| `show ip mroute summary` | user, privileged | router, switch | One line for each entry of the multicast table |
+| `show ip mroute A.B.C.D` | user, privileged | router, switch | The entries of one group |
+| `show ip pim neighbor` | user, privileged | router, switch | Routers heard on the interfaces that run PIM |
+| `show ip pim interface` | user, privileged | router, switch | Interfaces that run PIM, their mode and designated router |
+| `show ip pim rp mapping` | user, privileged | router, switch | Which rendezvous point serves which groups |
+| `show ip igmp groups` | user, privileged | router, switch | Groups with a member on each interface |
+| `show ip igmp interface` | user, privileged | router, switch | IGMP on each interface that runs PIM |
 
 ## Host shell (PCs and servers)
 

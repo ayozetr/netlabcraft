@@ -232,6 +232,7 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::l2sec::global_lines(&mut s, d);
     crate::exec::igmp::global_lines(&mut s, d);
+    crate::exec::pim::global_lines(&mut s, d);
     crate::exec::archive::running_config(&mut s, d);
     crate::exec::srcguard::global_lines(&mut s, d);
     crate::exec::l2sec::relay_global_lines(&mut s, d);
@@ -252,6 +253,7 @@ pub fn running_config(d: &Device) -> String {
         }
     }
     crate::exec::qos::running_config(&mut s, d);
+    crate::exec::vrf::definitions(&mut s, d);
     vpn_config(&mut s, d);
     crate::exec::security::running_config(&mut s, d);
     wlan_config(&mut s, d);
@@ -350,6 +352,7 @@ pub fn running_config(d: &Device) -> String {
             crate::exec::l2sec::port_lines(&mut s, p);
             crate::exec::families::port_lines(&mut s, p);
         }
+        crate::exec::vrf::iface_line(&mut s, d, &p.name);
         match p.ip {
             // The leased address isn't configuration; how it is obtained is.
             _ if p.dhcp => {
@@ -402,6 +405,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::security::iface_lines(&mut s, d, &p.name);
         crate::exec::netflow::iface_lines(&mut s, d, &p.name);
         crate::exec::knobs::iface_lines(&mut s, d, &p.name);
+        crate::exec::pim::iface_lines(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -417,6 +421,7 @@ pub fn running_config(d: &Device) -> String {
             if let Some(v) = sub.vlan {
                 let _ = writeln!(s, " encapsulation dot1Q {v}");
             }
+            crate::exec::vrf::iface_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if let Some(ip) = sub.ip {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
             }
@@ -435,6 +440,7 @@ pub fn running_config(d: &Device) -> String {
             crate::exec::security::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::netflow::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::knobs::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::pim::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
@@ -446,6 +452,7 @@ pub fn running_config(d: &Device) -> String {
         if !svi.description.is_empty() {
             let _ = writeln!(s, " description {}", svi.description);
         }
+        crate::exec::vrf::iface_line(&mut s, d, &format!("Vlan{}", svi.vlan));
         match svi.ip {
             Some(ip) => {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());
@@ -465,6 +472,7 @@ pub fn running_config(d: &Device) -> String {
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::knobs::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
+        crate::exec::pim::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
         let _ = writeln!(s, "!");
     }
@@ -651,7 +659,10 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::knobs::proto_lines(&mut s, d, "eigrp");
         let _ = writeln!(s, "!");
     }
-    crate::exec::bgp::running_config(&mut s, d);
+    crate::exec::vrf::ospf_sections(&mut s, d);
+    let mut bgp = String::new();
+    crate::exec::bgp::running_config(&mut bgp, d);
+    s.push_str(&crate::exec::vrf::with_bgp_families(d, bgp));
     crate::exec::policy::running_config(&mut s, d);
     if let Some(r) = &d.rip {
         let _ = writeln!(s, "router rip");
@@ -733,6 +744,7 @@ pub fn running_config(d: &Device) -> String {
     if !d.routes.is_empty() {
         let _ = writeln!(s, "!");
     }
+    crate::exec::vrf::static_routes(&mut s, d);
     crate::exec::automation::running_config(&mut s, d);
     crate::exec::pki::running_config(&mut s, d);
     if !a.banner_motd.is_empty() {
@@ -2206,7 +2218,7 @@ pub fn ipv6_route(t: &Topology, sim: &mut Sim, d: &Device) -> String {
     let dynamic = sim.dynamic_routes6(t, d);
     let table = netlabcraft_sim::v6::routing_table6(t, d, &dynamic);
     let mut s = String::from(
-        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, R RIPng, ND default from a router advertisement\n",
+        "Codes: C connected, L local, S static, O OSPFv3, OI OSPFv3 other area, OE2 OSPFv3 external, D EIGRP, R RIPng, B BGP, ND default from a router advertisement\n",
     );
     if !d.ipv6_routing {
         s.push_str("IPv6 forwarding is off (no `ipv6 unicast-routing`)\n");
@@ -2333,7 +2345,7 @@ fn ip_interface_details(
     let _ = writeln!(s, "  Mask replies: {}", on(if_knob(d, name, "ip mask-reply", false)));
     let _ = writeln!(s, "  Route cache fast path: {}", on(if_knob(d, name, "ip route-cache", true)));
     let _ = writeln!(s, "  Packet reassembly check: {}", on(if_knob(d, name, "ip virtual-reassembly", false)));
-    let multicast = d.knobs.get(netlabcraft_model::knobs::Scope::Global, "ip multicast-routing").is_some();
+    let multicast = d.pim.routing;
     let _ = writeln!(s, "  Multicast routing: {}", if multicast { "enabled on the device" } else { "not enabled" });
     s
 }
