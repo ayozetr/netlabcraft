@@ -178,3 +178,30 @@ fn the_firewall_lists_for_ipv4_and_ipv6_are_separate_and_rules_are_checked() {
     assert!(s.execute("host.firewall", json!({"device": "S1"})).is_err());
     assert!(s.execute("host.firewall", json!({"device": "Printer1"})).is_err());
 }
+
+#[test]
+fn terminal_monitor_shows_a_routers_debug_output_in_the_remote_session() {
+    let mut s = lab("two-subnets");
+    for line in ["enable", "configure terminal", "enable secret letmein", "line vty 0 4", "password remote", "login", "end"] {
+        cli(&mut s, "R1", line);
+    }
+    cli(&mut s, "PC1", "telnet 10.0.1.1");
+    cli(&mut s, "PC1", "remote");
+    cli(&mut s, "PC1", "enable");
+    cli(&mut s, "PC1", "letmein");
+    cli(&mut s, "PC1", "debug ip icmp");
+    let pc1 = s.topology.resolve("PC1").unwrap();
+    assert!(ping_ok(&mut s, "PC3", "10.0.1.1"));
+    assert!(!s.consoles[&pc1].log.contains("ICMP debug"), "without `terminal monitor` the session sees no log messages");
+    cli(&mut s, "PC1", "terminal monitor");
+    assert!(ping_ok(&mut s, "PC3", "10.0.1.1"));
+    assert!(s.consoles[&pc1].log.contains("ICMP debug: echo request from 10.0.2.10"), "{}", s.consoles[&pc1].log);
+    // The router's own console printed it too.
+    let r1 = s.topology.resolve("R1").unwrap();
+    assert!(s.consoles[&r1].log.contains("ICMP debug: echo request from 10.0.2.10"));
+    // Turned off, the session is quiet again.
+    cli(&mut s, "PC1", "terminal no monitor");
+    let before = s.consoles[&pc1].log.matches("ICMP debug").count();
+    assert!(ping_ok(&mut s, "PC3", "10.0.1.1"));
+    assert_eq!(s.consoles[&pc1].log.matches("ICMP debug").count(), before);
+}
