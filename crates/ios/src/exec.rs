@@ -22,6 +22,7 @@ pub(crate) mod families;
 pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
+pub(crate) mod keychain;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod netflow;
@@ -157,6 +158,10 @@ pub enum Mode {
     PkiTrustpoint(String),
     /// `R1(cs-server)#`: the certificate authority's name.
     PkiServer(String),
+    /// `R1(config-keychain)#`: the key chain's name.
+    KeyChain(String),
+    /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
+    KeyChainKey(String, u32),
 }
 
 impl Mode {
@@ -207,6 +212,8 @@ impl Mode {
             Mode::Ikev2Profile(_) => Modes::IKEV2_PROFILE,
             Mode::PkiTrustpoint(_) => Modes::PKI_TRUSTPOINT,
             Mode::PkiServer(_) => Modes::PKI_SERVER,
+            Mode::KeyChain(_) => Modes::KEYCHAIN,
+            Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
         }
     }
 }
@@ -576,6 +583,8 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Ikev2Profile(_) => format!("{n}(config-ikev2-profile)#"),
         Mode::PkiTrustpoint(_) => format!("{n}(ca-trustpoint)#"),
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
+        Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
+        Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -895,6 +904,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Profile(_)
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
+                | Mode::KeyChain(_)
+                | Mode::KeyChainKey(..)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -974,10 +985,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Profile(_)
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
+                | Mode::KeyChain(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
                 Mode::Ikev2Peer(ref k, _) => Mode::Ikev2Keyring(k.clone()),
+                Mode::KeyChainKey(ref k, _) => Mode::KeyChain(k.clone()),
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
                 Mode::InspectPolicyClass(ref p, _) => Mode::InspectPolicy(p.clone()),
@@ -1249,6 +1262,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ClockSet => {
             let t = crate::clock::parse_set(arg(0))?;
             c.sim.set_clock(c.dev, t);
+            // The OSPF state is worked out from the configuration alone, so key chains read this.
+            c.dm()?.clock_unix = Some(t);
             Ok(String::new())
         }
         Id::ShowFlash => Ok(render::flash(c.d()?)),
@@ -2018,6 +2033,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpOspfAuthKey
         | Id::NoIpOspfAuthKey
         | Id::IpOspfMd5Key
+        | Id::IpOspfKeyChain
+        | Id::NoIpOspfKeyChain
         | Id::NoIpOspfMd5Key => routing::ospf_if_command(&mut c, spec.id, &args),
         Id::AreaAuth | Id::NoAreaAuth => routing::ospf_area_auth(&mut c, spec.id == Id::AreaAuth, &args),
         Id::AreaNssa | Id::NoAreaNssa | Id::AreaDefaultCost | Id::NoAreaDefaultCost | Id::AreaVirtualLink | Id::NoAreaVirtualLink => {
@@ -2175,6 +2192,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::KeyChain
+        | Id::NoKeyChain
+        | Id::KeyChainKey
+        | Id::NoKeyChainKey
+        | Id::KeyString
+        | Id::NoKeyString
+        | Id::AcceptLifetime
+        | Id::SendLifetime
+        | Id::NoAcceptLifetime
+        | Id::NoSendLifetime
+        | Id::ShowKeyChain => keychain::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
@@ -4221,6 +4249,35 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::Ospfv3AuthIpsec | Id::Ospfv3AuthNull | Id::NoOspfv3Auth => {
+            let auth = match spec.id {
+                Id::Ospfv3AuthIpsec => Some(ospf6_auth(arg(0), arg(1), arg(2))?),
+                Id::Ospfv3AuthNull => Some(netlabcraft_model::Ospf6Auth::Null),
+                _ => None,
+            };
+            c.each_v6(|v6, _, _| {
+                v6.ospf_auth = auth.clone();
+                Ok(())
+            })
+        }
+        Id::Ospf6AreaAuthIpsec | Id::Ospf6AreaAuthNull | Id::NoOspf6AreaAuth => {
+            let area: u32 = arg(0).parse().map_err(|_| "% Area number 0-4294967295")?;
+            let auth = match spec.id {
+                Id::Ospf6AreaAuthIpsec => Some(ospf6_auth(arg(1), arg(2), arg(3))?),
+                Id::Ospf6AreaAuthNull => Some(netlabcraft_model::Ospf6Auth::Null),
+                _ => None,
+            };
+            let o = c.dm()?.ospf6.as_mut().ok_or("% Not in OSPFv3 mode")?;
+            match auth {
+                Some(a) => {
+                    o.area_auth.insert(area, a);
+                }
+                None => {
+                    o.area_auth.remove(&area);
+                }
+            }
+            Ok(String::new())
+        }
         Id::ShowIpv6OspfNeighbor => {
             let st = c.sim.ospf6_state(c.t);
             Ok(render::ospf6_neighbors(c.t, c.d()?, &st))
@@ -5557,4 +5614,31 @@ fn vtp_bump(d: &mut Device, before: &std::collections::BTreeMap<VlanId, String>)
     if d.vtp.mode == netlabcraft_model::VtpMode::Server && d.vlans != *before {
         d.vtp.revision = d.vtp.revision.saturating_add(1);
     }
+}
+
+/// The AH settings an `ospfv3 authentication ipsec spi N md5|sha1 [0] KEY` line gives: the SPI is
+/// at least 256 (the lower numbers are reserved), the key is hexadecimal, 32 digits for md5 and
+/// 40 for sha1.
+fn ospf6_auth(spi: &str, alg: &str, key: &str) -> Result<netlabcraft_model::Ospf6Auth, String> {
+    use netlabcraft_model::{Ospf6Auth, Ospf6AuthAlg};
+    let spi: u32 = spi.parse().ok().filter(|n| *n >= 256).ok_or("% The SPI is 256-4294967295")?;
+    let alg = match alg.to_ascii_lowercase().as_str() {
+        "md5" => Ospf6AuthAlg::Md5,
+        "sha1" => Ospf6AuthAlg::Sha1,
+        _ => return Err("% The algorithm is md5 or sha1".into()),
+    };
+    let mut words = key.split_whitespace();
+    let first = words.next().unwrap_or("");
+    let text = if first == "0" {
+        words.next().unwrap_or("")
+    } else if first == "7" {
+        return Err("% Encrypted (type 7) keys are not read: give the key as hexadecimal digits".into());
+    } else {
+        first
+    };
+    let want = if alg == Ospf6AuthAlg::Md5 { 32 } else { 40 };
+    if text.len() != want || !text.chars().all(|ch| ch.is_ascii_hexdigit()) || words.next().is_some() {
+        return Err(format!("% The key is {want} hexadecimal digits for {}", if want == 32 { "md5" } else { "sha1" }));
+    }
+    Ok(Ospf6Auth::Ipsec { spi, alg, key: text.to_ascii_lowercase() })
 }
