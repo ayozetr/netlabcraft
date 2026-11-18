@@ -200,9 +200,9 @@ impl Topology {
         if def.formula.trim().is_empty() {
             return Ok(def.default);
         }
-        let value = expr::parse(&def.formula)?.eval(&|n| self.env_name_value(place, n, time, depth)).map_err(|e| {
-            if e.ends_with("has no value") { format!("{e}: a variable it reads fails or refers back to it") } else { e }
-        })?;
+        let value = expr::parse(&def.formula)?
+            .eval(&|n| self.env_name_value(place, n, time, depth))
+            .map_err(|e| if e.ends_with("has no value") { format!("{e}: a variable it reads fails or refers back to it") } else { e })?;
         Ok(value.clamp(def.min.min(def.max), def.max.max(def.min)))
     }
 

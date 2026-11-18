@@ -650,14 +650,7 @@ pub static CATALOG: &[CommandInfo] = &[
         r#"{"place"?, "id": lowercase letters, digits and `_` (up to 32, not a built-in id), "label"?, "unit"?, "min"?, "max"?, "default"? (what it reads while the formula is empty or fails), "formula"?: text up to 200 characters} → environment.get: defines or changes a variable of the place by a formula over `time` (seconds), `hour` (0-24), `day` (0-1), the built-in variables (as the place reads them) and other custom variables, with + - * / % ^, comparisons, and, or, not, sin cos abs sqrt floor ceil round exp ln min max clamp if(c, a, b), pi and e; at most 16 per place; a formula that cannot be computed shows its error and the default; a generic environment sensor can read the variable (iot.configure "variable"); one undo step"#,
         true
     ),
-    c!(
-        "environment.custom.remove",
-        "Remove a custom variable",
-        "",
-        None,
-        r#"{"place"?, "id"} → environment.get; one undo step"#,
-        true
-    ),
+    c!("environment.custom.remove", "Remove a custom variable", "", None, r#"{"place"?, "id"} → environment.get; one undo step"#, true),
     c!(
         "environment.shows",
         "Environment shows",
