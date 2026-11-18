@@ -498,6 +498,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no crypto ipsec security-association lifetime {seconds\|kilobytes}` | config | router | Back to the default IPsec key lifetime |
 | `set security-association lifetime {seconds\|kilobytes} <N>` |  | router | This entry's key lifetime |
 | `no set security-association lifetime {seconds\|kilobytes}` |  | router | Use the global key lifetime |
+| `set pfs {group2\|group5\|group14\|group15\|group16\|group19\|group20\|group24}` |  | router | Run a fresh Diffie-Hellman exchange for every new set of IPsec keys |
+| `no set pfs` |  | router | Derive IPsec keys from the IKE keys alone |
 | `match address ACL` |  | router | The access list choosing what to protect |
 | `no match address` |  | router | Protect nothing |
 | `crypto map WORD` | interface, subinterface | router | Protect traffic leaving this interface |
@@ -1132,6 +1134,10 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `neighbor A.B.C.D\|NAME remove-private-as` |  | router, switch | Take private AS numbers out of the paths sent to this external neighbour |
 | `neighbor A.B.C.D\|NAME remove-private-as all` |  | router, switch | Take every private AS number out, even from a path that has public ones |
 | `no neighbor A.B.C.D\|NAME remove-private-as` |  | router, switch | Send the AS numbers as they are |
+| `neighbor A.B.C.D\|NAME local-as <1-4294967295>` |  | router, switch | Present this AS number to the external neighbour instead of the router's own |
+| `neighbor A.B.C.D\|NAME local-as <1-4294967295> no-prepend [replace-as [dual-as]]` |  | router, switch | Also keep it off the paths received (no-prepend), swap it for the real AS in the paths sent (replace-as) and let the neighbour use the real AS (dual-as) |
+| `no neighbor A.B.C.D\|NAME local-as` |  | router, switch | Present the router's own AS number again |
+| `no neighbor A.B.C.D\|NAME local-as <1-4294967295> [no-prepend [replace-as [dual-as]]]` |  | router, switch | Present the router's own AS number again |
 | `neighbor A.B.C.D\|NAME soft-reconfiguration inbound` |  | router, switch | Keep what this neighbour sends before the inbound policy, to list it |
 | `no neighbor A.B.C.D\|NAME soft-reconfiguration inbound` |  | router, switch | Stop keeping what this neighbour sends |
 | `bgp always-compare-med` |  | router, switch | Compare the MED of paths from different neighbouring autonomous systems too |

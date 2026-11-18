@@ -7,7 +7,7 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::bgp::{
-    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_OPTIONS, MAX_PASSWORD,
+    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, LocalAs, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_OPTIONS, MAX_PASSWORD,
     MAX_PEER_GROUPS, MAX_TEXT, Neighbor, PeerGroup, Source, follow,
 };
 use netlabcraft_model::policy::{self, community_text, parse_community};
@@ -117,6 +117,20 @@ fn split_map(text: &str) -> Result<(String, Option<String>), String> {
         return Err(format!("% A name is 1-{} characters", netlabcraft_model::policy::MAX_NAME));
     }
     Ok((words.get(..at).unwrap_or(&[]).join(" "), Some(name.to_string())))
+}
+
+/// `local-as N [no-prepend [replace-as [dual-as]]]`: each option needs the one before it.
+fn local_as(number: &str, words: &str) -> Result<LocalAs, String> {
+    let lower: Vec<String> = words.split_whitespace().map(str::to_ascii_lowercase).collect();
+    let words: Vec<&str> = lower.iter().map(String::as_str).collect();
+    let (no_prepend, replace_as, dual_as) = match words.as_slice() {
+        [] => (false, false, false),
+        ["no-prepend"] => (true, false, false),
+        ["no-prepend", "replace-as"] => (true, true, false),
+        ["no-prepend", "replace-as", "dual-as"] => (true, true, true),
+        _ => return Err("% After the AS number: no-prepend, then replace-as, then dual-as (each needs the one before it)".into()),
+    };
+    Ok(LocalAs { asn: asn(number)?, no_prepend, replace_as, dual_as })
 }
 
 /// `in` or `out`.
@@ -567,6 +581,23 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })?;
             Ok(String::new())
         }
+        Id::BgpNeighborLocalAs | Id::NoBgpNeighborLocalAs => {
+            let on = id == Id::BgpNeighborLocalAs;
+            let local = if on { Some(local_as(arg(1), arg(2))?) } else { None };
+            let b = process(c)?;
+            let own = b.asn;
+            edit(b, arg(0), |n| {
+                if local.is_some_and(|l| l.asn == own) {
+                    return Err(format!("% AS {own} is this router's own AS: local-as names a different one"));
+                }
+                if local.is_some() && n.remote_as == Some(own) {
+                    return Err("% local-as is for external neighbours, and this one is in this router's AS".into());
+                }
+                n.local_as = local;
+                Ok(())
+            })?;
+            Ok(String::new())
+        }
         Id::BgpNeighborSoftReconf | Id::NoBgpNeighborSoftReconf => {
             let on = id == Id::BgpNeighborSoftReconf;
             edit(process(c)?, arg(0), |n| {
@@ -818,6 +849,9 @@ fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor, pw: &dyn Fn(&str) ->
     }
     if let Some(w) = n.weight.filter(|w| base.weight != Some(*w)) {
         v.push(format!("neighbor {who} weight {w}"));
+    }
+    if let Some(l) = n.local_as.filter(|l| base.local_as != Some(*l)) {
+        v.push(format!("neighbor {who} local-as {}{}", l.asn, l.words()));
     }
     if let Some((k, h)) = n.timers.filter(|t| base.timers != Some(*t)) {
         v.push(format!("neighbor {who} timers {k} {h}"));
@@ -1462,6 +1496,24 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
         if let Some(l) = n.local {
             let via = conf.and_then(|c| c.update_source.as_ref()).map_or(String::new(), |u| format!(" (update source {u})"));
             let _ = writeln!(s, "  Local address: {l}{via}");
+        }
+        if let Some(l) = conf.and_then(|c| c.local_as) {
+            let words = l.words();
+            if n.local_as.is_some() {
+                let sent = if l.replace_as {
+                    "it replaces this router's AS in the paths sent"
+                } else {
+                    "it goes in front of this router's AS in the paths sent"
+                };
+                let got = if l.no_prepend { "the paths received are kept as they are" } else { "it is put in front of the paths received" };
+                let _ = writeln!(s, "  Local AS {}{words}: {sent}; {got}", l.asn);
+            } else {
+                let _ = writeln!(
+                    s,
+                    "  Local AS {}{words}: not in use (it applies to an external session, and to the AS number the neighbour expects)",
+                    l.asn
+                );
+            }
         }
         if n.hold_secs == 0 {
             let _ = writeln!(s, "  Hold time 0 s (no keepalives, the session never expires)");

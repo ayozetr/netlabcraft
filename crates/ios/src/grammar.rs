@@ -664,6 +664,8 @@ pub enum Id {
     NoIpsecSaLifetime,
     CryptoSetSaLifetime,
     NoCryptoSetSaLifetime,
+    CryptoSetPfs,
+    NoCryptoSetPfs,
     CryptoMatchAddress,
     NoCryptoMatchAddress,
     CryptoMapIf,
@@ -1163,6 +1165,8 @@ pub enum Id {
     NoBgpNeighborPassword,
     BgpNeighborRemovePrivate,
     NoBgpNeighborRemovePrivate,
+    BgpNeighborLocalAs,
+    NoBgpNeighborLocalAs,
     BgpNeighborSoftReconf,
     NoBgpNeighborSoftReconf,
     BgpAlwaysCompareMed,
@@ -2276,6 +2280,14 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("set"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}")],
         "Use the global key lifetime"
     ),
+    spec!(
+        CryptoSetPfs,
+        Modes::CRYPTO_MAP,
+        Modes::ROUTER,
+        [K("set"), K("pfs"), Arg("{group2|group5|group14|group15|group16|group19|group20|group24}")],
+        "Run a fresh Diffie-Hellman exchange for every new set of IPsec keys"
+    ),
+    spec!(NoCryptoSetPfs, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("pfs")], "Derive IPsec keys from the IKE keys alone"),
     spec!(CryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("match"), K("address"), Arg("ACL")], "The access list choosing what to protect"),
     spec!(NoCryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("match"), K("address")], "Protect nothing"),
     spec!(CryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("crypto"), K("map"), Arg("WORD")], "Protect traffic leaving this interface"),
@@ -4413,6 +4425,34 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("remove-private-as")],
         "Send the AS numbers as they are"
+    ),
+    spec!(
+        BgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as"), Arg("<1-4294967295>")],
+        "Present this AS number to the external neighbour instead of the router's own"
+    ),
+    spec!(
+        BgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as"), Arg("<1-4294967295>"), Rest("no-prepend [replace-as [dual-as]]")],
+        "Also keep it off the paths received (no-prepend), swap it for the real AS in the paths sent (replace-as) and let the neighbour use the real AS (dual-as)"
+    ),
+    spec!(
+        NoBgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as")],
+        "Present the router's own AS number again"
+    ),
+    spec!(
+        NoBgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as"), Rest("<1-4294967295> [no-prepend [replace-as [dual-as]]]")],
+        "Present the router's own AS number again"
     ),
     spec!(
         BgpNeighborSoftReconf,
