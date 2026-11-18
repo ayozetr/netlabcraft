@@ -17,6 +17,7 @@ pub use dialogs::{Dialog, DialogKind};
 pub(crate) mod archive;
 pub(crate) mod automation;
 pub(crate) mod bgp;
+pub(crate) mod cef;
 pub(crate) mod cellular;
 pub(crate) mod debug;
 mod dialogs;
@@ -1353,6 +1354,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let table = c.sim.routing_table(c.t, &d);
             Ok(render::ip_route_tagged(&table, tag))
         }
+        Id::ShowIpCef
+        | Id::ShowIpCefDetail
+        | Id::ShowIpCefSummary
+        | Id::ShowIpCefAddress
+        | Id::ShowIpCefAddressDetail
+        | Id::IpDefaultNetwork
+        | Id::NoIpDefaultNetwork => cef::command(&mut c, spec.id, &args),
         Id::ShowIpRoute => {
             let d = c.d()?.clone();
             let table = c.sim.routing_table(c.t, &d);
