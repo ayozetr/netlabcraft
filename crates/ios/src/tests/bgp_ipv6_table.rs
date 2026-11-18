@@ -55,7 +55,7 @@ fn the_bgp_table_lists_the_paths_and_the_entry_view_the_next_hops() {
     assert!(entry.contains("external, best"), "{entry}");
     // An address finds the most specific prefix that covers it.
     assert!(lab.run(a, "show bgp ipv6 unicast 2001:db8:b::77").contains("entry for 2001:db8:b::/64"));
-    assert!(lab.run(a, "show bgp ipv6 unicast 2001:db8:ffff::/48").contains("not in the BGP IPv6 table"));
+    assert!(lab.try_run(a, "show bgp ipv6 unicast 2001:db8:ffff::/48").contains("not in the BGP IPv6 table"));
 }
 
 #[test]
