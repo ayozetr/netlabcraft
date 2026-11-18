@@ -55,6 +55,7 @@ mod ospf_flooding;
 mod ospf_lsdb_copies;
 mod ospf_nssa_bits;
 mod pbr;
+mod pim;
 mod ping_dialogs;
 mod pki;
 mod policy;

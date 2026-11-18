@@ -1549,6 +1549,29 @@ pub enum Id {
     SrNoVtpPruning,
     SrTrunkPruning,
     SrNoTrunkPruning,
+    // Multicast routing and PIM.
+    McRouting,
+    NoMcRouting,
+    McRpAddress,
+    NoMcRpAddress,
+    McPimSparse,
+    McPimDense,
+    McPimSparseDense,
+    NoMcPim,
+    McDrPriority,
+    NoMcDrPriority,
+    McJoinGroup,
+    NoMcJoinGroup,
+    ClearMroute,
+    ShowMroute,
+    ShowMrouteCount,
+    ShowMrouteSummary,
+    ShowMrouteGroup,
+    ShowPimNeighbor,
+    ShowPimInterface,
+    ShowPimRp,
+    ShowRouterIgmpGroups,
+    ShowRouterIgmpInterface,
 }
 
 use Tok::{Arg, K, Rest};
@@ -5153,8 +5176,6 @@ pub static SPECS: &[Spec] = &[
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("source-route")], "Turn this off (it is on by default)"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ip"), K("gratuitous-arps")], "Answer gratuitous ARP and send it on address changes (on)"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("gratuitous-arps")], "Turn this off (it is on by default)"),
-    spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ip"), K("multicast-routing")], "Route IPv4 multicast"),
-    spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("multicast-routing")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ipv6"), K("multicast-routing")], "Route IPv6 multicast"),
     spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("ipv6"), K("multicast-routing")], "Return this setting to its default"),
     spec!(Knob, Modes::CONFIG, Modes::BOTH, [K("ip"), K("tcp"), K("synwait-time"), Arg("<5-300>")], "Seconds to wait for a TCP connection to open"),
@@ -7718,6 +7739,81 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(ShowPppoeSummary, EXECS, Modes::ROUTER, [K("show"), K("pppoe"), K("summary")], "PPPoE totals and the ports that answer or dial"),
     spec!(ClearPppoeAll, Modes::EXEC, Modes::ROUTER, [K("clear"), K("pppoe"), K("all")], "End every PPPoE session of this router"),
+    // ---- Multicast routing and PIM ----
+    spec!(McRouting, Modes::CONFIG, Modes::BOTH, [K("ip"), K("multicast-routing")], "Route IPv4 multicast between the interfaces that run PIM"),
+    spec!(NoMcRouting, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("multicast-routing")], "Stop routing IPv4 multicast"),
+    spec!(McRpAddress, Modes::CONFIG, Modes::BOTH, [K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D")], "The rendezvous point for every group"),
+    spec!(
+        McRpAddress,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D"), Arg("ACL")],
+        "The rendezvous point for the groups a standard access list permits"
+    ),
+    spec!(NoMcRpAddress, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D")], "Remove a rendezvous point"),
+    spec!(
+        NoMcRpAddress,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("pim"), K("rp-address"), Arg("A.B.C.D"), Arg("ACL")],
+        "Remove the rendezvous point of one access list"
+    ),
+    spec!(
+        McPimSparse,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("sparse-mode")],
+        "Run PIM here: trees are built only where a receiver asked for them"
+    ),
+    spec!(McPimDense, KNOB_IF, Modes::BOTH, [K("ip"), K("pim"), K("dense-mode")], "Run PIM here: flood every group, then prune where nobody listens"),
+    spec!(
+        McPimSparseDense,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("sparse-dense-mode")],
+        "Run PIM here: sparse for groups with a rendezvous point, dense for the rest"
+    ),
+    spec!(NoMcPim, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("sparse-mode")], "Stop PIM on this interface"),
+    spec!(NoMcPim, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("dense-mode")], "Stop PIM on this interface"),
+    spec!(NoMcPim, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("sparse-dense-mode")], "Stop PIM on this interface"),
+    spec!(
+        McDrPriority,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("pim"), K("dr-priority"), Arg("<0-4294967294>")],
+        "Priority in the designated router election of the link (higher wins)"
+    ),
+    spec!(NoMcDrPriority, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("pim"), K("dr-priority")], "Priority 1 again"),
+    spec!(
+        McJoinGroup,
+        KNOB_IF,
+        Modes::BOTH,
+        [K("ip"), K("igmp"), K("join-group"), Arg("A.B.C.D")],
+        "Make this interface a member of a group: the router receives its packets and asks for them"
+    ),
+    spec!(NoMcJoinGroup, KNOB_IF, Modes::BOTH, [K("no"), K("ip"), K("igmp"), K("join-group"), Arg("A.B.C.D")], "Leave the group"),
+    spec!(
+        ClearMroute,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("mroute"), Arg("*")],
+        "Forget the sources and counters of the multicast table"
+    ),
+    spec!(ShowMroute, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute")], "The multicast routing table"),
+    spec!(ShowMrouteCount, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute"), K("count")], "Packets forwarded for each source and group"),
+    spec!(ShowMrouteSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute"), K("summary")], "One line for each entry of the multicast table"),
+    spec!(ShowMrouteGroup, EXECS, Modes::BOTH, [K("show"), K("ip"), K("mroute"), Arg("A.B.C.D")], "The entries of one group"),
+    spec!(ShowPimNeighbor, EXECS, Modes::BOTH, [K("show"), K("ip"), K("pim"), K("neighbor")], "Routers heard on the interfaces that run PIM"),
+    spec!(
+        ShowPimInterface,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("pim"), K("interface")],
+        "Interfaces that run PIM, their mode and designated router"
+    ),
+    spec!(ShowPimRp, EXECS, Modes::BOTH, [K("show"), K("ip"), K("pim"), K("rp"), K("mapping")], "Which rendezvous point serves which groups"),
+    spec!(ShowRouterIgmpGroups, EXECS, Modes::BOTH, [K("show"), K("ip"), K("igmp"), K("groups")], "Groups with a member on each interface"),
+    spec!(ShowRouterIgmpInterface, EXECS, Modes::BOTH, [K("show"), K("ip"), K("igmp"), K("interface")], "IGMP on each interface that runs PIM"),
 ];
 
 /// Why a line didn't parse. Positions are word indexes.

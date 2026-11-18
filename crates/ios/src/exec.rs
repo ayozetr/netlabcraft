@@ -34,6 +34,7 @@ pub(crate) mod mgmt;
 pub(crate) mod mst;
 pub(crate) mod netflow;
 pub(crate) mod pbr;
+pub(crate) mod pim;
 pub(crate) mod pki;
 pub(crate) mod policy;
 pub(crate) mod pppoe;
@@ -2688,6 +2689,28 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowIgmpMrouter
         | Id::ShowIgmpQuerier
         | Id::ClearIgmpSnooping => igmp::command(&mut c, spec.id, &args),
+        Id::McRouting
+        | Id::NoMcRouting
+        | Id::McRpAddress
+        | Id::NoMcRpAddress
+        | Id::McPimSparse
+        | Id::McPimDense
+        | Id::McPimSparseDense
+        | Id::NoMcPim
+        | Id::McDrPriority
+        | Id::NoMcDrPriority
+        | Id::McJoinGroup
+        | Id::NoMcJoinGroup
+        | Id::ClearMroute
+        | Id::ShowMroute
+        | Id::ShowMrouteCount
+        | Id::ShowMrouteSummary
+        | Id::ShowMrouteGroup
+        | Id::ShowPimNeighbor
+        | Id::ShowPimInterface
+        | Id::ShowPimRp
+        | Id::ShowRouterIgmpGroups
+        | Id::ShowRouterIgmpInterface => pim::command(&mut c, spec.id, &args),
         Id::IpSgOn | Id::IpSgPortSecurity | Id::IpSgOff | Id::IpSgBinding | Id::IpSgNoBinding | Id::IpSgShowVerify | Id::IpSgShowBinding => {
             srcguard::command(&mut c, spec.id, &args)
         }

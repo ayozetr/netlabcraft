@@ -168,6 +168,7 @@ pub(crate) fn loopback_config(s: &mut String, d: &netlabcraft_model::Device) {
         crate::render::ipv6_lines(s, &l.ipv6);
         crate::render::ospf_if_lines(s, d, &l.name());
         crate::exec::knobs::iface_lines(s, d, &l.name());
+        crate::exec::pim::iface_lines(s, d, &l.name());
         if l.shutdown {
             s.push_str(" shutdown\n");
         }

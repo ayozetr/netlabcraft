@@ -232,6 +232,7 @@ pub fn running_config(d: &Device) -> String {
     }
     crate::exec::l2sec::global_lines(&mut s, d);
     crate::exec::igmp::global_lines(&mut s, d);
+    crate::exec::pim::global_lines(&mut s, d);
     crate::exec::archive::running_config(&mut s, d);
     crate::exec::srcguard::global_lines(&mut s, d);
     crate::exec::l2sec::relay_global_lines(&mut s, d);
@@ -402,6 +403,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::security::iface_lines(&mut s, d, &p.name);
         crate::exec::netflow::iface_lines(&mut s, d, &p.name);
         crate::exec::knobs::iface_lines(&mut s, d, &p.name);
+        crate::exec::pim::iface_lines(&mut s, d, &p.name);
         // Routers write both states: their ports start shut, so a replay must say which are up.
         if p.shutdown {
             let _ = writeln!(s, " shutdown");
@@ -435,6 +437,7 @@ pub fn running_config(d: &Device) -> String {
             crate::exec::security::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::netflow::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             crate::exec::knobs::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::pim::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             if sub.shutdown {
                 let _ = writeln!(s, " shutdown");
             }
@@ -465,6 +468,7 @@ pub fn running_config(d: &Device) -> String {
         ospf_if_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::qos::service_policy_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         crate::exec::knobs::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
+        crate::exec::pim::iface_lines(&mut s, d, &format!("Vlan{}", svi.vlan));
         let _ = writeln!(s, "{}", if svi.shutdown { " shutdown" } else { " no shutdown" });
         let _ = writeln!(s, "!");
     }
@@ -2333,7 +2337,7 @@ fn ip_interface_details(
     let _ = writeln!(s, "  Mask replies: {}", on(if_knob(d, name, "ip mask-reply", false)));
     let _ = writeln!(s, "  Route cache fast path: {}", on(if_knob(d, name, "ip route-cache", true)));
     let _ = writeln!(s, "  Packet reassembly check: {}", on(if_knob(d, name, "ip virtual-reassembly", false)));
-    let multicast = d.knobs.get(netlabcraft_model::knobs::Scope::Global, "ip multicast-routing").is_some();
+    let multicast = d.pim.routing;
     let _ = writeln!(s, "  Multicast routing: {}", if multicast { "enabled on the device" } else { "not enabled" });
     s
 }
