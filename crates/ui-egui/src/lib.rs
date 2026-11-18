@@ -22,6 +22,7 @@ use serde_json::{Value, json};
 pub mod activity;
 mod board_page;
 mod bottom;
+mod cable_window;
 mod canvas;
 mod cell_page;
 mod closet;
@@ -78,6 +79,7 @@ mod wlan_page;
 
 #[cfg(test)]
 mod tests;
+mod tests_cables;
 mod tests_closet;
 mod tests_environments;
 mod tests_families;
@@ -304,6 +306,12 @@ pub struct UiState {
     /// The cable whose accessible node has the keyboard focus (named by its first end), drawn
     /// highlighted.
     pub cable_focus: Option<netlabcraft_model::End>,
+    /// The cable picked by a click (named by its first end), drawn highlighted.
+    pub selected_cable: Option<netlabcraft_model::End>,
+    /// The cable under the pointer (named by its first end), drawn highlighted lightly.
+    pub hover_cable: Option<netlabcraft_model::End>,
+    /// The cable whose Properties window is open (named by its first end).
+    pub cable_window: Option<netlabcraft_model::End>,
     /// The geometry each open native window was opened with (fixed while it is open).
     pub(crate) native_start: BTreeMap<DeviceId, NativeGeometry>,
     /// Native windows to bring to the front on their next frame.
@@ -396,6 +404,9 @@ impl Default for UiState {
             native_start: BTreeMap::new(),
             native_remembered: BTreeMap::new(),
             cable_focus: None,
+            selected_cable: None,
+            hover_cable: None,
+            cable_window: None,
             raise: Default::default(),
             inspect: None,
             show_notes: false,
@@ -1079,6 +1090,7 @@ impl PacketApp {
         canvas::note_editor(self, &ctx);
         palette::window(self, &ctx);
         canvas::cluster_rename_window(self, &ctx);
+        cable_window::window(self, &ctx);
         events::pdu_window(self, &ctx);
         pdu_dialog::window(self, &ctx);
         self.notes_window(&ctx);

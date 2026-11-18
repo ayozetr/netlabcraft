@@ -183,7 +183,7 @@ fn snap(v: f32, on: bool) -> f32 {
 
 /// A cable length for people: metres, or kilometres from 1 km; feet, or miles from 1 mile,
 /// when the metric system is off (Preferences).
-fn length_text(m: u32, metric: bool) -> String {
+pub(crate) fn length_text(m: u32, metric: bool) -> String {
     if metric {
         return if m >= 1_000 { format!("{:.1} km", f64::from(m) / 1000.0) } else { format!("{m} m") };
     }
@@ -674,10 +674,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
                 ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
             }
-            if ui.button(tl("Cable Length…")).clicked() {
-                app.ui.physical.length = Some((l.a, len.meters.to_string()));
-                ui.close();
-            }
+            crate::cable_window::menu_items(app, ui, l.a, true);
         }
         Target::Empty(x, y) => {
             if ui.button(tl("Set Background Image…")).clicked() {

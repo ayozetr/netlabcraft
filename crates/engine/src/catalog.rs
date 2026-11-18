@@ -1034,6 +1034,14 @@ pub static CATALOG: &[CommandInfo] = &[
         false
     ),
     c!(
+        "link.info",
+        "Cable information",
+        "",
+        None,
+        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything"#,
+        false
+    ),
+    c!(
         "pc.terminal",
         "Terminal (console cable)",
         "",
