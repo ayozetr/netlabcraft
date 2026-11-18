@@ -2415,11 +2415,5 @@ furniture	Table	桌子
 	no clock rate on the DCE end	DCE 端没有时钟速率
 	the two ends use different encapsulations	两端使用不同的封装
 	PPP authentication failed (check the usernames and passwords)	PPP 认证失败（请检查用户名和密码）
-	Loss budget	损耗预算
-	within the budget	在预算之内
-	degraded: little margin left	性能下降：余量不多
-	over the budget	超出预算
-	{} dB lost of {} dB ({} connectors, {} splices)	损耗 {} dB，预算 {} dB（{} 个连接器，{} 个熔接点）
-	More splices	增加熔接点
-	Fewer splices	减少熔接点
-	fiber loses {} dB, over the {} dB the transceivers tolerate	光纤损耗 {} dB，超过收发器可承受的 {} dB
+	Each place has its own physics	每个地点有各自的物理模拟
+	Parts change the place they stand in by rates, and the place settles back when they stop	部件按速率改变所在地点的变量，停止后该地点会恢复原值

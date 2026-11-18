@@ -2415,11 +2415,5 @@ furniture	Table	Mesa
 	no clock rate on the DCE end	sem clock rate na ponta DCE
 	the two ends use different encapsulations	as duas pontas usam encapsulamentos diferentes
 	PPP authentication failed (check the usernames and passwords)	falha na autenticação PPP (confira os usuários e as senhas)
-	Loss budget	Orçamento de perdas
-	within the budget	dentro do orçamento
-	degraded: little margin left	degradado: pouca margem
-	over the budget	acima do orçamento
-	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdidos de {} dB ({} conectores, {} emendas)
-	More splices	Mais emendas
-	Fewer splices	Menos emendas
-	fiber loses {} dB, over the {} dB the transceivers tolerate	a fibra perde {} dB, mais que os {} dB que os transceptores toleram
+	Each place has its own physics	Cada local tem sua própria física
+	Parts change the place they stand in by rates, and the place settles back when they stop	As peças mudam o local onde estão com uma taxa, e o local volta ao valor quando elas param
