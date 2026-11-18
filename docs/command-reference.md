@@ -1031,6 +1031,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `maximum-paths ibgp <1-32>` |  | router, switch | Put up to this many equal internal paths in the routing table |
 | `no maximum-paths ibgp` |  | router, switch | One internal path per prefix again |
 | `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
+| `timers bgp <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time of every neighbour that has none of its own (seconds) |
+| `no timers bgp` |  | router, switch | Keepalive 60 and hold time 180 again |
 | `show ip bgp neighbors A.B.C.D advertised-routes` | user, privileged | router, switch | What this router sends a neighbour after the outbound policy |
 | `show ip bgp neighbors A.B.C.D routes` | user, privileged | router, switch | The paths accepted from a neighbour after the inbound policy |
 | `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |
