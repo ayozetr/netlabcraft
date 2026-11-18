@@ -8,9 +8,9 @@
 //!
 //! Decoders treat their input as hostile: lengths are checked, counts are bounded.
 
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, Ipv6Addr};
 
-use netlabcraft_core::Ipv4Net;
+use netlabcraft_core::{Ipv4Net, Ipv6Net};
 
 use crate::{Result, WireError, be16, ip_at};
 
@@ -47,6 +47,15 @@ const ATTR_LOCAL_PREF: u8 = 5;
 const ATTR_COMMUNITIES: u8 = 8;
 const ATTR_ORIGINATOR_ID: u8 = 9;
 const ATTR_CLUSTER_LIST: u8 = 10;
+const ATTR_MP_REACH: u8 = 14;
+const ATTR_MP_UNREACH: u8 = 15;
+/// The address family and the subsequent address family of IPv6 unicast (RFC 4760).
+pub const AFI_IPV6: u16 = 2;
+pub const SAFI_UNICAST: u8 = 1;
+const CAP_MULTIPROTOCOL: u8 = 1;
+const ATTR_EXT_COMMUNITIES: u8 = 16;
+/// Most extended communities read from, or written to, one attribute (hostile input).
+pub const MAX_EXT_COMMUNITIES: usize = 32;
 /// Most communities read from one attribute (hostile input).
 const MAX_COMMUNITIES: usize = 64;
 /// Most cluster ids read from, or written to, one CLUSTER_LIST (hostile input).
@@ -70,12 +79,143 @@ pub const OPEN_BAD_PEER_AS: u8 = 2;
 pub const CEASE_SHUTDOWN: u8 = 2;
 pub const CEASE_RESET: u8 = 4;
 
-/// An OPEN message: the sender's AS number, hold time and BGP identifier.
+/// Extended community types (RFC 4360, the high-order octet without its two flag bits) and subtypes.
+pub const EXT_TWO_OCTET_AS: u8 = 0x00;
+pub const EXT_IPV4_ADDRESS: u8 = 0x01;
+/// RFC 5668: the global administrator is a four-octet AS number.
+pub const EXT_FOUR_OCTET_AS: u8 = 0x02;
+pub const EXT_SUB_ROUTE_TARGET: u8 = 0x02;
+pub const EXT_SUB_ROUTE_ORIGIN: u8 = 0x03;
+/// The bit of the type octet that marks a community as non-transitive.
+const EXT_NON_TRANSITIVE: u8 = 0x40;
+
+/// What an extended community says about a route: the VPN a route belongs to (a route target) or
+/// the site it came from (a route origin, also called site of origin).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExtKind {
+    RouteTarget,
+    RouteOrigin,
+}
+
+impl ExtKind {
+    /// The word the console uses: `rt` or `soo`.
+    pub fn word(self) -> &'static str {
+        match self {
+            ExtKind::RouteTarget => "rt",
+            ExtKind::RouteOrigin => "soo",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            ExtKind::RouteTarget => "RT",
+            ExtKind::RouteOrigin => "SoO",
+        }
+    }
+
+    fn subtype(self) -> u8 {
+        match self {
+            ExtKind::RouteTarget => EXT_SUB_ROUTE_TARGET,
+            ExtKind::RouteOrigin => EXT_SUB_ROUTE_ORIGIN,
+        }
+    }
+}
+
+/// An extended community as eight octets in one number (RFC 4360): the type, the subtype and six
+/// octets of value (a global administrator and a local one). Built from `kind` and the two parts.
+fn ext_build(kind_type: u8, kind: ExtKind, global: &[u8], local: &[u8]) -> u64 {
+    let mut b = [0u8; 8];
+    for (slot, v) in b.iter_mut().zip([kind_type, kind.subtype()].iter().chain(global).chain(local)) {
+        *slot = *v;
+    }
+    u64::from_be_bytes(b)
+}
+
+/// A route target or route origin with a two-octet AS number and a four-octet local value.
+pub fn ext_as2(kind: ExtKind, asn: u16, local: u32) -> u64 {
+    ext_build(EXT_TWO_OCTET_AS, kind, &asn.to_be_bytes(), &local.to_be_bytes())
+}
+
+/// One with an IPv4 address and a two-octet local value.
+pub fn ext_ipv4(kind: ExtKind, addr: Ipv4Addr, local: u16) -> u64 {
+    ext_build(EXT_IPV4_ADDRESS, kind, &addr.octets(), &local.to_be_bytes())
+}
+
+/// One with a four-octet AS number and a two-octet local value (RFC 5668).
+pub fn ext_as4(kind: ExtKind, asn: u32, local: u16) -> u64 {
+    ext_build(EXT_FOUR_OCTET_AS, kind, &asn.to_be_bytes(), &local.to_be_bytes())
+}
+
+/// `ASN:NN` or `A.B.C.D:NN`, as the console writes a route target or origin. An AS number that
+/// fits in two octets gets the two-octet form (and a 32-bit local value), a larger one the
+/// four-octet form (and a 16-bit local value), an address the IPv4 form.
+pub fn ext_parse(kind: ExtKind, text: &str) -> Option<u64> {
+    let (global, local) = text.trim().rsplit_once(':')?;
+    if global.contains('.') {
+        let addr: Ipv4Addr = global.parse().ok()?;
+        return Some(ext_ipv4(kind, addr, local.parse().ok()?));
+    }
+    let asn: u32 = global.parse().ok()?;
+    match u16::try_from(asn) {
+        Ok(small) => Some(ext_as2(kind, small, local.parse().ok()?)),
+        Err(_) => Some(ext_as4(kind, asn, local.parse().ok()?)),
+    }
+}
+
+/// Whether an extended community is a route target or a route origin, and which.
+pub fn ext_kind(c: u64) -> Option<ExtKind> {
+    let b = c.to_be_bytes();
+    let (kind_type, sub) = (b.first().copied()? & !EXT_NON_TRANSITIVE & 0x3f, b.get(1).copied()?);
+    if !matches!(kind_type, EXT_TWO_OCTET_AS | EXT_IPV4_ADDRESS | EXT_FOUR_OCTET_AS) {
+        return None;
+    }
+    match sub {
+        EXT_SUB_ROUTE_TARGET => Some(ExtKind::RouteTarget),
+        EXT_SUB_ROUTE_ORIGIN => Some(ExtKind::RouteOrigin),
+        _ => None,
+    }
+}
+
+/// Whether the community may cross an AS boundary (the non-transitive bit is clear).
+pub fn ext_transitive(c: u64) -> bool {
+    c.to_be_bytes().first().is_some_and(|t| t & EXT_NON_TRANSITIVE == 0)
+}
+
+/// An extended community as the console shows it: `RT:65001:100`, `SoO:10.0.0.1:5`, or the eight
+/// octets in hex for a type this simulator does not name.
+pub fn ext_text(c: u64) -> String {
+    let b = c.to_be_bytes();
+    let (Some(kind), Some(t)) = (ext_kind(c), b.first().map(|t| t & 0x3f)) else { return format!("0x{c:016x}") };
+    let at = |i: usize| b.get(i).copied().unwrap_or(0);
+    let label = kind.label();
+    match t {
+        EXT_TWO_OCTET_AS => {
+            format!("{label}:{}:{}", u16::from_be_bytes([at(2), at(3)]), u32::from_be_bytes([at(4), at(5), at(6), at(7)]))
+        }
+        EXT_IPV4_ADDRESS => format!("{label}:{}:{}", Ipv4Addr::new(at(2), at(3), at(4), at(5)), u16::from_be_bytes([at(6), at(7)])),
+        _ => format!("{label}:{}:{}", u32::from_be_bytes([at(2), at(3), at(4), at(5)]), u16::from_be_bytes([at(6), at(7)])),
+    }
+}
+
+/// An OPEN message: the sender's AS number, hold time and BGP identifier, and whether it announces the
+/// multiprotocol capability (RFC 4760) for IPv6 unicast.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Open {
     pub asn: u32,
     pub hold_secs: u16,
     pub bgp_id: Ipv4Addr,
+    pub ipv6_unicast: bool,
+}
+
+/// MP_REACH_NLRI for IPv6 unicast (RFC 4760 with the next hop of RFC 2545): the prefixes announced and
+/// the next hop that reaches them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MpReach6 {
+    /// The global next hop (`::` when the route has only a link-local one).
+    pub next_hop: Ipv6Addr,
+    /// The link-local next hop that follows the global one when the next hop field is 32 octets long.
+    pub link_local: Option<Ipv6Addr>,
+    pub nlri: Vec<Ipv6Net>,
 }
 
 /// The path attributes of the routes an UPDATE announces.
@@ -102,6 +242,14 @@ pub struct PathAttrs {
     pub confed_path: Vec<u32>,
     /// The AS_CONFED_SET segment (RFC 5065).
     pub confed_set: Vec<u32>,
+    /// MP_REACH_NLRI (RFC 4760) for IPv6 unicast. An update that carries it has no IPv4 NEXT_HOP
+    /// attribute unless `next_hop` is set.
+    pub mp_reach6: Option<MpReach6>,
+    /// MP_UNREACH_NLRI for IPv6 unicast: the prefixes withdrawn.
+    pub mp_unreach6: Vec<Ipv6Net>,
+    /// The EXTENDED COMMUNITIES attribute (RFC 4360), each as eight octets in one number (see
+    /// [`ext_as2`], [`ext_ipv4`] and [`ext_text`]).
+    pub ext_communities: Vec<u64>,
 }
 
 impl Default for PathAttrs {
@@ -120,6 +268,9 @@ impl Default for PathAttrs {
             cluster_list: Vec::new(),
             confed_path: Vec::new(),
             confed_set: Vec::new(),
+            ext_communities: Vec::new(),
+            mp_reach6: None,
+            mp_unreach6: Vec::new(),
         }
     }
 }
@@ -184,6 +335,44 @@ fn write_prefixes(out: &mut Vec<u8>, nets: &[Ipv4Net]) {
     }
 }
 
+fn write_prefixes6(out: &mut Vec<u8>, nets: &[Ipv6Net]) {
+    for n in nets.iter().take(MAX_PREFIXES) {
+        let n = n.network();
+        out.push(n.prefix);
+        let bytes = usize::from(n.prefix).div_ceil(8);
+        out.extend(n.addr.octets().iter().take(bytes));
+    }
+}
+
+fn read_prefixes6(b: &[u8]) -> Result<Vec<Ipv6Net>> {
+    let t = || WireError::Truncated("bgp");
+    let mut out = Vec::new();
+    let mut at = 0usize;
+    while at < b.len() {
+        if out.len() >= MAX_PREFIXES {
+            return Err(WireError::Unsupported("bgp", "too many prefixes".into()));
+        }
+        let len = *b.get(at).ok_or_else(t)?;
+        if len > 128 {
+            return Err(WireError::Unsupported("bgp", format!("prefix length {len}")));
+        }
+        let n = usize::from(len).div_ceil(8);
+        let raw = b.get(at + 1..at + 1 + n).ok_or_else(t)?;
+        let mut o = [0u8; 16];
+        for (slot, byte) in o.iter_mut().zip(raw) {
+            *slot = *byte;
+        }
+        out.push(Ipv6Net::new(Ipv6Addr::from(o), len).network());
+        at += 1 + n;
+    }
+    Ok(out)
+}
+
+fn v6_at(b: &[u8], at: usize) -> Option<Ipv6Addr> {
+    let raw: [u8; 16] = b.get(at..at + 16)?.try_into().ok()?;
+    Some(Ipv6Addr::from(raw))
+}
+
 fn read_prefixes(b: &[u8]) -> Result<Vec<Ipv4Net>> {
     let t = || WireError::Truncated("bgp");
     let mut out = Vec::new();
@@ -219,10 +408,18 @@ impl Message {
                 body.extend_from_slice(&two.to_be_bytes());
                 body.extend_from_slice(&o.hold_secs.to_be_bytes());
                 body.extend_from_slice(&o.bgp_id.octets());
-                // One optional parameter: a capability, the four-octet AS number.
-                body.push(8);
-                body.extend_from_slice(&[2, 6, CAP_FOUR_OCTET_AS, 4]);
-                body.extend_from_slice(&o.asn.to_be_bytes());
+                // One optional parameter holding the capabilities: the four-octet AS number, and the
+                // multiprotocol one for IPv6 unicast when the sender runs it.
+                let mut caps = vec![CAP_FOUR_OCTET_AS, 4];
+                caps.extend_from_slice(&o.asn.to_be_bytes());
+                if o.ipv6_unicast {
+                    caps.extend_from_slice(&[CAP_MULTIPROTOCOL, 4]);
+                    caps.extend_from_slice(&AFI_IPV6.to_be_bytes());
+                    caps.extend_from_slice(&[0, SAFI_UNICAST]);
+                }
+                body.push(u8::try_from(caps.len() + 2).unwrap_or(u8::MAX));
+                body.extend_from_slice(&[2, u8::try_from(caps.len()).unwrap_or(u8::MAX)]);
+                body.extend(caps);
                 header(TYPE_OPEN, &body)
             }
             Message::Update(u) => {
@@ -249,7 +446,9 @@ impl Message {
                         }
                     }
                     attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_AS_PATH, &path));
-                    attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_NEXT_HOP, &a.next_hop.octets()));
+                    if !(a.next_hop.is_unspecified() && a.mp_reach6.is_some()) {
+                        attrs.extend(attribute(FLAG_TRANSITIVE, ATTR_NEXT_HOP, &a.next_hop.octets()));
+                    }
                     if let Some(m) = a.med {
                         attrs.extend(attribute(FLAG_OPTIONAL, ATTR_MED, &m.to_be_bytes()));
                     }
@@ -259,6 +458,34 @@ impl Message {
                     if !a.communities.is_empty() {
                         let value: Vec<u8> = a.communities.iter().take(MAX_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
                         attrs.extend(attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_COMMUNITIES, &value));
+                    }
+                    if let Some(mp) = &a.mp_reach6 {
+                        let mut value = AFI_IPV6.to_be_bytes().to_vec();
+                        value.push(SAFI_UNICAST);
+                        match mp.link_local {
+                            Some(ll) => {
+                                value.push(32);
+                                value.extend_from_slice(&mp.next_hop.octets());
+                                value.extend_from_slice(&ll.octets());
+                            }
+                            None => {
+                                value.push(16);
+                                value.extend_from_slice(&mp.next_hop.octets());
+                            }
+                        }
+                        value.push(0);
+                        write_prefixes6(&mut value, &mp.nlri);
+                        attrs.extend(attribute(FLAG_OPTIONAL, ATTR_MP_REACH, &value));
+                    }
+                    if !a.mp_unreach6.is_empty() {
+                        let mut value = AFI_IPV6.to_be_bytes().to_vec();
+                        value.push(SAFI_UNICAST);
+                        write_prefixes6(&mut value, &a.mp_unreach6);
+                        attrs.extend(attribute(FLAG_OPTIONAL, ATTR_MP_UNREACH, &value));
+                    }
+                    if !a.ext_communities.is_empty() {
+                        let value: Vec<u8> = a.ext_communities.iter().take(MAX_EXT_COMMUNITIES).flat_map(|c| c.to_be_bytes()).collect();
+                        attrs.extend(attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &value));
                     }
                     if let Some(o) = a.originator_id {
                         attrs.extend(attribute(FLAG_OPTIONAL, ATTR_ORIGINATOR_ID, &o.octets()));
@@ -312,6 +539,7 @@ impl Message {
                 let opt_len = usize::from(*body.get(9).ok_or_else(t)?);
                 let params = body.get(10..10 + opt_len).ok_or_else(t)?;
                 let mut asn = u32::from(two);
+                let mut ipv6_unicast = false;
                 let mut at = 0usize;
                 // Optional parameters: (type, length, value); type 2 holds capabilities.
                 while at + 2 <= params.len() {
@@ -328,12 +556,15 @@ impl Message {
                                 let raw: [u8; 4] = cv.try_into().map_err(|_| t())?;
                                 asn = u32::from_be_bytes(raw);
                             }
+                            if code == CAP_MULTIPROTOCOL && clen == 4 && be16(cv, 0) == Some(AFI_IPV6) && cv.get(3) == Some(&SAFI_UNICAST) {
+                                ipv6_unicast = true;
+                            }
                             c += 2 + clen;
                         }
                     }
                     at += 2 + plen;
                 }
-                Ok(Message::Open(Open { asn, hold_secs, bgp_id }))
+                Ok(Message::Open(Open { asn, hold_secs, bgp_id, ipv6_unicast }))
             }
             TYPE_UPDATE => {
                 let wd_len = usize::from(be16(body, 0).ok_or_else(t)?);
@@ -364,6 +595,9 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
         cluster_list: Vec::new(),
         confed_path: Vec::new(),
         confed_set: Vec::new(),
+        ext_communities: Vec::new(),
+        mp_reach6: None,
+        mp_unreach6: Vec::new(),
     };
     let mut at = 0usize;
     // Every attribute takes at least three bytes, so this loop is bounded by the input.
@@ -412,6 +646,33 @@ fn read_attrs(b: &[u8]) -> Result<PathAttrs> {
                 for c in value.chunks_exact(4).take(MAX_COMMUNITIES) {
                     let raw: [u8; 4] = c.try_into().map_err(|_| t())?;
                     a.communities.push(u32::from_be_bytes(raw));
+                }
+            }
+            ATTR_MP_REACH | ATTR_MP_UNREACH => {
+                let afi = be16(value, 0).ok_or_else(t)?;
+                let safi = *value.get(2).ok_or_else(t)?;
+                // Only IPv6 unicast is understood; another family is skipped, as an attribute of an
+                // unknown type is.
+                if afi == AFI_IPV6 && safi == SAFI_UNICAST {
+                    if kind == ATTR_MP_UNREACH {
+                        a.mp_unreach6 = read_prefixes6(value.get(3..).ok_or_else(t)?)?;
+                    } else {
+                        let nh_len = usize::from(*value.get(3).ok_or_else(t)?);
+                        if nh_len != 16 && nh_len != 32 {
+                            return Err(WireError::Unsupported("bgp", format!("next hop length {nh_len}")));
+                        }
+                        let next_hop = v6_at(value, 4).ok_or_else(t)?;
+                        let link_local = if nh_len == 32 { Some(v6_at(value, 20).ok_or_else(t)?) } else { None };
+                        // The octet after the next hop is reserved.
+                        let nlri = read_prefixes6(value.get(5 + nh_len..).ok_or_else(t)?)?;
+                        a.mp_reach6 = Some(MpReach6 { next_hop, link_local, nlri });
+                    }
+                }
+            }
+            ATTR_EXT_COMMUNITIES => {
+                for c in value.chunks_exact(8).take(MAX_EXT_COMMUNITIES) {
+                    let raw: [u8; 8] = c.try_into().map_err(|_| t())?;
+                    a.ext_communities.push(u64::from_be_bytes(raw));
                 }
             }
             ATTR_ORIGINATOR_ID => a.originator_id = Some(ip_at(value, 0).ok_or_else(t)?),
@@ -495,14 +756,19 @@ mod tests {
         s.parse().unwrap()
     }
 
+    fn net6(s: &str) -> Ipv6Net {
+        let (addr, prefix) = s.split_once('/').unwrap();
+        Ipv6Net::new(addr.parse().unwrap(), prefix.parse().unwrap())
+    }
+
     #[test]
     fn open_carries_a_four_octet_as_number() {
-        let m = Message::Open(Open { asn: 4_200_000_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1) });
+        let m = Message::Open(Open { asn: 4_200_000_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false });
         let b = m.encode();
         // The two-octet field holds AS_TRANS; the capability holds the real number.
         assert_eq!(be16(&b, 20), Some(AS_TRANS));
         assert_eq!(Message::decode(&b), Ok(m));
-        let small = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(2, 2, 2, 2) });
+        let small = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(2, 2, 2, 2), ipv6_unicast: false });
         assert_eq!(Message::decode(&small.encode()), Ok(small));
     }
 
@@ -531,6 +797,9 @@ mod tests {
                 cluster_list: vec![Ipv4Addr::new(2, 2, 2, 2), Ipv4Addr::new(3, 3, 3, 3)],
                 confed_path: vec![65_010, 65_011],
                 confed_set: vec![65_012],
+                ext_communities: vec![ext_as2(ExtKind::RouteTarget, 65_001, 100), ext_ipv4(ExtKind::RouteOrigin, Ipv4Addr::new(10, 0, 0, 1), 5)],
+                mp_reach6: None,
+                mp_unreach6: Vec::new(),
             }),
             nlri: vec![net("10.2.0.0/16"), net("192.168.5.0/24"), net("0.0.0.0/0"), net("203.0.113.7/32")],
         });
@@ -565,7 +834,7 @@ mod tests {
     fn decoders_survive_every_truncation_and_garbage() {
         let messages = [
             Message::Keepalive,
-            Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1) }),
+            Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false }),
             Message::Notification(Notification { code: ERR_CEASE, subcode: CEASE_RESET }),
             Message::Update(Update {
                 withdrawn: vec![net("10.1.0.0/16")],
@@ -581,6 +850,9 @@ mod tests {
                     cluster_list: vec![Ipv4Addr::new(8, 8, 8, 8)],
                     confed_path: vec![65_003],
                     confed_set: vec![65_004],
+                    ext_communities: vec![ext_as2(ExtKind::RouteTarget, 65_001, 100), ext_as4(ExtKind::RouteOrigin, 4_200_000_001, 7)],
+                    mp_reach6: None,
+                    mp_unreach6: Vec::new(),
                 }),
                 nlri: vec![net("10.2.0.0/16")],
             }),
@@ -638,6 +910,133 @@ mod tests {
     }
 
     #[test]
+    fn extended_communities_use_the_rfc_4360_layout() {
+        // Two-octet AS: type 0x00, subtype 0x02 (route target), the AS, then a four-octet value.
+        let rt = ext_as2(ExtKind::RouteTarget, 65_001, 100);
+        assert_eq!(rt.to_be_bytes(), [0x00, 0x02, 0xFD, 0xE9, 0, 0, 0, 100]);
+        // IPv4 address: type 0x01, subtype 0x03 (route origin), the address, then a two-octet value.
+        let soo = ext_ipv4(ExtKind::RouteOrigin, Ipv4Addr::new(10, 0, 0, 1), 5);
+        assert_eq!(soo.to_be_bytes(), [0x01, 0x03, 10, 0, 0, 1, 0, 5]);
+        // Four-octet AS (RFC 5668): type 0x02.
+        let big = ext_as4(ExtKind::RouteTarget, 4_200_000_001, 7);
+        assert_eq!(big.to_be_bytes(), [0x02, 0x02, 0xFA, 0x56, 0xEA, 0x01, 0, 7]);
+        assert_eq!((ext_text(rt), ext_text(soo), ext_text(big)), ("RT:65001:100".into(), "SoO:10.0.0.1:5".into(), "RT:4200000001:7".into()));
+        assert_eq!((ext_kind(rt), ext_kind(soo), ext_kind(0x0005_0000_0000_0000)), (Some(ExtKind::RouteTarget), Some(ExtKind::RouteOrigin), None));
+        assert_eq!(ext_text(0x0005_0000_0000_0001), "0x0005000000000001");
+        assert!(ext_transitive(rt) && !ext_transitive(0x4002_0000_0000_0000));
+        // What the console types parses to the same values, and nonsense does not parse.
+        assert_eq!(ext_parse(ExtKind::RouteTarget, "65001:100"), Some(rt));
+        assert_eq!(ext_parse(ExtKind::RouteOrigin, "10.0.0.1:5"), Some(soo));
+        assert_eq!(ext_parse(ExtKind::RouteTarget, "4200000001:7"), Some(big));
+        for bad in ["", "65001", "65001:", ":5", "65001:99999999999", "10.0.0.1:70000", "4200000001:70000", "a:b", "300.0.0.1:1"] {
+            assert_eq!(ext_parse(ExtKind::RouteTarget, bad), None, "{bad}");
+        }
+        // They ride in the UPDATE as attribute 16, optional and transitive (flags 0xC0), eight octets each.
+        let attrs =
+            PathAttrs { as_path: vec![65_001], next_hop: Ipv4Addr::new(10, 0, 0, 1), ext_communities: vec![rt, soo, big], ..PathAttrs::default() };
+        let u = Message::Update(Update { withdrawn: Vec::new(), attrs: Some(attrs.clone()), nlri: vec![net("10.0.0.0/8")] });
+        let bytes = u.encode();
+        assert!(bytes.windows(3).any(|w| w == [0xC0, ATTR_EXT_COMMUNITIES, 24]), "{bytes:?}");
+        let Ok(Message::Update(back)) = Message::decode(&bytes) else { panic!("did not decode") };
+        assert_eq!(back.attrs, Some(attrs));
+    }
+
+    #[test]
+    fn a_hostile_extended_community_attribute_is_bounded_and_never_read_past_its_end() {
+        // Forty values keep the first MAX_EXT_COMMUNITIES.
+        let many: Vec<u64> = (1..=40).map(|i| ext_as2(ExtKind::RouteTarget, 1, i)).collect();
+        let u = Message::Update(Update {
+            withdrawn: Vec::new(),
+            attrs: Some(PathAttrs { ext_communities: many, ..PathAttrs::default() }),
+            nlri: vec![net("10.0.0.0/8")],
+        });
+        let Ok(Message::Update(back)) = Message::decode(&u.encode()) else { panic!("did not decode") };
+        assert_eq!(back.attrs.map(|a| a.ext_communities.len()), Some(MAX_EXT_COMMUNITIES));
+        // A value that is not a whole number of octets-by-eight drops the odd bytes; a short one reads as none.
+        let odd = attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &[0, 2, 0, 1, 0, 0, 0, 5, 9, 9, 9]);
+        assert_eq!(read_attrs(&odd).map(|a| a.ext_communities), Ok(vec![ext_as2(ExtKind::RouteTarget, 1, 5)]));
+        let short = attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &[0, 2, 0]);
+        assert_eq!(read_attrs(&short).map(|a| a.ext_communities), Ok(Vec::new()));
+        // An attribute whose length runs past the data is an error, at every cut.
+        let whole = attribute(FLAG_OPTIONAL | FLAG_TRANSITIVE, ATTR_EXT_COMMUNITIES, &ext_as2(ExtKind::RouteTarget, 1, 5).to_be_bytes());
+        for n in 1..whole.len() {
+            assert!(read_attrs(whole.get(..n).unwrap_or_default()).is_err(), "{n} bytes");
+        }
+    }
+
+    #[test]
+    fn open_announces_the_multiprotocol_capability_for_ipv6_unicast() {
+        let m = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: true });
+        let bytes = m.encode();
+        assert_eq!(Message::decode(&bytes), Ok(m));
+        // Capability 1, length 4: AFI 2 (IPv6), a reserved octet, SAFI 1 (unicast).
+        assert!(bytes.windows(6).any(|w| w == [CAP_MULTIPROTOCOL, 4, 0, 2, 0, 1]), "{bytes:?}");
+        let plain = Message::Open(Open { asn: 65_001, hold_secs: 90, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false });
+        let Ok(Message::Open(back)) = Message::decode(&plain.encode()) else { panic!("did not decode") };
+        assert!(!back.ipv6_unicast);
+    }
+
+    #[test]
+    fn ipv6_prefixes_travel_in_mp_reach_and_mp_unreach_with_the_next_hop_of_rfc_2545() {
+        let nlri = vec![net6("2001:db8:1::/48"), net6("2001:db8:2::/64"), net6("::/0"), net6("2001:db8::1/128")];
+        let global: Ipv6Addr = "2001:db8:ffff::1".parse().unwrap();
+        let link: Ipv6Addr = "fe80::1".parse().unwrap();
+        for link_local in [None, Some(link)] {
+            let attrs = PathAttrs {
+                as_path: vec![65_001],
+                next_hop: Ipv4Addr::UNSPECIFIED,
+                mp_reach6: Some(MpReach6 { next_hop: global, link_local, nlri: nlri.clone() }),
+                mp_unreach6: vec![net6("2001:db8:9::/48")],
+                ..PathAttrs::default()
+            };
+            let u = Message::Update(Update { withdrawn: Vec::new(), attrs: Some(attrs.clone()), nlri: Vec::new() });
+            let bytes = u.encode();
+            // MP_REACH_NLRI is type 14 and MP_UNREACH_NLRI type 15, optional and not transitive (flags 0x80); the next
+            // hop is 16 octets, or 32 with a link-local address after the global one.
+            let want = if link_local.is_some() { 32 } else { 16 };
+            assert!(bytes.windows(7).any(|w| w == [0x80, ATTR_MP_REACH, w[2], 0, 2, 1, want]), "{bytes:?}");
+            assert!(bytes.windows(2).any(|w| w == [0x80, ATTR_MP_UNREACH]), "{bytes:?}");
+            // No IPv4 NEXT_HOP rides along with an IPv6-only update.
+            assert!(!bytes.windows(3).any(|w| w == [0x40, ATTR_NEXT_HOP, 4]), "{bytes:?}");
+            let Ok(Message::Update(back)) = Message::decode(&bytes) else { panic!("did not decode") };
+            assert_eq!(back.attrs, Some(attrs));
+        }
+    }
+
+    #[test]
+    fn a_hostile_mp_attribute_is_refused_or_skipped_and_never_read_past_its_end() {
+        let family = [0u8, 2, 1];
+        let reach = |nh_len: u8, body: &[u8]| {
+            let mut v = family.to_vec();
+            v.push(nh_len);
+            v.extend_from_slice(body);
+            attribute(FLAG_OPTIONAL, ATTR_MP_REACH, &v)
+        };
+        // A next hop that is neither 16 nor 32 octets long is an error, so is one that is cut short.
+        assert!(read_attrs(&reach(12, &[0; 20])).is_err());
+        assert!(read_attrs(&reach(16, &[0; 10])).is_err());
+        assert!(read_attrs(&reach(32, &[0; 20])).is_err());
+        // A prefix longer than 128 bits, or whose octets are missing, is an error.
+        let mut body = vec![0u8; 16];
+        body.extend_from_slice(&[0, 129]);
+        assert!(read_attrs(&reach(16, &body)).is_err());
+        let mut body = vec![0u8; 16];
+        body.extend_from_slice(&[0, 64, 0x20, 0x01]);
+        assert!(read_attrs(&reach(16, &body)).is_err(), "64 bits need eight octets");
+        // Another family (IPv4, or a subsequent family this simulator does not run) is skipped.
+        let other = attribute(FLAG_OPTIONAL, ATTR_MP_REACH, &[0, 1, 1, 4, 10, 0, 0, 1, 0, 24, 10, 1, 2]);
+        assert_eq!(read_attrs(&other).map(|a| a.mp_reach6), Ok(None));
+        let multicast = attribute(FLAG_OPTIONAL, ATTR_MP_UNREACH, &[0, 2, 2, 8, 0xFF]);
+        assert_eq!(read_attrs(&multicast).map(|a| a.mp_unreach6), Ok(Vec::new()));
+        // Every cut of a good attribute is an error.
+        let whole = reach(16, &[&[0u8; 16][..], &[0, 48, 0x20, 0x01, 0x0d, 0xb8, 0, 1]].concat());
+        assert!(read_attrs(&whole).is_ok());
+        for n in 1..whole.len() {
+            assert!(read_attrs(whole.get(..n).unwrap_or_default()).is_err(), "{n} bytes");
+        }
+    }
+
+    #[test]
     fn route_reflection_and_confederation_attributes_have_their_own_codes() {
         let attrs = PathAttrs {
             origin: ORIGIN_IGP,
@@ -685,7 +1084,7 @@ mod tests {
     #[test]
     fn describe_walks_several_messages_in_one_segment() {
         let mut data = Message::Keepalive.encode();
-        data.extend(Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1) }).encode());
+        data.extend(Message::Open(Open { asn: 65_001, hold_secs: 180, bgp_id: Ipv4Addr::new(1, 1, 1, 1), ipv6_unicast: false }).encode());
         assert_eq!(describe(&data), "KEEPALIVE, OPEN (AS 65001, hold time 180 s, id 1.1.1.1)");
     }
 }

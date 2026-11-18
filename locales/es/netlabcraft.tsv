@@ -1822,7 +1822,7 @@ event	no APN	sin APN
 	Nothing on the workspace yet.	Aún no hay nada en el espacio de trabajo.
 	Click or drag to move the view of the workspace	Haz clic o arrastra para mover la vista del espacio de trabajo
 	Workspace List	Lista del espacio de trabajo
-	Click a device to select it; double-click to open it.	Haz clic en un dispositivo para seleccionarlo; doble clic para abrirlo.
+	Click a row to select it; double-click to open it.	Haz clic en una fila para seleccionarla; doble clic para abrirla.
 	1. Pick a device in the box at the bottom, then click the workspace to place it.	1. Elige un dispositivo en la caja inferior y haz clic en el espacio de trabajo para colocarlo.
 	2. Pick a cable in the same box, click one device, then another, and choose the ports.	2. Elige un cable en la misma caja, haz clic en un dispositivo, luego en otro, y elige los puertos.
 	3. Click a device to open its window: routers and switches have a CLI, computers a Desktop.	3. Haz clic en un dispositivo para abrir su ventana: los routers y switches tienen CLI, los equipos un Escritorio.
@@ -1834,7 +1834,7 @@ event	no APN	sin APN
 	Each lab lists the devices to place, the commands to type and what you should see.	Cada práctica indica los dispositivos que colocar, los comandos que escribir y lo que debes ver.
 	Every device on the workspace is announced by a screen reader with its name and model.	Un lector de pantalla anuncia cada dispositivo del espacio de trabajo con su nombre y modelo.
 	Tab and the arrow keys move between devices and cables; Enter or Space opens the one in focus.	Tab y las flechas se mueven entre dispositivos y cables; Intro o Espacio abre el que tiene el foco.
-	The Workspace List in the View menu names every device in a table you can move through.	La lista del espacio de trabajo, en el menú Ver, nombra cada dispositivo en una tabla por la que puedes moverte.
+	The Workspace List in the View menu names every place, piece of furniture and device in a tree you can move through.	La lista del espacio de trabajo, en el menú Ver, nombra cada lugar, mueble y dispositivo en un árbol por el que puedes moverte.
 	Everything the menus do can also be typed, from the command line or by an agent.	Todo lo que hacen los menús también se puede escribir, desde la línea de comandos o con un agente.
 	Auto Capture / Play	Captura automática / Reproducir
 	Bottom Toolbar	Barra inferior
@@ -1925,6 +1925,13 @@ event	no APN	sin APN
 	This device has no USB port.	Este dispositivo no tiene puerto USB.
 	Test page from {}	Página de prueba de {}
 	Sent a test page over USB.	Se envió una página de prueba por USB.
+	to {}	a {}
+	Backbone	Cableado troncal
+	Backbone to	Cable troncal a
+	Remove Backbone	Quitar cable troncal
+	No panel or wall mount with a free port in another place.	Ningún panel ni roseta con un puerto libre en otro lugar.
+	{} in {} to {} in {}	{} en {} a {} en {}
+	Other devices	Otros dispositivos
 	Rack	Bastidor
 	Shelf	Estante
 furniture	Table	Mesa

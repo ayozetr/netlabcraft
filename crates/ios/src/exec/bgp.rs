@@ -7,8 +7,8 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::bgp::{
-    Aggregate, Bgp, HOLD_SECS, KEEPALIVE_SECS, LocalAs, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS, MAX_OPTIONS, MAX_PASSWORD,
-    MAX_PEER_GROUPS, MAX_TEXT, Neighbor, PeerGroup, Source, follow,
+    Aggregate, Bgp, DampParams, Dampening, HOLD_SECS, KEEPALIVE_SECS, LocalAs, MAX_AGGREGATES, MAX_CONFED_PEERS, MAX_MULTIPATH, MAX_NETWORKS,
+    MAX_OPTIONS, MAX_PASSWORD, MAX_PEER_GROUPS, MAX_TEXT, Neighbor, PeerGroup, Source, follow,
 };
 use netlabcraft_model::policy::{self, community_text, parse_community};
 use netlabcraft_model::{Device, DeviceKind, Rip, ifname, routing};
@@ -117,6 +117,21 @@ fn split_map(text: &str) -> Result<(String, Option<String>), String> {
         return Err(format!("% A name is 1-{} characters", netlabcraft_model::policy::MAX_NAME));
     }
     Ok((words.get(..at).unwrap_or(&[]).join(" "), Some(name.to_string())))
+}
+
+/// The four numbers of `bgp dampening` and `set dampening`: half-life, reuse, suppress, longest suppression.
+pub(super) fn damp_params(args: &[String]) -> Result<DampParams, String> {
+    let num = |i: usize, what: &str| -> Result<u16, String> {
+        args.get(i).and_then(|t| t.trim().parse::<u16>().ok()).ok_or_else(|| format!("% The {what} is a number"))
+    };
+    DampParams {
+        half_life: num(0, "half-life")?,
+        reuse: num(1, "reuse limit")?,
+        suppress: num(2, "suppress limit")?,
+        max_suppress: num(3, "maximum suppress time")?,
+    }
+    .check()
+    .map_err(|e| format!("% {e}"))
 }
 
 /// `local-as N [no-prepend [replace-as [dual-as]]]`: each option needs the one before it.
@@ -360,15 +375,22 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::BgpNeighborSendCommunity | Id::NoBgpNeighborSendCommunity => {
-            if arg(1).eq_ignore_ascii_case("extended") {
-                return Ok(EXTENDED_NOT_SIMULATED.to_string());
-            }
-            if !arg(1).is_empty() && !matches!(arg(1).to_ascii_lowercase().as_str(), "both" | "standard") {
-                return Err("% Say both, standard or extended".into());
-            }
             let on = id == Id::BgpNeighborSendCommunity;
+            // Which kinds the line touches: without a word, `send-community` is the standard
+            // communities and `no send-community` ends both.
+            let (standard, extended) = match (on, arg(1).to_ascii_lowercase().as_str()) {
+                (true, "" | "standard") | (false, "standard") => (true, false),
+                (_, "extended") => (false, true),
+                (true, "both") | (false, "" | "both") => (true, true),
+                _ => return Err("% Say both, standard or extended".into()),
+            };
             edit(process(c)?, arg(0), |n| {
-                n.send_community = on;
+                if standard {
+                    n.send_community = on;
+                }
+                if extended {
+                    n.send_extended = on;
+                }
                 Ok(())
             })?;
             Ok(String::new())
@@ -407,6 +429,45 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             };
             process(c)?.timers = timers;
             Ok(String::new())
+        }
+        Id::BgpDampening | Id::NoBgpDampening => {
+            let dampening = if id == Id::BgpDampening {
+                Some(match args.len() {
+                    0 => Dampening { params: DampParams::default(), route_map: None, explicit: false },
+                    1 => Dampening { params: DampParams::default(), route_map: Some(policy_name(arg(0))?), explicit: false },
+                    _ => Dampening { params: damp_params(args)?, route_map: None, explicit: true },
+                })
+            } else {
+                None
+            };
+            process(c)?.dampening = dampening;
+            Ok(String::new())
+        }
+        Id::ShowIpBgpDampened | Id::ShowIpBgpFlapStatistics => {
+            let view = c.sim.bgp_state(c.t);
+            Ok(flap_table(c.d()?, &view, id == Id::ShowIpBgpDampened))
+        }
+        Id::ClearIpBgpDampening => {
+            let view = c.sim.bgp_state(c.t);
+            let d = c.d()?;
+            if d.bgp.is_none() {
+                return Err("% BGP is not running on this router".into());
+            }
+            let only = match args.len() {
+                0 => None,
+                1 => {
+                    let a = address(arg(0))?;
+                    let found = view.flaps.keys().filter(|k| k.0 == d.id && k.2.contains(a)).map(|k| k.2).max_by_key(|n| n.prefix);
+                    Some(found.ok_or_else(|| format!("% No dampening history for {a}"))?)
+                }
+                _ => {
+                    let prefix = netlabcraft_core::mask_to_prefix(address(arg(1))?).ok_or("% The mask must be contiguous, like 255.255.0.0")?;
+                    Some(Ipv4Net::new(address(arg(0))?, prefix).network())
+                }
+            };
+            let dev = c.dev;
+            let n = c.sim.bgp_clear_dampening(c.t, dev, only);
+            Ok(format!("Dampening history of {n} route{} forgotten; held-down routes are usable again.", if n == 1 { "" } else { "s" }))
         }
         Id::BgpNeighborFilterList | Id::NoBgpNeighborFilterList => {
             let who = arg(0).trim().to_string();
@@ -712,10 +773,6 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
     }
 }
 
-/// What the console says after `send-community extended`: the setting is not kept, because no path
-/// carries an extended community here.
-const EXTENDED_NOT_SIMULATED: &str =
-    "Accepted: extended communities are not simulated, so the neighbour is sent none (standard ones still need send-community).";
 /// What the console says after it keeps a setting that changes nothing in the simulation.
 const KEPT: &str = "Accepted: kept in the configuration; it does not change what the simulator does.";
 
@@ -725,6 +782,7 @@ const PROCESS_ON: &[&str] = &["bgp fast-external-fallover", "bgp client-to-clien
 const PROCESS_ACTS: &[&str] = &[
     "bgp bestpath as-path multipath-relax",
     "bgp bestpath med missing-as-worst",
+    "bgp deterministic-med",
     "bgp fast-external-fallover",
     "bgp client-to-client reflection",
     "bgp default ipv4-unicast",
@@ -853,8 +911,13 @@ fn neighbor_lines(who: &str, n: &Neighbor, base: &Neighbor, pw: &dyn Fn(&str) ->
     if let Some((k, h)) = n.timers.filter(|t| base.timers != Some(*t)) {
         v.push(format!("neighbor {who} timers {k} {h}"));
     }
-    if n.send_community && !base.send_community {
-        v.push(format!("neighbor {who} send-community"));
+    if (n.send_community && !base.send_community) || (n.send_extended && !base.send_extended) {
+        let word = match (n.send_community, n.send_extended) {
+            (true, true) => " both",
+            (false, true) => " extended",
+            _ => "",
+        };
+        v.push(format!("neighbor {who} send-community{word}"));
     }
     if n.route_reflector_client && !base.route_reflector_client {
         v.push(format!("neighbor {who} route-reflector-client"));
@@ -908,6 +971,15 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
     if let Some((k, h)) = b.timers {
         let _ = writeln!(s, " timers bgp {k} {h}");
+    }
+    if let Some(dm) = &b.dampening {
+        let _ = match (&dm.route_map, dm.explicit) {
+            (Some(m), _) => writeln!(s, " bgp dampening route-map {m}"),
+            (None, true) => {
+                writeln!(s, " bgp dampening {} {} {} {}", dm.params.half_life, dm.params.reuse, dm.params.suppress, dm.params.max_suppress)
+            }
+            (None, false) => writeln!(s, " bgp dampening"),
+        };
     }
     if let Some(l) = b.default_local_pref {
         let _ = writeln!(s, " bgp default local-preference {l}");
@@ -1028,6 +1100,40 @@ fn running<'a>(d: &Device, v: &'a BgpView) -> Option<&'a RouterView> {
     v.routers.get(&d.id)
 }
 
+/// `show ip bgp dampened-paths` (only the routes held down) and `show ip bgp flap-statistics` (every
+/// route that flapped).
+fn flap_table(d: &Device, v: &BgpView, held_only: bool) -> String {
+    let Some(r) = running(d, v) else { return not_running() };
+    if d.bgp.as_ref().is_none_or(|b| b.dampening.is_none()) {
+        return "Dampening is not configured: turn it on with `bgp dampening`.".to_string();
+    }
+    let rows: Vec<_> = v.flaps.iter().filter(|(k, f)| k.0 == d.id && if held_only { f.suppressed } else { f.flaps > 0 }).collect();
+    if rows.is_empty() {
+        let none = if held_only { "no route is held down by dampening" } else { "no route has flapped" };
+        return format!("BGP router id {}, local AS {}\n({none})", r.router_id, r.asn);
+    }
+    let mut s = format!("BGP router id {}, local AS {}\n", r.router_id, r.asn);
+    s.push_str("Status: d held down by dampening, * usable    Origin: i IGP, e EGP, ? incomplete\n\n");
+    let _ = writeln!(s, "    {:<18} {:<16} {:>5} {:>8} {:>9} {:>9}  Path", "Network", "From", "Flaps", "Penalty", "Duration", "Reuse in");
+    for ((_, from, net), f) in rows {
+        let path = r.paths.iter().find(|p| p.from == Some(*from) && p.net == *net).map_or("(withdrawn)".to_string(), as_path_text);
+        let status = if f.suppressed { "d " } else { "* " };
+        let duration = hms(v.now.saturating_sub(f.since));
+        let reuse = if f.suppressed { hms(f.reuse_at.saturating_sub(v.now)) } else { String::new() };
+        let _ = writeln!(
+            s,
+            "{status}  {:<18} {:<16} {:>5} {:>8} {:>9} {:>9}  {path}",
+            net.to_string(),
+            from.to_string(),
+            f.flaps,
+            f.penalty_at(v.now),
+            duration,
+            reuse
+        );
+    }
+    s.trim_end().to_string()
+}
+
 /// `show ip bgp summary`.
 fn summary(d: &Device, v: &BgpView) -> String {
     let Some(r) = running(d, v) else { return not_running() };
@@ -1129,14 +1235,20 @@ fn table_of(d: &Device, v: &BgpView, keep: impl Fn(&Path) -> bool, none: &str) -
     }
     let mut s = format!("BGP router id {}, local AS {}\n", r.router_id, r.asn);
     s.push_str(
-        "Status: * usable, > best, m shares the load, i from an internal neighbour, c from another member AS    Origin: i IGP, e EGP, ? incomplete\n\n",
+        "Status: d held down by dampening, * usable, > best, m shares the load, i from an internal neighbour, c from another member AS    Origin: i IGP, e EGP, ? incomplete\n\n",
     );
     let _ = writeln!(s, "    {:<18} {:<16} {:>6} {:>6} {:>6}  Path", "Network", "Next hop", "Metric", "LocPrf", "Weight");
     let mut last: Option<Ipv4Net> = None;
     for p in shown {
         let status = format!(
             "{}{}{}",
-            if p.valid { '*' } else { ' ' },
+            if p.damped {
+                'd'
+            } else if p.valid {
+                '*'
+            } else {
+                ' '
+            },
             if p.best {
                 '>'
             } else if p.multi {
@@ -1358,7 +1470,13 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
             p.med,
             p.local_pref,
             p.weight,
-            if p.valid { "usable" } else { "next hop unreachable" }
+            if p.damped {
+                "held down by dampening"
+            } else if p.valid {
+                "usable"
+            } else {
+                "next hop unreachable"
+            }
         );
         if !p.as_set.is_empty() {
             let _ = writeln!(s, "    AS set {{{}}}", p.as_set.iter().map(u32::to_string).collect::<Vec<_>>().join(","));
@@ -1374,6 +1492,13 @@ fn entry(d: &Device, v: &BgpView, addr: &str, mask: Option<&str>) -> Result<Stri
                 s,
                 "    communities: {}",
                 p.communities.iter().map(|c| community_text(*c, d.bgp_community_new_format)).collect::<Vec<_>>().join(" ")
+            );
+        }
+        if !p.ext_communities.is_empty() {
+            let _ = writeln!(
+                s,
+                "    extended communities: {}",
+                p.ext_communities.iter().map(|c| netlabcraft_wire::bgp::ext_text(*c)).collect::<Vec<_>>().join(" ")
             );
         }
         if p.multi {
@@ -1506,8 +1631,11 @@ fn neighbors(d: &Device, v: &BgpView, only: Option<&str>) -> Result<String, Stri
             let _ = writeln!(s, "  Hold time {} s, keepalive every {} s", n.hold_secs, n.keepalive_secs);
         }
         let mut options = Vec::new();
-        if conf.is_some_and(|c| c.send_community) {
-            options.push("send-community".to_string());
+        match conf.map(|c| (c.send_community, c.send_extended)) {
+            Some((true, true)) => options.push("send-community both".to_string()),
+            Some((true, false)) => options.push("send-community".to_string()),
+            Some((false, true)) => options.push("send-community extended".to_string()),
+            _ => {}
         }
         if let Some((k, h)) = conf.and_then(|c| c.timers) {
             options.push(format!("timers {k} {h}"));

@@ -1,11 +1,18 @@
 //! View ▸ Show Viewport (a small map of the workspace you click to pan) and View ▸ Show Workspace List (every
-//! device with its name, model and type).
+//! place, furniture and device with its name, model and type, as a tree).
 
 use crate::prefs_look::HintExt;
 use egui::{Rect, Sense, Stroke, StrokeKind, pos2, vec2};
-use netlabcraft_model::Shown;
+use std::collections::BTreeSet;
 
-use crate::i18n::tl;
+use egui::Ui;
+use netlabcraft_core::DeviceId;
+use netlabcraft_model::furniture::Item;
+use netlabcraft_model::physical::PlaceKind;
+use netlabcraft_model::{Shown, Topology};
+use serde_json::json;
+
+use crate::i18n::{tl, tr};
 use crate::{PacketApp, theme};
 
 /// The map's size on screen.
@@ -89,46 +96,150 @@ pub fn viewport_window(app: &mut PacketApp, ctx: &egui::Context) {
     app.ui.show_viewport = open;
 }
 
-/// The workspace list window: one row per device. A click selects the device, a double click opens its window.
+/// What a row of the workspace list stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListPick {
+    Place(u32),
+    Furniture(u32),
+    Passive(u32),
+    Device(DeviceId),
+}
+
+/// The tree being drawn: what was clicked and double-clicked this frame.
+struct Walk<'a> {
+    t: &'a Topology,
+    selected: Option<DeviceId>,
+    pick: Option<ListPick>,
+    clicked: Option<ListPick>,
+    opened: Option<ListPick>,
+    shown: BTreeSet<DeviceId>,
+}
+
+impl Walk<'_> {
+    /// One row: a label that a click selects and a double click opens, and a note beside it.
+    fn row(&mut self, ui: &mut Ui, what: ListPick, label: &str, note: String) {
+        let on = match what {
+            ListPick::Device(d) => self.selected == Some(d),
+            other => self.pick == Some(other),
+        };
+        let r = ui.selectable_label(on, label);
+        if !note.is_empty() {
+            ui.weak(note);
+        }
+        if r.double_clicked() {
+            self.opened = Some(what);
+        } else if r.clicked() {
+            self.clicked = Some(what);
+        }
+    }
+
+    /// A row with an arrow that folds what is inside it away.
+    fn branch(&mut self, ui: &mut Ui, key: (u8, u32), what: ListPick, label: &str, note: String, body: impl FnOnce(&mut Self, &mut Ui)) {
+        let id = ui.make_persistent_id(("workspace_list", key.0, key.1));
+        egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), id, true)
+            .show_header(ui, |ui| self.row(ui, what, label, note))
+            .body(|ui| body(self, ui));
+    }
+
+    fn device(&mut self, ui: &mut Ui, id: DeviceId) {
+        let Some(d) = self.t.device(id) else { return };
+        self.shown.insert(id);
+        let note = format!("{} · {}", tl(d.catalogue_model().label), tl(d.kind.label()));
+        self.row(ui, ListPick::Device(id), d.display_name(), note);
+    }
+
+    fn item(&mut self, ui: &mut Ui, item: Item) {
+        match item {
+            Item::Device(d) => {
+                ui.horizontal(|ui| self.device(ui, d));
+            }
+            Item::Fitting(i) => {
+                let Some(f) = self.t.fitting(i) else { return };
+                let (name, note) = (f.name.clone(), tl(f.kind.label()).to_string());
+                ui.horizontal(|ui| self.row(ui, ListPick::Passive(i), &name, note));
+            }
+        }
+    }
+
+    /// A place with the places inside it, then (a closet or a container) its furniture with what
+    /// stands on it, then what stands loose.
+    fn place(&mut self, ui: &mut Ui, id: u32) {
+        let Some(place) = self.t.place(id) else { return };
+        let t = self.t;
+        let name = tr(&place.name).to_string();
+        self.branch(ui, (0, id), ListPick::Place(id), &name, tl(place.kind.label()).to_string(), |w, ui| {
+            for child in t.places_in(Some(id)) {
+                w.place(ui, child.id);
+            }
+            if place.kind == PlaceKind::City {
+                return;
+            }
+            for f in t.furniture_in(id) {
+                w.branch(ui, (1, f.id), ListPick::Furniture(f.id), &f.name, tl(f.kind.label()).to_string(), |w, ui| {
+                    for m in t.mounts_on(f.id) {
+                        w.item(ui, m.item);
+                    }
+                });
+            }
+            for placed in t.closet_layout(id).items.iter().filter(|p| p.furniture.is_none()) {
+                w.item(ui, placed.item);
+            }
+        });
+    }
+}
+
+/// The workspace list window: a tree of places, the furniture in them and the devices on that
+/// furniture (the ones standing loose in a place come last). A click selects a row; a double click
+/// opens it: a device's window, or the place (a furniture's or a passive device's own).
 pub fn list_window(app: &mut PacketApp, ctx: &egui::Context) {
     if !app.ui.show_workspace_list {
         return;
     }
     let mut open = true;
-    let mut picked = None;
-    let mut opened = None;
-    egui::Window::new(tl("Workspace List")).open(&mut open).default_width(380.0).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
+    let (mut clicked, mut opened) = (None, None);
+    egui::Window::new(tl("Workspace List")).open(&mut open).default_width(420.0).default_pos(crate::BELOW_TOOLBARS).show(ctx, |ui| {
         let t = &app.session.topology;
-        if t.devices.is_empty() {
+        if t.devices.is_empty() && t.physical.furniture.is_empty() {
             ui.label(tl("Nothing on the workspace yet."));
             return;
         }
-        egui::ScrollArea::vertical().max_height(320.0).show(ui, |ui| {
-            egui::Grid::new("workspace_list_grid").striped(true).num_columns(3).spacing([18.0, 4.0]).show(ui, |ui| {
-                for head in ["Name", "Model", "Type"] {
-                    ui.strong(tl(head));
+        let mut walk = Walk { t, selected: app.ui.selected, pick: app.ui.list_pick, clicked: None, opened: None, shown: BTreeSet::new() };
+        egui::ScrollArea::vertical().max_height(360.0).show(ui, |ui| {
+            for root in t.places_in(None) {
+                walk.place(ui, root.id);
+            }
+            // A device no place holds (never expected) is still listed.
+            let rest: Vec<DeviceId> = t.devices.iter().map(|d| d.id).filter(|d| !walk.shown.contains(d)).collect();
+            if !rest.is_empty() {
+                ui.strong(tl("Other devices"));
+                for d in rest {
+                    ui.horizontal(|ui| walk.device(ui, d));
                 }
-                ui.end_row();
-                for d in &t.devices {
-                    let row = ui.selectable_label(app.ui.selected == Some(d.id), d.display_name());
-                    ui.label(tl(d.catalogue_model().label));
-                    ui.label(tl(d.kind.label()));
-                    ui.end_row();
-                    if row.double_clicked() {
-                        opened = Some(d.id);
-                    } else if row.clicked() {
-                        picked = Some(d.id);
-                    }
-                }
-            });
+            }
         });
-        ui.weak(tl("Click a device to select it; double-click to open it."));
+        ui.weak(tl("Click a row to select it; double-click to open it."));
+        (clicked, opened) = (walk.clicked, walk.opened);
     });
     app.ui.show_workspace_list = open;
-    if let Some(d) = picked.or(opened) {
-        app.ui.selected = Some(d);
+    if let Some(what) = clicked.or(opened) {
+        match what {
+            ListPick::Device(d) => app.ui.selected = Some(d),
+            other => app.ui.list_pick = Some(other),
+        }
     }
-    if let Some(d) = opened {
-        crate::open_console(app, d);
+    let place_of = |what: ListPick| match what {
+        ListPick::Place(p) => Some(p),
+        ListPick::Furniture(f) => app.session.topology.furniture_piece(f).map(|x| x.place),
+        ListPick::Passive(i) => app.session.topology.fitting(i).map(|x| x.place),
+        ListPick::Device(_) => None,
+    };
+    match opened {
+        Some(ListPick::Device(d)) => crate::open_console(app, d),
+        Some(what) => {
+            if let Some(place) = place_of(what) {
+                app.run("view.enter_place", json!({"id": place}));
+            }
+        }
+        None => {}
     }
 }

@@ -1124,6 +1124,13 @@ pub enum Id {
     // ---- BGP communities, AS-path lists, aggregation and timers (exec/bgp.rs, exec/policy.rs) ----
     CommunityListLine,
     NoCommunityList,
+    ExtCommunityListLine,
+    NoExtCommunityList,
+    ShowIpExtCommunityList,
+    RmMatchExtCommunity,
+    NoRmMatchExtCommunity,
+    RmSetExtCommunity,
+    NoRmSetExtCommunity,
     AsPathListLine,
     NoAsPathList,
     BgpCommunityNewFormat,
@@ -1175,6 +1182,13 @@ pub enum Id {
     ShowIpBgpReceived,
     BgpTimers,
     NoBgpTimers,
+    BgpDampening,
+    NoBgpDampening,
+    RmSetDampening,
+    NoRmSetDampening,
+    ShowIpBgpDampened,
+    ShowIpBgpFlapStatistics,
+    ClearIpBgpDampening,
     ShowIpBgpAdvertised,
     ShowIpBgpNeighborRoutes,
     ShowIpBgpRegexp,
@@ -4118,6 +4132,50 @@ pub static SPECS: &[Spec] = &[
         "Delete a community list, or one line of it"
     ),
     spec!(
+        ExtCommunityListLine,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("extcommunity-list"), Rest("{standard|expanded} NAME {permit|deny} {rt|soo} <ASN:NN|A.B.C.D:NN>...|<regular expression>")],
+        "Add a line to an extended community list"
+    ),
+    spec!(
+        NoExtCommunityList,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [
+            K("no"),
+            K("ip"),
+            K("extcommunity-list"),
+            Rest("{standard|expanded} NAME [{permit|deny} {rt|soo} <ASN:NN|A.B.C.D:NN>...|<regular expression>]")
+        ],
+        "Delete an extended community list, or one line of it"
+    ),
+    spec!(ShowIpExtCommunityList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("extcommunity-list")], "Every extended community list"),
+    spec!(ShowIpExtCommunityList, EXECS, Modes::BOTH, [K("show"), K("ip"), K("extcommunity-list"), Arg("NAME")], "One extended community list"),
+    spec!(
+        RmMatchExtCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("extcommunity"), Rest("<list> [<list>...]")],
+        "Match paths that extended community lists permit"
+    ),
+    spec!(NoRmMatchExtCommunity, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("extcommunity")], "Remove every extended community match"),
+    spec!(
+        NoRmMatchExtCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("match"), K("extcommunity"), Rest("<list> [<list>...]")],
+        "Remove these lists from the extended community match"
+    ),
+    spec!(
+        RmSetExtCommunity,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("extcommunity"), Rest("{rt|soo} <ASN:NN|A.B.C.D:NN>... [additive]")],
+        "Give the paths these route targets or site-of-origin values"
+    ),
+    spec!(NoRmSetExtCommunity, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("extcommunity")], "Leave the extended communities alone"),
+    spec!(
         AsPathListLine,
         Modes::CONFIG,
         Modes::BOTH,
@@ -4198,8 +4256,8 @@ pub static SPECS: &[Spec] = &[
         BgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard}")],
-        "Send the communities a path carries to this neighbour"
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard|extended}")],
+        "Send the standard, the extended or both kinds of communities a path carries to this neighbour"
     ),
     spec!(
         NoBgpNeighborSendCommunity,
@@ -4212,8 +4270,8 @@ pub static SPECS: &[Spec] = &[
         NoBgpNeighborSendCommunity,
         Modes::BGP,
         Modes::BOTH,
-        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard}")],
-        "Stop sending communities to this neighbour"
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("send-community"), Arg("{both|standard|extended}")],
+        "Stop sending this kind of communities to this neighbour"
     ),
     spec!(
         BgpNeighborTimers,
@@ -4488,6 +4546,78 @@ pub static SPECS: &[Spec] = &[
         "Keepalive interval and hold time of every neighbour that has none of its own (seconds)"
     ),
     spec!(NoBgpTimers, Modes::BGP, Modes::BOTH, [K("no"), K("timers"), K("bgp")], "Keepalive 60 and hold time 180 again"),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening")],
+        "Penalise flapping external routes and hold them down (half-life 15 minutes, reuse 750, suppress 2000, at most 60 minutes)"
+    ),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening"), Arg("<1-45>"), Arg("<1-20000>"), Arg("<1-20000>"), Arg("<1-255>")],
+        "Dampen with a half-life (minutes), a reuse limit, a suppress limit and a longest suppression (minutes)"
+    ),
+    spec!(
+        BgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("bgp"), K("dampening"), K("route-map"), Arg("NAME")],
+        "Dampen only the routes this route map permits, with its set dampening values"
+    ),
+    spec!(NoBgpDampening, Modes::BGP, Modes::BOTH, [K("no"), K("bgp"), K("dampening")], "Stop dampening and forget the penalties"),
+    spec!(
+        NoBgpDampening,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("bgp"), K("dampening"), Rest("<1-45> <1-20000> <1-20000> <1-255> | route-map NAME")],
+        "Stop dampening and forget the penalties"
+    ),
+    spec!(
+        RmSetDampening,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("dampening"), Arg("<1-45>"), Arg("<1-20000>"), Arg("<1-20000>"), Arg("<1-255>")],
+        "Dampen the matched routes with a half-life, a reuse limit, a suppress limit and a longest suppression"
+    ),
+    spec!(NoRmSetDampening, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("dampening")], "Dampen the matched routes with the default values"),
+    spec!(
+        ShowIpBgpDampened,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("dampened-paths")],
+        "The routes dampening holds down, with the penalty and when they are used again"
+    ),
+    spec!(
+        ShowIpBgpFlapStatistics,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("bgp"), K("flap-statistics")],
+        "The routes that flapped: how often, the penalty and whether they are held down"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening")],
+        "Forget every penalty and use the held-down routes again"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening"), Arg("A.B.C.D")],
+        "Forget the penalty of the route to this network"
+    ),
+    spec!(
+        ClearIpBgpDampening,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("clear"), K("ip"), K("bgp"), K("dampening"), Arg("A.B.C.D"), Arg("MASK")],
+        "Forget the penalty of the route to this network and mask"
+    ),
     spec!(
         ShowIpBgpAdvertised,
         EXECS,

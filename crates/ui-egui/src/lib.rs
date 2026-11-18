@@ -305,8 +305,10 @@ pub struct UiState {
     pub toolbars: Toolbars,
     /// View ▸ Show Viewport: the overview of the workspace you click to pan.
     pub show_viewport: bool,
-    /// View ▸ Show Workspace List: every device with its name, model and type.
+    /// View ▸ Show Workspace List: places, furniture and devices as a tree.
     pub show_workspace_list: bool,
+    /// The place, furniture or passive device picked in the Workspace List.
+    pub(crate) list_pick: Option<overview::ListPick>,
     /// The Help window's page, while it is open.
     pub(crate) help: Option<help::Page>,
     pub tool: Tool,
@@ -415,6 +417,7 @@ impl Default for UiState {
             toolbars: Toolbars::default(),
             show_viewport: false,
             show_workspace_list: false,
+            list_pick: None,
             help: None,
             tool: Tool::Select,
             mode: Mode::Realtime,
