@@ -79,7 +79,7 @@ impl Sim {
         let mut frames = Vec::new();
         for d in t.devices.iter().filter(|d| d.kind == DeviceKind::Switch) {
             let secs = (interval_us(d) / 1_000_000).max(1);
-            if (at / 1_000_000) % secs != 0 {
+            if !(at / 1_000_000).is_multiple_of(secs) {
                 continue;
             }
             for (i, p) in d.ports.iter().enumerate() {
