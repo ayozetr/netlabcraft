@@ -62,6 +62,7 @@ pub mod ospf6;
 pub mod ospf_flood;
 pub mod ospf_lsdb;
 pub mod parts;
+pub mod pbr;
 pub mod pdu;
 pub mod peap;
 pub mod pki;
@@ -931,6 +932,8 @@ pub struct DevState {
     /// How often each access-list line matched, by list name and the line's sequence number
     /// (`usize::MAX`: the implicit deny). Firewall rules count under their position.
     pub acl_hits: BTreeMap<(String, usize), u64>,
+    /// Policy-based routing: packets and bytes each route-map clause took, by map and sequence.
+    pub pbr_hits: BTreeMap<(String, u32), (u64, u64)>,
     /// NAT translations in use.
     pub nat: Vec<NatEntry>,
     /// Port security: addresses learned per port (not sticky), and violations counted.
@@ -3280,7 +3283,14 @@ impl Sim {
             return r;
         }
         let debug = self.debug_packet_wanted(d, &ip);
-        match self.route_flow(t, d, ip.src, ip.dst) {
+        // Policy-based routing decides before the routing table is asked.
+        let policy = self.policy_route(t, d, Some(ifc), &ip);
+        let mark = policy.as_ref().and_then(|p| p.dscp);
+        let routed = match policy.and_then(|p| p.route) {
+            Some(r) => Some(r),
+            None => self.route_flow(t, d, ip.src, ip.dst),
+        };
+        match routed {
             Some((out, nh)) => {
                 if debug {
                     let via = if nh == ip.dst { String::new() } else { format!(" via {nh}") };
@@ -3305,6 +3315,9 @@ impl Sim {
                 self.bump(d.id, "forwarded");
                 self.netflow_note(d, ifc, &out, nh, &ip, payload.len());
                 let mut bytes = netlabcraft_wire::ipfrag::keep_fragment_bits(payload, qos::keep_ds(payload, fwd.encode()));
+                if let Some(m) = mark {
+                    let _ = netlabcraft_wire::qos::set_dscp(&mut bytes, m);
+                }
                 // `ip tcp adjust-mss` on either interface: SYNs announce no more than that.
                 let mss = [&ifc.name, &out.name].iter().filter_map(|n| d.security.adjust_mss.get(n.as_str()).copied()).min();
                 if let Some(m) = mss
@@ -3545,9 +3558,18 @@ impl Sim {
         if ip.dst.is_multicast() && d.kind.is_host() {
             return self.send_multicast(t, d, &ip);
         }
-        let (out, nh) = self.route_flow(t, d, ip.src, ip.dst).ok_or_else(|| format!("no route to {}", ip.dst))?;
+        let policy = self.policy_route(t, d, None, &ip);
+        let mark = policy.as_ref().and_then(|p| p.dscp);
+        let routed = match policy.and_then(|p| p.route) {
+            Some(r) => Some(r),
+            None => self.route_flow(t, d, ip.src, ip.dst),
+        };
+        let (out, nh) = routed.ok_or_else(|| format!("no route to {}", ip.dst))?;
         self.note_sends(ip.dst, &out, nh, ip.ttl);
         let mut raw = ip.encode();
+        if let Some(m) = mark {
+            let _ = netlabcraft_wire::qos::set_dscp(&mut raw, m);
+        }
         if !df {
             netlabcraft_wire::ipfrag::set_dont_fragment(&mut raw, false);
         }

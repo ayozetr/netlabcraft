@@ -366,6 +366,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::pppoe::port_lines(&mut s, d, &p.name);
         standby_lines(&mut s, d, &p.name, &p.standby);
         crate::exec::fhrp::iface_lines(&mut s, d, &p.name);
+        crate::exec::pbr::iface_line(&mut s, d, &p.name);
         ospf_if_lines(&mut s, d, &p.name);
         if d.kind == DeviceKind::Router {
             if netlabcraft_model::ifname::is_serial(&p.name) {
@@ -422,6 +423,7 @@ pub fn running_config(d: &Device) -> String {
             ipv6_lines(&mut s, &sub.ipv6);
             standby_lines(&mut s, d, &format!("{}.{}", p.name, sub.number), &sub.standby);
             crate::exec::fhrp::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::pbr::iface_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
             ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
@@ -712,6 +714,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::sla::running_config(&mut s, d);
+    crate::exec::pbr::local_line(&mut s, d);
     crate::exec::track::running_config(&mut s, d);
     for r in &d.routes {
         let via = match &r.via {
