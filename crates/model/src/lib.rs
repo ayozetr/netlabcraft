@@ -839,6 +839,13 @@ pub struct Ipv6Conf {
     /// Routers: `ipv6 nd other-config-flag` (hosts take DNS and domain from DHCPv6).
     #[serde(default)]
     pub nd_other: bool,
+    /// Routers: `ipv6 nd ra suppress`: no router advertisement is sent here, solicited or not.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub nd_suppress: bool,
+    /// Routers: `ipv6 nd ra lifetime N`: seconds the advertisement says this router may serve as a
+    /// default router (1800 when not set; 0 says it may not).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nd_ra_lifetime: Option<u16>,
     /// `ipv6 traffic-filter NAME in` / `out`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub filter_in: Option<String>,

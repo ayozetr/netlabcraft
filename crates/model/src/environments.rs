@@ -340,6 +340,11 @@ pub struct Environments {
     pub clock: Clock,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub places: Vec<PlaceEnv>,
+    /// Each place has its own physics: the smart things in a place change that place's variables
+    /// by rates and the place settles back toward what it sets (see `docs/decisions.md`). Off:
+    /// the older rule, where a running part adds a fixed amount at once.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub physics: bool,
 }
 
 impl Environments {
