@@ -219,5 +219,5 @@ fn a_router_can_ping_a_group() {
     assert!(m2.contains("(10.0.12.1, 239.1.1.1)") || m2.contains("(10.1.1.1, 239.1.1.1)"), "{m2}");
     // With routing off a router has nowhere to send a group's packets.
     n.lab.run(n.r1, "conf t\nno ip multicast-routing\nend");
-    assert!(!n.lab.run(n.r1, "ping 239.1.1.1").contains('!'));
+    assert!(!n.lab.try_run(n.r1, "ping 239.1.1.1").contains('!'));
 }
