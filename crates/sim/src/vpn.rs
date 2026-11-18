@@ -821,7 +821,7 @@ fn p1_check(d: &Device, now: i64, v1: &V1State, from_initiator: bool, ic: &[u8; 
         return if crate::ikev1::hash_of(list) == Some(&want[..]) { Ok(String::new()) } else { Err(crate::ikev1::OPEN_FAILED.to_string()) };
     }
     let sig = ike::sig_of(list).ok_or("the message carries no signature")?;
-    crate::pki::verify_peer(d, now, &ike::certs_of(list), &want, sig).map(|c| c.subject.text())
+    crate::pki::verify_peer(d, now, &ike::certs_of(list), &want, sig, crate::pki::ip_of_id_body(&id)).map(|c| c.subject.text())
 }
 
 /// Whether a packet is ISAKMP (UDP port 500), which crypto maps never protect.
