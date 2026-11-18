@@ -122,7 +122,8 @@ impl Topology {
             (0, f64::from(d.x / UNITS_PER_METRE), f64::from(d.y / UNITS_PER_METRE))
         } else {
             let (city, x, y) = city_position(self, d)?;
-            (city, f64::from(x * CITY_UNIT_M), f64::from(y * CITY_UNIT_M))
+            let scale = self.map_scale(city);
+            (city, f64::from(x * scale), f64::from(y * scale))
         };
         (p.1.is_finite() && p.2.is_finite()).then_some(p)
     }
