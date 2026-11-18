@@ -196,9 +196,9 @@ pub fn decode_display(bytes: &[u8], max_side: u32) -> Result<(u32, u32, Vec<u8>)
 
 /// A PNG of `w` by `h` pixels made in code: a colour gradient with a grid of light lines, so a
 /// background can be told from the empty map. The tests, the snapshot sheets and the examples use
-/// it, so no picture is ever downloaded. Empty when the size is 0 or past [`MAX_SOURCE_SIDE`].
+/// it, so no picture is ever downloaded. Empty when the size is 0 or has more pixels than [`MAX_SOURCE_PIXELS`].
 pub fn pattern_png(w: u32, h: u32) -> Vec<u8> {
-    if w == 0 || h == 0 || w > MAX_SOURCE_SIDE || h > MAX_SOURCE_SIDE {
+    if w == 0 || h == 0 || u64::from(w) * u64::from(h) > MAX_SOURCE_PIXELS {
         return Vec::new();
     }
     let mut img = RgbaImage::new(w, h);
