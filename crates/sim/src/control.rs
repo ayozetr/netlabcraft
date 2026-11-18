@@ -573,6 +573,9 @@ impl Sim {
                 let fresh = !self.vrrp6_ra.contains(&key);
                 masters.insert(key);
                 let Some(ifc) = up.iter().find(|i| i.name == r.iface) else { continue };
+                if crate::v6::conf6(d, ifc).is_some_and(|c| c.nd_suppress) {
+                    continue;
+                }
                 if fresh || at.is_multiple_of(VRRP6_RA_EVERY_US) {
                     let ra = crate::v6::router_advert(d, ifc, r.virtual_mac());
                     let ip = Ipv6 {

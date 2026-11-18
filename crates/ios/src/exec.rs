@@ -3095,14 +3095,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
-        Id::Ipv6DhcpServer | Id::NoIpv6DhcpServer | Id::NdManaged | Id::NoNdManaged | Id::NdOther | Id::NoNdOther => {
+        Id::Ipv6DhcpServer
+        | Id::NoIpv6DhcpServer
+        | Id::NdManaged
+        | Id::NoNdManaged
+        | Id::NdOther
+        | Id::NoNdOther
+        | Id::NdSuppress
+        | Id::NoNdSuppress
+        | Id::NdRaLifetime
+        | Id::NoNdRaLifetime => {
             let id = spec.id;
             let pool = arg(0).to_string();
+            let lifetime = if id == Id::NdRaLifetime {
+                Some(arg(0).parse::<u16>().ok().filter(|n| *n <= 9_000).ok_or("% The router lifetime is 0-9000 seconds")?)
+            } else {
+                None
+            };
             c.each_v6(|v6, _, _| {
                 match id {
                     Id::Ipv6DhcpServer => v6.dhcp_server = Some(pool.clone()),
                     Id::NoIpv6DhcpServer => v6.dhcp_server = None,
                     Id::NdManaged | Id::NoNdManaged => v6.nd_managed = id == Id::NdManaged,
+                    Id::NdSuppress | Id::NoNdSuppress => v6.nd_suppress = id == Id::NdSuppress,
+                    Id::NdRaLifetime | Id::NoNdRaLifetime => v6.nd_ra_lifetime = lifetime,
                     _ => v6.nd_other = id == Id::NdOther,
                 }
                 Ok(())
