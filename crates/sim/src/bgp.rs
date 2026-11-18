@@ -2615,6 +2615,7 @@ mod tests {
             net: "10.0.0.1/24".parse().unwrap(),
             mac: netlabcraft_core::MacAddr::local(DeviceId(1), 1),
             name: "g0/0".into(),
+            vrf: None,
         };
         let row = |code, net: &str, via: Option<&str>, iface: Option<&str>, distance| RouteEntry {
             code,

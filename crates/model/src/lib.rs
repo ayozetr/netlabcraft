@@ -65,6 +65,7 @@ pub mod usb;
 pub mod voice;
 pub mod vpn;
 pub mod vpnclient;
+pub mod vrf;
 pub mod wlan;
 
 pub use drawing::{Cluster, MAX_CLUSTERS, MAX_FREEHAND_POINTS, MAX_POLYGON_POINTS, Shown};
@@ -988,6 +989,9 @@ pub struct Device {
     /// Switches: multiple spanning tree (`spanning-tree mode mst`, which also sets `rapid_stp`).
     #[serde(default, skip_serializing_if = "is_default")]
     pub mst: mst::Mst,
+    /// Routers: VRFs (`ip vrf NAME`), each with its interfaces, static routes, OSPF and BGP.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vrfs: Vec<vrf::Vrf>,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -2294,6 +2298,7 @@ impl Device {
             printer: usb::Printer::default(),
             usb: if model.id == usb::STICK_MODEL { usb::Stick::fresh() } else { usb::Stick::default() },
             mst: mst::Mst::default(),
+            vrfs: Vec::new(),
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
