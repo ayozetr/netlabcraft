@@ -120,6 +120,10 @@ The model is meant to be explainable and exact, not a thermal simulation. Every 
 
 Honest limits: one room per lab (the physical view's buildings and closets are not rooms), no heat capacity, no day and night cycle or weather, no humidity-temperature coupling, no light sensor model, a door lock does nothing, and the values reached while running are not saved with the lab (a loaded lab starts from its starting values).
 
+## Custom environment variables use a formula language of ours
+
+A place may define variables of its own (`environment.custom`) by a formula: numbers, names, `+ - * / % ^`, comparisons, `and`, `or`, `not`, a few functions (`sin cos abs sqrt floor ceil round exp ln min max clamp if`) and the names `time`, `hour`, `day`, `pi`, `e`, the built-in variables and the other custom ones. It is our own small parser and evaluator (`crates/model/src/expr.rs`), not a scripting language: a formula is at most 200 characters, 64 nodes and 12 levels deep, a call has at most 8 arguments, there is no loop, no assignment and no string, a result that is not a finite number is an error (the variable reads its default and shows why), and variables that refer to each other more than 6 deep (or in a circle) fail the same way. Formulas read what the places *set* at the clock's time, never what a smart thing does to a place, so a formula cannot depend on the simulation's state. Custom variables are saved with the lab, but an exported environment file keeps only the built-in variables (its format stays version 1).
+
 ## Pings don't set "don't fragment" unless asked
 
 Host and router pings go out without DF, as on common operating systems and router software; `ping -f` on hosts and the `df-bit` option of a router's extended ping set it. Echo replies carry no DF, and GRE copies DF from the inner packet. With `ip mtu` in the path, a plain ping is fragmented and a DF ping gets "fragmentation needed", which is what MTU labs show.

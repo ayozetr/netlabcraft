@@ -972,7 +972,8 @@ pub fn run(s: &mut Session, id: &str, p: &Value) -> Result<Value> {
         | "softphone.hangup" => crate::voice::run(s, cmd, p),
         "iot.sync" | "iot.environment" | "iot.configure" | "iot.server" | "iot.switch" => crate::iot::run(s, cmd, p),
         "environment.get" | "environment.set" | "environment.clear" | "environment.keyframe.add" | "environment.keyframe.remove" | "environment.clock"
-        | "environment.export" | "environment.import" => crate::envs::run(s, cmd, p),
+        | "environment.export" | "environment.import" | "environment.create" | "environment.custom" | "environment.custom.remove"
+        | "environment.shows" | "environment.defaults" | "environment.settings" => crate::envs::run(s, cmd, p),
         "board.program" | "board.status" | "board.wire" => crate::board::run(s, cmd, p),
         "pdu.simple" | "pdu.complex" | "pdu.fire" | "pdu.fire_all" | "pdu.delete" | "pdu.list" | "scenario.list" | "scenario.new" | "scenario.delete"
         | "scenario.select" | "sim.event" => crate::pdu::run(s, cmd, p),

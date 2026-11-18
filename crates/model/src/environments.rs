@@ -244,6 +244,19 @@ pub struct PlaceEnv {
     /// The View mode of the window shows the notes.
     #[serde(default, skip_serializing_if = "is_false")]
     pub show_notes: bool,
+    /// The name of the custom environment this place has made for itself (`environment.create`).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub name: String,
+    /// Variables of its own, computed from others and the time of day (see `envcustom`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub custom: Vec<crate::envcustom::CustomVar>,
+    /// What the window leaves out for this place (its "shows"); `None`: this place does not say, it
+    /// reads the place above.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hidden: Option<Vec<String>>,
+    /// How this place's keyframes are joined.
+    #[serde(default, skip_serializing_if = "crate::envcustom::Interp::is_default")]
+    pub interpolation: crate::envcustom::Interp,
 }
 
 impl PlaceEnv {
@@ -252,7 +265,13 @@ impl PlaceEnv {
     }
 
     fn is_empty(&self) -> bool {
-        self.settings.is_empty() && self.notes.is_empty() && !self.show_notes
+        self.settings.is_empty()
+            && self.notes.is_empty()
+            && !self.show_notes
+            && self.name.is_empty()
+            && self.custom.is_empty()
+            && self.hidden.is_none()
+            && self.interpolation.is_default()
     }
 }
 
@@ -362,6 +381,12 @@ pub enum Source {
 /// The value of keyframes at a time of day: a straight line between the keyframes on either
 /// side, wrapping around midnight. `None` for no keyframes.
 pub fn interpolate(keys: &[Key], time: u32) -> Option<f64> {
+    interpolate_with(keys, time, crate::envcustom::Interp::Linear)
+}
+
+/// [`interpolate`] with a choice of how the keyframes are joined: a straight line, a step (the
+/// value of the last keyframe until the next) or a smooth curve (a half cosine between two).
+pub fn interpolate_with(keys: &[Key], time: u32, mode: crate::envcustom::Interp) -> Option<f64> {
     let t = i64::from(time % DAY_SECONDS);
     let first = keys.first()?;
     if keys.len() == 1 {
@@ -379,6 +404,11 @@ pub fn interpolate(keys: &[Key], time: u32) -> Option<f64> {
         return Some(v0);
     }
     let share = (t - t0) as f64 / (t1 - t0) as f64;
+    let share = match mode {
+        crate::envcustom::Interp::Linear => share,
+        crate::envcustom::Interp::Step => 0.0,
+        crate::envcustom::Interp::Smooth => (1.0 - (std::f64::consts::PI * share).cos()) / 2.0,
+    };
     Some(v0 + (v1 - v0) * share)
 }
 
@@ -438,14 +468,15 @@ impl Topology {
         let v = var_by_id(id)?;
         Some(match self.env_setting(place, id) {
             Some((from, s)) => {
-                let value = interpolate(&s.keys, time).unwrap_or(v.default).clamp(v.min, v.max);
+                let mode = self.place_env(from).map_or(crate::envcustom::Interp::Linear, |e| e.interpolation);
+                let value = interpolate_with(&s.keys, time, mode).unwrap_or(v.default).clamp(v.min, v.max);
                 (value, if from == place { Source::Own } else { Source::Inherited(from) })
             }
             None => (v.default, Source::Default),
         })
     }
 
-    fn place_env_mut(&mut self, place: u32) -> Result<&mut PlaceEnv> {
+    pub(crate) fn place_env_mut(&mut self, place: u32) -> Result<&mut PlaceEnv> {
         if !self.env_place_exists(place) {
             return Err(invalid(format!("no place {place}")));
         }
@@ -458,7 +489,7 @@ impl Topology {
         self.environments.places.iter_mut().find(|e| e.place == place).ok_or_else(|| invalid(format!("no place {place}")))
     }
 
-    fn tidy_environments(&mut self) {
+    pub(crate) fn tidy_environments(&mut self) {
         for e in &mut self.environments.places {
             e.settings.retain(|s| !s.keys.is_empty());
             e.settings.sort_by_key(|s| VARS.iter().position(|v| v.id == s.id).unwrap_or(usize::MAX));
@@ -543,7 +574,11 @@ impl Topology {
         if let Some(e) = self.environments.places.iter_mut().find(|e| e.place == place) {
             match id {
                 Some(id) => e.settings.retain(|s| s.id != id),
-                None => e.settings.clear(),
+                None => {
+                    e.settings.clear();
+                    e.name.clear();
+                    e.custom.clear();
+                }
             }
         }
         self.tidy_environments();
@@ -567,8 +602,8 @@ impl Topology {
     /// the place or one above it sets the variable (`None`: nothing is set, the room answers).
     pub fn env_reading(&self, place: u32, sensor: &str, time: u32) -> Option<i32> {
         let v = sensor_var(sensor)?;
-        let (_, s) = self.env_setting(place, v.id)?;
-        let value = interpolate(&s.keys, time)?;
+        let (from, s) = self.env_setting(place, v.id)?;
+        let value = interpolate_with(&s.keys, time, self.place_env(from).map_or(crate::envcustom::Interp::Linear, |e| e.interpolation))?;
         Some(sensor_whole(v, value))
     }
 
@@ -600,6 +635,7 @@ impl Topology {
                 s.keys.truncate(MAX_KEYS);
             }
         }
+        self.sanitize_custom_environments();
         self.tidy_environments();
     }
 

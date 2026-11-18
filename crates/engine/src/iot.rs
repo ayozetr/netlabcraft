@@ -289,6 +289,11 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 Some(Value::String(v)) => Some(
                     netlabcraft_model::environments::find_var(v)
                         .map(|v| v.id.to_string())
+                        .or_else(|| {
+                            // A variable some place defines by a formula.
+                            let id = v.trim();
+                            s.topology.environments.places.iter().any(|e| e.custom.iter().any(|c| c.id == id)).then(|| id.to_string())
+                        })
                         .ok_or_else(|| bad(format!("`variable` is the id or the name of an environment variable, not `{v}`")))?,
                 ),
                 Some(_) => return Err(bad("`variable` is the id or the name of an environment variable")),

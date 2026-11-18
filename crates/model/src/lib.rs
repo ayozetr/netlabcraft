@@ -23,6 +23,8 @@ pub mod cloud;
 pub mod drawing;
 pub mod environment;
 pub mod environments;
+pub mod envcustom;
+pub mod expr;
 pub mod fhrp;
 pub mod file;
 pub mod firewall;

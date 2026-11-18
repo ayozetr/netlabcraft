@@ -56,6 +56,8 @@ mod tests_closet;
 #[cfg(test)]
 mod tests_dialup;
 #[cfg(test)]
+mod tests_envcustom;
+#[cfg(test)]
 mod tests_envs;
 #[cfg(test)]
 mod tests_families;

@@ -2,6 +2,7 @@
 //! `.clear`, `.keyframe.add`, `.keyframe.remove`, `.clock`, `.export`, `.import`). The model is
 //! in `netlabcraft_model::environments`; the smart sensors read it through the simulator.
 
+use netlabcraft_model::envcustom::{BUNDLED, CustomVar, Interp};
 use netlabcraft_model::environments::{self as env, DAY_SECONDS, INTERCITY, Source, VARS, Var};
 use serde_json::{Value, json};
 
@@ -103,6 +104,22 @@ fn view(s: &mut Session, place: u32) -> Value {
             "default": v.default, "min": v.min, "max": v.max, "drives": v.drives, "keys": keys,
         }));
     }
+    // The variables the place's custom environment defines by formula.
+    let custom: Vec<Value> = t
+        .env_customs(place)
+        .into_iter()
+        .filter_map(|(_, def)| t.env_custom_read(place, &def.id, time))
+        .map(|r| {
+            let source = if r.from == place { "own" } else { "inherited" };
+            json!({
+                "id": r.def.id, "label": if r.def.label.is_empty() { r.def.id.clone() } else { r.def.label.clone() }, "group": "Custom",
+                "unit": r.def.unit, "value": r.value, "source": source, "from": r.from, "default": r.def.default, "min": r.def.min, "max": r.def.max,
+                "drives": Value::Null, "keys": [], "formula": r.def.formula, "custom": true, "error": r.error,
+            })
+        })
+        .collect();
+    vars.extend(custom);
+    let hidden = t.env_hidden(place);
     let path: Vec<Value> = t.env_chain(place).into_iter().rev().map(|p| place_json(s, p)).collect();
     let c = t.environments.clock;
     json!({
@@ -113,6 +130,10 @@ fn view(s: &mut Session, place: u32) -> Value {
         "clock": {"paused": c.paused(), "real_minutes": c.real_minutes, "sim_minutes": c.sim_minutes},
         "notes": own.map(|e| e.notes.clone()).unwrap_or_default(),
         "show_notes": own.is_some_and(|e| e.show_notes),
+        "name": own.map(|e| e.name.clone()).unwrap_or_default(),
+        "interpolation": own.map_or("linear", |e| e.interpolation.id()),
+        "hidden": hidden.as_ref().map(|h| h.1.clone()).unwrap_or_default(),
+        "hidden_from": hidden.map(|h| h.0),
         "variables": vars,
     })
 }
@@ -206,6 +227,89 @@ pub(crate) fn run(s: &mut Session, cmd: &str, p: &Value) -> Result<Value> {
                 Some(_) => return Err(bad("`paused` is true or false")),
             }
             if touched {
+                done(s, t);
+            }
+            Ok(view(s, place))
+        }
+        "environment.create" => {
+            let name = p.get("name").and_then(Value::as_str).ok_or_else(|| bad("`name` (the custom environment's name) is required"))?;
+            let mut t = s.topology.clone();
+            t.env_create(place, name)?;
+            done(s, t);
+            Ok(view(s, place))
+        }
+        "environment.custom" => {
+            let id =
+                p.get("id").and_then(Value::as_str).ok_or_else(|| bad("`id` (lowercase letters, digits and `_`) is required"))?.trim().to_string();
+            let mut def = s
+                .topology
+                .place_env(place)
+                .and_then(|e| e.custom.iter().find(|c| c.id == id).cloned())
+                .unwrap_or_else(|| CustomVar { id: id.clone(), ..CustomVar::default() });
+            for (key, slot) in [("min", &mut def.min), ("max", &mut def.max), ("default", &mut def.default)] {
+                match p.get(key) {
+                    None => {}
+                    Some(v) => *slot = v.as_f64().filter(|x| x.is_finite()).ok_or_else(|| bad(format!("`{key}` is a number")))?,
+                }
+            }
+            for (key, slot) in [("label", &mut def.label), ("unit", &mut def.unit), ("formula", &mut def.formula)] {
+                match p.get(key) {
+                    None => {}
+                    Some(Value::String(x)) => *slot = x.clone(),
+                    Some(_) => return Err(bad(format!("`{key}` is text"))),
+                }
+            }
+            let mut t = s.topology.clone();
+            t.env_custom_set(place, def)?;
+            done(s, t);
+            Ok(view(s, place))
+        }
+        "environment.custom.remove" => {
+            let id = p.get("id").and_then(Value::as_str).ok_or_else(|| bad("`id` is required"))?;
+            let mut t = s.topology.clone();
+            t.env_custom_remove(place, id.trim())?;
+            done(s, t);
+            Ok(view(s, place))
+        }
+        "environment.shows" => {
+            let mut t = s.topology.clone();
+            let mut touched = true;
+            if p.get("copy_from_parent").and_then(Value::as_bool) == Some(true) {
+                t.env_copy_shows_from_parent(place)?;
+            } else if p.get("only_active").and_then(Value::as_bool) == Some(true) {
+                t.env_show_only_actives(place)?;
+            } else if p.get("reset").and_then(Value::as_bool) == Some(true) {
+                t.env_set_hidden(place, None)?;
+            } else {
+                match p.get("hidden") {
+                    Some(Value::Array(list)) => {
+                        let ids: Option<Vec<String>> = list.iter().map(|v| v.as_str().map(|x| x.trim().to_string())).collect();
+                        t.env_set_hidden(place, Some(ids.ok_or_else(|| bad("`hidden` is a list of variable ids"))?))?;
+                    }
+                    None => touched = false,
+                    Some(_) => return Err(bad("`hidden` is a list of variable ids")),
+                }
+            }
+            if touched {
+                done(s, t);
+            }
+            Ok(view(s, place))
+        }
+        "environment.defaults" => match p.get("name") {
+            None | Some(Value::Null) => Ok(json!({"defaults": BUNDLED.iter().map(|b| json!({"id": b.id, "label": b.label})).collect::<Vec<_>>()})),
+            Some(Value::String(name)) => {
+                let mut t = s.topology.clone();
+                t.env_apply_bundled(place, name)?;
+                done(s, t);
+                Ok(view(s, place))
+            }
+            Some(_) => Err(bad("`name` is the id of a bundled environment")),
+        },
+        "environment.settings" => {
+            if let Some(v) = p.get("interpolation") {
+                let mode = v.as_str().and_then(Interp::parse).ok_or_else(|| bad("`interpolation` is \"linear\", \"step\" or \"smooth\""))?;
+                let mut t = s.topology.clone();
+                t.env_set_interpolation(place, mode)?;
                 done(s, t);
             }
             Ok(view(s, place))

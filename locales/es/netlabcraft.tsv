@@ -2403,3 +2403,23 @@ furniture	Table	Mesa
 	no clock rate on the DCE end	sin velocidad de reloj en el extremo DCE
 	the two ends use different encapsulations	los dos extremos usan encapsulaciones distintas
 	PPP authentication failed (check the usernames and passwords)	falló la autenticación PPP (revisa los usuarios y las contraseñas)
+	Custom environment:	Entorno personalizado:
+	Create Custom Environment	Crear entorno personalizado
+	Defaults:	Predefinidos:
+	Replace what this place sets with this environment	Sustituye lo que fija este lugar por este entorno
+	Keyframes joined by:	Fotogramas clave unidos por:
+	Straight line	Línea recta
+	Step	Escalón
+	Smooth curve	Curva suave
+	Variables defined by a formula	Variables definidas por una fórmula
+	Formula:	Fórmula:
+	Add Variable	Añadir variable
+	Copy Shows from Parent	Copiar lo mostrado del lugar superior
+	Leave out what the place above leaves out	Omite lo que omite el lugar superior
+	Show Only Actives	Mostrar solo las activas
+	Leave out every variable no place sets	Omite toda variable que ningún lugar fija
+	Desert	Desierto
+	Tropical	Tropical
+	Arctic	Ártico
+	Indoor office	Oficina interior
+	Greenhouse	Invernadero

@@ -591,7 +591,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Environments",
         "Options",
         Some("Shift+E"),
-        r#"{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "variables": [{id, label, group, unit, value, source: "own"|"inherited"|"default"|"room", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read."#,
+        r#"{"place"?: place number, name or "intercity" (default: the first wiring closet)} → {"place": {id, name, kind}, "path": [the places from the Intercity map down to it], "time": "HH:MM:SS", "seconds", "clock": {paused, real_minutes, sim_minutes}, "notes", "show_notes", "name", "interpolation", "hidden", "hidden_from", "variables": [{id, label, group, unit, value, source: "own"|"inherited"|"default"|"room", from, default, min, max, drives, keys: [{time, seconds, value}]}]}: the surroundings of a place at the environment clock's time now. A place that sets nothing inherits from the place it stands in (closet, building, city, Intercity), then the default (an ordinary physical constant or 0); "room" is the smart-home room's live reading for what its sensors read."#,
         false
     ),
     c!(
@@ -632,6 +632,54 @@ pub static CATALOG: &[CommandInfo] = &[
         "",
         None,
         r#"{"time"?: "HH:MM:SS" or seconds from midnight (set the time of day now), "paused"?: true|false, "real_minutes"?: 1-1440, "sim_minutes"?: 1-1440 (every `real_minutes` of simulated lab time pass `sim_minutes` in the environment; the time shown does not jump when the ratio changes)} → environment.get. The clock follows the lab's simulated time (it starts at 08:00:00); one undo step when something changes"#,
+        true
+    ),
+    c!(
+        "environment.create",
+        "Create custom environment",
+        "",
+        None,
+        r#"{"place"?, "name": text up to 60 characters} → environment.get: gives the place a custom environment of its own with this name (what it sets and the variables it defines are its own); one undo step. environment.clear with no variable removes it again"#,
+        true
+    ),
+    c!(
+        "environment.custom",
+        "Define a custom variable",
+        "",
+        None,
+        r#"{"place"?, "id": lowercase letters, digits and `_` (up to 32, not a built-in id), "label"?, "unit"?, "min"?, "max"?, "default"? (what it reads while the formula is empty or fails), "formula"?: text up to 200 characters} → environment.get: defines or changes a variable of the place by a formula over `time` (seconds), `hour` (0-24), `day` (0-1), the built-in variables (as the place reads them) and other custom variables, with + - * / % ^, comparisons, and, or, not, sin cos abs sqrt floor ceil round exp ln min max clamp if(c, a, b), pi and e; at most 16 per place; a formula that cannot be computed shows its error and the default; a generic environment sensor can read the variable (iot.configure "variable"); one undo step"#,
+        true
+    ),
+    c!(
+        "environment.custom.remove",
+        "Remove a custom variable",
+        "",
+        None,
+        r#"{"place"?, "id"} → environment.get; one undo step"#,
+        true
+    ),
+    c!(
+        "environment.shows",
+        "Environment shows",
+        "",
+        None,
+        r#"{"place"?, "hidden"?: [variable ids the window leaves out for this place], "copy_from_parent"?: true (Copy Shows from Parent), "only_active"?: true (Show Only Actives: leave out every variable no place from here up sets), "reset"?: true (read the place above again)} → environment.get with "hidden" and "hidden_from": the shows are saved with the lab; one undo step when something changes"#,
+        true
+    ),
+    c!(
+        "environment.defaults",
+        "Environment defaults",
+        "",
+        None,
+        r#"{"place"?, "name"?: "desert"|"tropical"|"arctic"|"indoor-office"|"greenhouse"} → with no name {"defaults": [{id, label}]}: the bundled environments of ours; with a name, the place sets what that environment sets (replacing what it set) and takes its name → environment.get; one undo step"#,
+        true
+    ),
+    c!(
+        "environment.settings",
+        "Environment settings",
+        "",
+        None,
+        r#"{"place"?, "interpolation"?: "linear"|"step"|"smooth" (how this place's keyframes are joined: a straight line, the value of the last keyframe until the next, or a half cosine)} → environment.get; one undo step when something changes"#,
         true
     ),
     c!(

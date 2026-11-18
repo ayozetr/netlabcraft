@@ -203,7 +203,7 @@ impl Iot {
     pub fn sanitize(&mut self) {
         self.value = self.value.clamp(MIN_VALUE, MAX_VALUE);
         self.second = self.second.clamp(MIN_VALUE, MAX_VALUE);
-        if crate::environments::var_by_id(&self.variable).is_none() {
+        if crate::environments::var_by_id(&self.variable).is_none() && !crate::envcustom::valid_custom_id(&self.variable) {
             self.variable.clear();
         }
         self.interval = self.interval.min(MAX_INTERVAL);
