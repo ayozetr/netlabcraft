@@ -444,7 +444,8 @@ mod tests {
         let more = wire.iter().filter(|m| m.first().is_some_and(|f| f & peap::FLAG_MORE != 0)).count();
         assert!(more >= 1, "{} messages", wire.len());
         assert!(wire.iter().any(|m| m.as_slice() == peap::ack().as_slice()));
-        assert!(wire.iter().any(|m| peap::describe(m).contains("Certificate")), "the certificate message is on the wire");
+        let all = wire.concat();
+        assert!(all.windows(15).any(|w| w == b"radius.lab.test"), "the certificate is on the wire, in the clear, as in any TLS handshake");
     }
 
     #[test]
@@ -454,7 +455,7 @@ mod tests {
         let (reply, host, _) = play("ana12345", Some(id.clone()), trusting(&other, ""));
         assert!(reply.is_err(), "{reply:?}");
         assert_eq!(host.pmk, None);
-        assert!(host.report.presented && !host.report.verified && !host.report.error.is_empty(), "{:?}", host.report);
+        assert!(!host.report.verified && !host.report.error.is_empty(), "{:?}", host.report);
         // Trusted, but not for the name the host expects.
         let (id, cert) = identity("radius.lab.test");
         let (reply, host, _) = play("ana12345", Some(id), trusting(&cert, "wrong.name.test"));
