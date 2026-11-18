@@ -1042,24 +1042,42 @@ impl Sim {
         sa.started_us = now;
         sa.v1 = Some(Box::new(V1State::new(None, sa_payload.body())));
         let m = Isakmp::clear(icookie, [0; 8], ike::EXCH_MAIN, 0, vec![sa_payload]);
+        let offered = d.crypto.policies.len().max(1);
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIsakmp,
+            &format!("main mode with {peer} starts: message 1 offers {offered} polic{}", if offered == 1 { "y" } else { "ies" }),
+        );
         if self.state.get(&d.id).is_some_and(|s| s.debug_on(DebugKind::Packet)) {
             self.log(d.id, &format!("IKE: starting main mode with {peer} for traffic a crypto map protects"));
         }
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIsakmp,
+            &format!(
+                "main mode starts with {peer}: this router offers {} IKE polic{}",
+                d.crypto.policies.len().max(1),
+                if d.crypto.policies.len() > 1 { "ies" } else { "y" }
+            ),
+        );
         self.ike_send(t, d, local, peer, &m);
     }
 
     /// Records a failed exchange and logs why. A failed rekey leaves the SA it would have
     /// renewed as it is.
     fn ike_fail(&mut self, d: &Device, peer: Ipv4Addr, why: String) {
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the exchange with {peer} failed: {why}"));
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         if sa.phase == IkePhase::Established {
             sa.rekey_us = 0;
             self.log(d.id, &format!("IKE with {peer}: renewing the IPsec keys failed: {why}"));
+            self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("renewing the keys with {peer} failed: {why}"));
             return;
         }
         sa.phase = IkePhase::Failed;
         sa.failed = Some(why.clone());
         self.log(d.id, &format!("IKE with {peer} failed: {why}"));
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the exchange with {peer} is abandoned: {why}"));
     }
 
     /// Keeps the exchange state; a quick mode under an SA that is up (a rekey) leaves it up.
@@ -1237,6 +1255,20 @@ impl Sim {
     fn ike_in_inner(&mut self, t: &Topology, d: &Device, ip: &Ipv4, payload: &[u8]) -> Result<(), String> {
         let m = Isakmp::decode(payload).map_err(|e| e.to_string())?;
         let (peer, local) = (ip.src, ip.dst);
+        if self.debug_on(d.id, DebugKind::CryptoIsakmp) {
+            let what = match m.exchange {
+                ike::EXCH_MAIN => "main mode",
+                ike::EXCH_QUICK => "quick mode",
+                ike::EXCH_INFO => "informational",
+                _ => "unknown exchange",
+            };
+            let body = if m.payloads.is_empty() {
+                "encrypted payloads".to_string()
+            } else {
+                m.payloads.iter().map(Payload::name).collect::<Vec<_>>().join(", ")
+            };
+            self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("{what} message from {peer}: {body}"));
+        }
         if d.crypto.applied.is_empty() && d.crypto.key_for(peer).is_none() {
             return Err(format!("ISAKMP from {peer}: IPsec is not configured here"));
         }
@@ -1371,8 +1403,20 @@ impl Sim {
                 let opened = v1.open(&m, false);
                 let verdict = opened.and_then(|list| p1_check(d, clock, &v1, true, &ic, &rc, &list));
                 match verdict {
-                    Ok(subject) => v1.peer_cert = subject,
+                    Ok(subject) => {
+                        if v1.rsa() {
+                            self.debug_log(
+                                d.id,
+                                DebugKind::CryptoPki,
+                                &format!("the certificate of {subject} from {peer} chains to a trusted authority and its signature checks out"),
+                            );
+                        }
+                        v1.peer_cert = subject;
+                    }
                     Err(e) => {
+                        if v1.rsa() {
+                            self.debug_log(d.id, DebugKind::CryptoPki, &format!("the certificate check of {peer} failed: {e}"));
+                        }
                         // The configurations say why, when the peer is known.
                         let own = if v1.rsa() { e } else { format!("main mode message 5 {e}") };
                         let why = other.and_then(|o| auth_check(o, peer, d, local).err()).unwrap_or(own);
@@ -1399,8 +1443,20 @@ impl Sim {
             // proposes ESP.
             (ike::EXCH_MAIN, true, IkePhase::Main(5)) => {
                 match v1.open(&m, false).and_then(|list| p1_check(d, clock, &v1, false, &ic, &rc, &list)) {
-                    Ok(subject) => v1.peer_cert = subject,
+                    Ok(subject) => {
+                        if v1.rsa() {
+                            self.debug_log(
+                                d.id,
+                                DebugKind::CryptoPki,
+                                &format!("the certificate of {subject} from {peer} chains to a trusted authority and its signature checks out"),
+                            );
+                        }
+                        v1.peer_cert = subject;
+                    }
                     Err(e) => {
+                        if v1.rsa() {
+                            self.debug_log(d.id, DebugKind::CryptoPki, &format!("the certificate check of {peer} failed: {e}"));
+                        }
                         let why = if v1.rsa() { e } else { format!("main mode message 6 {e}") };
                         self.ike_fail(d, peer, why);
                         return Ok(());
@@ -1609,6 +1665,12 @@ impl Sim {
         sa.spi_in = v1.spi_mine;
         sa.v1 = Some(Box::new(v1));
         self.log(d.id, &format!("IKE with {peer}: main mode and quick mode complete, IPsec security association up"));
+        let (spi_in, spi_out) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).map_or((0, 0), |s| (s.spi_in, s.spi_out));
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIpsec,
+            &format!("IPsec SA with {peer} is up: inbound SPI 0x{spi_in:08x}, outbound SPI 0x{spi_out:08x}"),
+        );
     }
 
     /// An ESP or AH packet addressed to this router. For a peer whose transform set puts AH

@@ -2460,6 +2460,7 @@ pub static SPECS: &[Spec] = &[
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("ssh")], "Report SSH logins to this device"),
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("isakmp")], "Report the IKE exchanges of this device"),
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("ipsec")], "Report IPsec SAs coming and going"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("pki")], "Report certificates checked, requests, grants and revocations"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
@@ -2497,6 +2498,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("ssh")], "Stop reporting SSH"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("isakmp")], "Stop reporting ISAKMP"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("ipsec")], "Stop reporting IPsec"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("pki")], "Stop reporting PKI"),
     spec!(
         DebugDhcpPacket,
         Modes::EXEC,
@@ -2674,7 +2676,12 @@ pub static SPECS: &[Spec] = &[
         AreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        [
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("nssa"),
+            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+        ],
         "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
     spec!(NoAreaNssa, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa")], "A normal area again"),
@@ -2682,7 +2689,13 @@ pub static SPECS: &[Spec] = &[
         NoAreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        [
+            K("no"),
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("nssa"),
+            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+        ],
         "Undo only those options of the NSSA"
     ),
     spec!(

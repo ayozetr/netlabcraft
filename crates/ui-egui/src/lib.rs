@@ -61,6 +61,7 @@ mod phone;
 mod physical;
 mod physical_bar;
 mod physical_grid;
+pub mod pictures;
 pub mod png;
 pub mod prefs;
 mod prefs_admin;
@@ -88,7 +89,10 @@ mod tests_environments;
 mod tests_families;
 mod tests_grid;
 #[cfg(test)]
+mod tests_pictures;
+#[cfg(test)]
 mod tests_prefs;
+#[cfg(test)]
 mod tests_prefs2;
 
 use crate::i18n::tl;
@@ -124,6 +128,9 @@ pub enum UiRequest {
     ImportWebFile { device: DeviceId },
     /// Pick an environment file (JSON) for a place; then call [`PacketApp::environment_imported`].
     ImportEnvironment { place: u32 },
+    /// Pick a PNG or JPEG picture for the Set Background Image window; then call
+    /// [`PacketApp::image_picked`] with its bytes.
+    PickImage,
     /// Play a short sound (the bytes of a WAV file); a shell with no way to play one ignores it.
     PlaySound(Vec<u8>),
     /// Ask for a folder (desktop), then call [`PacketApp::folder_picked`].
@@ -385,6 +392,8 @@ pub struct UiState {
     pub prefs_ui: prefs::WindowState,
     /// Options ▸ Environments: the window's state.
     pub env_ui: environments::EnvUi,
+    /// Pictures: textures and the Set Background Image window.
+    pub pictures: pictures::State,
 }
 
 impl UiState {
@@ -452,6 +461,7 @@ impl Default for UiState {
             prefs: prefs::Prefs::default(),
             prefs_ui: prefs::WindowState::default(),
             env_ui: environments::EnvUi::default(),
+            pictures: pictures::State::default(),
         }
     }
 }
@@ -1110,6 +1120,7 @@ impl PacketApp {
         activity::windows(self, &ctx);
         prefs::windows(self, &ctx);
         environments::windows(self, &ctx);
+        pictures::windows(self, &ctx);
         shortcuts::windows(self, &ctx);
         print::window(self, &ctx);
         self.about_window(&ctx);
@@ -1278,6 +1289,10 @@ impl PacketApp {
                 }
                 if check_item(ui, self.ui.show_workspace_list, tl("Show Workspace List"), "Shift+W") {
                     self.ui.show_workspace_list = !self.ui.show_workspace_list;
+                }
+                if ui.add(egui::Button::new(tl("Set Background Image")).shortcut_text(shortcuts::text(shortcuts::Act::SetBackground))).clicked() {
+                    self.open_background_window();
+                    ui.close();
                 }
                 if check_item(ui, self.ui.prefs.show_wireless_signals, tl("View Wireless Signals"), &shortcuts::text(shortcuts::Act::WirelessSignals))
                 {
@@ -1508,7 +1523,7 @@ impl PacketApp {
                 let back =
                     if physical { "Back to the enclosing place (Intercity is the top)" } else { "Back to the parent cluster (Root is the top)" };
                 for (g, label) in [
-                    (Glyph::Physical, "Set Background (not available yet)"),
+                    (Glyph::Picture, "Set Background Image"),
                     (Glyph::ZoomReset, "Navigation: back to the start of the workspace"),
                     (Glyph::Undo, back),
                 ] {
@@ -1522,6 +1537,9 @@ impl PacketApp {
                     }
                     p.rect_stroke(r, 8.0, egui::Stroke::new(1.5, tk.bar_text), egui::StrokeKind::Inside);
                     icons::glyph(&p, egui::Rect::from_center_size(r.center(), vec2(20.0, 20.0)), g, tk.pill_text);
+                    if resp.clicked() && g == Glyph::Picture {
+                        self.open_background_window();
+                    }
                     if resp.clicked() && g == Glyph::ZoomReset {
                         self.reset_view();
                     }
