@@ -170,6 +170,8 @@ pub struct Path {
     pub resolved: Option<(String, Ipv4Addr)>,
     /// The communities the path carries.
     pub communities: Vec<u32>,
+    /// The extended communities the path carries (RFC 4360, eight octets each in one number).
+    pub ext_communities: Vec<u64>,
     /// The AS set of an aggregate made with `as-set`.
     pub as_set: Vec<u32>,
     /// The metric of the route that resolves the next hop (0 for a connected one).
@@ -681,6 +683,7 @@ fn originate(d: &Device, base: &[RouteEntry]) -> Vec<Path> {
             best: false,
             resolved: None,
             communities: policy::merge_communities(&sets, &[]),
+            ext_communities: policy::merge_ext_communities(&sets, &[]),
             as_set: Vec::new(),
             igp: 0,
             multi: false,
@@ -727,6 +730,7 @@ fn aggregate_paths(ab: &conf::Bgp, paths: &[Path]) -> Vec<Path> {
             best: false,
             resolved: None,
             communities: Vec::new(),
+            ext_communities: Vec::new(),
             as_set: set,
             igp: 0,
             multi: false,
@@ -817,10 +821,22 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
             return None;
         }
     }
-    let seen = policy::Attrs { communities: &path.communities, as_path: &path.as_path, as_set: &path.as_set, tag: 0 };
+    let seen = policy::Attrs {
+        communities: &path.communities,
+        as_path: &path.as_path,
+        as_set: &path.as_set,
+        tag: 0,
+        ext_communities: &path.ext_communities,
+    };
     let sets = policy::apply_with(a, n.prefix_list_out.as_deref(), n.route_map_out.as_deref(), &Subject { net: path.net, metric: path.med }, &seen)?;
     // Communities travel only to a neighbour with `send-community`.
     let communities = if n.send_community { policy::merge_communities(&sets, &path.communities) } else { Vec::new() };
+    // Extended communities travel only to a neighbour with `send-community extended`, and the
+    // non-transitive ones (RFC 4360) never leave the AS.
+    let mut ext_communities = if n.send_extended { policy::merge_ext_communities(&sets, &path.ext_communities) } else { Vec::new() };
+    if external {
+        ext_communities.retain(|c| msg::ext_transitive(*c));
+    }
     let mut tail = sets.prepend.clone();
     tail.extend(path.as_path.iter().copied());
     let origin = sets.origin.unwrap_or(path.origin);
@@ -839,6 +855,7 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
             local_pref: None,
             as_set: path.as_set.clone(),
             communities,
+            ext_communities,
             ..msg::PathAttrs::default()
         });
     }
@@ -875,6 +892,7 @@ fn export(a: &Device, ab: &conf::Bgp, n: &conf::Neighbor, p: &Peering, path: &Pa
         cluster_list,
         confed_path,
         confed_set: Vec::new(),
+        ext_communities,
     })
 }
 
@@ -929,6 +947,12 @@ fn default_route(
         }
         if n.send_community {
             at.communities = policy::merge_communities(&sets, &[]);
+        }
+        if n.send_extended {
+            at.ext_communities = policy::merge_ext_communities(&sets, &[]);
+            if external {
+                at.ext_communities.retain(|c| msg::ext_transitive(*c));
+            }
         }
     }
     Some((net, at))
@@ -993,7 +1017,13 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
     if !distribute_permits(b, m.distribute_in.as_deref(), net, med) {
         return None;
     }
-    let seen = policy::Attrs { communities: &attrs.communities, as_path: &attrs.as_path, as_set: &attrs.as_set, tag: 0 };
+    let seen = policy::Attrs {
+        communities: &attrs.communities,
+        as_path: &attrs.as_path,
+        as_set: &attrs.as_set,
+        tag: 0,
+        ext_communities: &attrs.ext_communities,
+    };
     let sets = policy::apply_with(b, m.prefix_list_in.as_deref(), m.route_map_in.as_deref(), &Subject { net, metric: med }, &seen)?;
     // An external neighbour's local preference is ignored; internal and confederation neighbours carry it.
     let local_pref = sets.local_pref.unwrap_or_else(|| if external { bb.local_pref() } else { attrs.local_pref.unwrap_or_else(|| bb.local_pref()) });
@@ -1014,6 +1044,7 @@ fn import(b: &Device, m: &conf::Neighbor, p: &Peering, attrs: &msg::PathAttrs, f
         best: false,
         resolved: None,
         communities: policy::merge_communities(&sets, &attrs.communities),
+        ext_communities: policy::merge_ext_communities(&sets, &attrs.ext_communities),
         as_set: attrs.as_set.clone(),
         igp: 0,
         multi: false,
@@ -1658,6 +1689,7 @@ mod tests {
             best: false,
             resolved: Some(("g0/0".into(), Ipv4Addr::new(10, 0, 0, 2))),
             communities: Vec::new(),
+            ext_communities: Vec::new(),
             as_set: Vec::new(),
             igp: 0,
             multi: false,
@@ -1883,6 +1915,40 @@ mod tests {
         let no_adv = Path { communities: vec![policy::NO_ADVERTISE], ..tagged };
         assert!(export(&a, &ab, &n_int, &int, &no_adv).is_none());
         assert!(export(&a, &ab, &n, &p, &no_adv).is_none());
+    }
+
+    #[test]
+    fn extended_communities_need_send_community_extended_and_the_non_transitive_ones_stay_in_the_as() {
+        let a = speaker(65_001);
+        let ab = conf::Bgp::new(65_001);
+        let n = conf::Neighbor { remote_as: Some(65_002), send_extended: true, ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 2)) };
+        let p = Peering {
+            peer: DeviceId(2),
+            peer_addr: n.addr,
+            local: Ipv4Addr::new(10, 0, 0, 1),
+            out_iface: "g0/0".into(),
+            next_hop: n.addr,
+            ebgp: true,
+            confed: false,
+            ttl: 1,
+        };
+        let rt = msg::ext_as2(msg::ExtKind::RouteTarget, 65_001, 100);
+        let transient = 0x4002_0000_0000_0001u64;
+        let tagged = Path { ext_communities: vec![rt, transient], from: Some(Ipv4Addr::new(10, 0, 9, 9)), ..path("10.9.0.0/16", &[65_005]) };
+        let sent = export(&a, &ab, &n, &p, &tagged).unwrap();
+        assert_eq!(sent.ext_communities, vec![rt], "a non-transitive community does not leave the AS");
+        let off = conf::Neighbor { send_extended: false, ..n.clone() };
+        assert!(export(&a, &ab, &off, &p, &tagged).unwrap().ext_communities.is_empty());
+        let n_int = conf::Neighbor { remote_as: Some(65_001), send_extended: true, ..conf::Neighbor::new(Ipv4Addr::new(10, 0, 5, 2)) };
+        let int = Peering { ebgp: false, ttl: 255, ..p.clone() };
+        assert_eq!(export(&a, &ab, &n_int, &int, &tagged).unwrap().ext_communities, vec![rt, transient]);
+        // Through the wire and into the receiver's table.
+        let update = msg::Message::Update(msg::Update { withdrawn: Vec::new(), attrs: Some(sent), nlri: vec![tagged.net] });
+        let Ok(msg::Message::Update(back)) = msg::Message::decode(&update.encode()) else { panic!("did not decode") };
+        let b = speaker(65_002);
+        let m = conf::Neighbor::new(Ipv4Addr::new(10, 0, 0, 1));
+        let got = import(&b, &m, &p, &back.attrs.unwrap(), Ipv4Addr::new(1, 1, 1, 1), tagged.net, &[]).unwrap();
+        assert_eq!(got.ext_communities, vec![rt]);
     }
 
     #[test]

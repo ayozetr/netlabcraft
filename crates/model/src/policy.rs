@@ -162,6 +162,9 @@ pub const INTERNET: u32 = 0;
 /// Most communities one route carries, and most community lists and AS-path lists a device keeps.
 pub const MAX_COMMUNITIES: usize = 32;
 pub const MAX_COMMUNITY_LISTS: usize = 64;
+/// Most extended communities one route carries, and most extended community lists a device keeps.
+pub const MAX_EXT_COMMUNITIES: usize = 32;
+pub const MAX_EXT_COMMUNITY_LISTS: usize = 64;
 pub const MAX_AS_PATH_LISTS: usize = 64;
 /// Most lines in one community list or AS-path list.
 pub const MAX_LIST_LINES: usize = 64;
@@ -269,6 +272,55 @@ impl CommunityList {
     }
 }
 
+/// What a regular expression on extended communities is matched against: each community as
+/// `RT:ASN:NN` or `SoO:ASN:NN`, separated by spaces.
+pub fn ext_communities_for_regex(c: &[u64]) -> String {
+    c.iter().map(|x| netlabcraft_wire::bgp::ext_text(*x)).collect::<Vec<_>>().join(" ")
+}
+
+/// One line of an extended community list.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtCommunityEntry {
+    pub permit: bool,
+    /// A standard line: the extended communities a route must all carry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub communities: Vec<u64>,
+    /// An expanded line: a regular expression over `RT:ASN:NN` text.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub regex: String,
+}
+
+impl ExtCommunityEntry {
+    /// Whether the line matches a route carrying `have`.
+    pub fn matches(&self, have: &[u64], expanded: bool) -> bool {
+        if expanded {
+            return crate::textmatch::is_match(&self.regex, &ext_communities_for_regex(have));
+        }
+        !self.communities.is_empty() && self.communities.iter().all(|c| have.contains(c))
+    }
+}
+
+/// `ip extcommunity-list standard|expanded NAME …`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExtCommunityList {
+    pub name: String,
+    #[serde(default)]
+    pub expanded: bool,
+    #[serde(default)]
+    pub entries: Vec<ExtCommunityEntry>,
+}
+
+impl ExtCommunityList {
+    pub fn new(name: impl Into<String>, expanded: bool) -> ExtCommunityList {
+        ExtCommunityList { name: name.into(), expanded, entries: Vec::new() }
+    }
+
+    /// Whether the first matching line permits a route carrying `have`; no line matching denies.
+    pub fn permits(&self, have: &[u64]) -> bool {
+        self.entries.iter().find(|e| e.matches(have, self.expanded)).is_some_and(|e| e.permit)
+    }
+}
+
 /// One line of an AS-path list.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AsPathEntry {
@@ -304,6 +356,8 @@ pub struct Attrs<'a> {
     pub as_set: &'a [u32],
     /// The route tag (0: none), for `match tag`.
     pub tag: u32,
+    /// The extended communities, for `match extcommunity`.
+    pub ext_communities: &'a [u64],
 }
 
 /// The communities a route carries after a `set community`: the new ones replace the old ones, or
@@ -317,6 +371,20 @@ pub fn merge_communities(sets: &Sets, have: &[u32]) -> Vec<u32> {
     out.sort_unstable();
     out.dedup();
     out.truncate(MAX_COMMUNITIES);
+    out
+}
+
+/// The extended communities a route carries after a `set extcommunity`: the new ones replace the old
+/// ones, or join them with `additive`.
+pub fn merge_ext_communities(sets: &Sets, have: &[u64]) -> Vec<u64> {
+    let mut out: Vec<u64> = match &sets.ext_community {
+        None => have.to_vec(),
+        Some(new) if sets.ext_community_additive => have.iter().chain(new.iter()).copied().collect(),
+        Some(new) => new.clone(),
+    };
+    out.sort_unstable();
+    out.dedup();
+    out.truncate(MAX_EXT_COMMUNITIES);
     out
 }
 
@@ -349,6 +417,12 @@ pub struct Sets {
     /// `set tag N`: the tag a redistributed route is given.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tag: Option<u32>,
+    /// `set extcommunity rt|soo …`: the extended communities to give.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext_community: Option<Vec<u64>>,
+    /// `additive`: keep the extended communities the route already has.
+    #[serde(default, skip_serializing_if = "crate::is_false")]
+    pub ext_community_additive: bool,
 }
 
 impl Sets {
@@ -383,6 +457,9 @@ pub struct Clause {
     /// `match community NAME…`: any of these community lists permitting the route matches.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub community_lists: Vec<String>,
+    /// `match extcommunity NAME…`: any of these extended community lists permitting the route matches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ext_community_lists: Vec<String>,
     /// `match as-path NAME…`: any of these AS-path lists permitting the route matches.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub as_path_lists: Vec<String>,
@@ -402,6 +479,7 @@ impl Clause {
             acls: Vec::new(),
             metric: None,
             community_lists: Vec::new(),
+            ext_community_lists: Vec::new(),
             as_path_lists: Vec::new(),
             tags: Vec::new(),
             sets: Sets::default(),
@@ -429,6 +507,11 @@ impl Clause {
             }
         }
         if !self.community_lists.is_empty() && !self.community_lists.iter().any(|n| d.community_list(n).is_some_and(|l| l.permits(a.communities))) {
+            return false;
+        }
+        if !self.ext_community_lists.is_empty()
+            && !self.ext_community_lists.iter().any(|n| d.ext_community_list(n).is_some_and(|l| l.permits(a.ext_communities)))
+        {
             return false;
         }
         if !self.as_path_lists.is_empty() && !self.as_path_lists.iter().any(|n| d.as_path_list(n).is_some_and(|l| l.permits(a.as_path, a.as_set))) {
@@ -510,6 +593,10 @@ impl Device {
         self.community_lists.iter().find(|l| l.name == name)
     }
 
+    pub fn ext_community_list(&self, name: &str) -> Option<&ExtCommunityList> {
+        self.ext_community_lists.iter().find(|l| l.name == name)
+    }
+
     pub fn as_path_list(&self, name: &str) -> Option<&AsPathList> {
         self.as_path_lists.iter().find(|l| l.name == name)
     }
@@ -572,6 +659,24 @@ pub fn sanitize_community_lists(lists: &mut Vec<CommunityList>) {
     lists.truncate(MAX_COMMUNITY_LISTS);
 }
 
+/// Cleans the extended community lists a lab file holds.
+pub fn sanitize_ext_community_lists(lists: &mut Vec<ExtCommunityList>) {
+    for l in lists.iter_mut() {
+        l.name = clean_name(&l.name);
+        l.entries.truncate(MAX_LIST_LINES);
+        let expanded = l.expanded;
+        for e in &mut l.entries {
+            e.communities.truncate(MAX_EXT_COMMUNITIES);
+            e.regex = e.regex.chars().filter(|c| !c.is_control()).take(crate::textmatch::MAX_PATTERN).collect();
+        }
+        l.entries.retain(|e| if expanded { crate::textmatch::valid(&e.regex) } else { !e.communities.is_empty() });
+    }
+    lists.retain(|l| !l.name.is_empty() && !l.entries.is_empty());
+    let mut seen = std::collections::BTreeSet::new();
+    lists.retain(|l| seen.insert(l.name.clone()));
+    lists.truncate(MAX_EXT_COMMUNITY_LISTS);
+}
+
 /// Cleans the AS-path lists a lab file holds.
 pub fn sanitize_as_path_lists(lists: &mut Vec<AsPathList>) {
     for l in lists.iter_mut() {
@@ -601,6 +706,12 @@ pub fn sanitize_route_maps(maps: &mut Vec<RouteMap>) {
             c.acls = c.acls.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
             c.community_lists = c.community_lists.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
             c.as_path_lists = c.as_path_lists.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
+            c.ext_community_lists = c.ext_community_lists.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
+            if let Some(v) = &mut c.sets.ext_community {
+                v.sort_unstable();
+                v.dedup();
+                v.truncate(MAX_EXT_COMMUNITIES);
+            }
             if let Some(v) = &mut c.sets.community {
                 v.sort_unstable();
                 v.dedup();
@@ -631,6 +742,29 @@ mod tests {
 
     fn line(seq: u32, permit: bool, p: &str, ge: Option<u8>, le: Option<u8>) -> PrefixEntry {
         PrefixEntry { seq, permit, net: net(p), ge, le }
+    }
+
+    #[test]
+    fn extended_community_lists_match_what_a_route_carries() {
+        use netlabcraft_wire::bgp::{ExtKind, ext_as2, ext_ipv4};
+        let rt = ext_as2(ExtKind::RouteTarget, 65_001, 100);
+        let soo = ext_ipv4(ExtKind::RouteOrigin, std::net::Ipv4Addr::new(10, 0, 0, 1), 5);
+        let mut standard = ExtCommunityList::new("S", false);
+        standard.entries.push(ExtCommunityEntry { permit: true, communities: vec![rt, soo], regex: String::new() });
+        assert!(standard.permits(&[soo, rt, 7]) && !standard.permits(&[rt]) && !standard.permits(&[]));
+        let mut expanded = ExtCommunityList::new("X", true);
+        expanded.entries.push(ExtCommunityEntry { permit: false, communities: Vec::new(), regex: "SoO:10".into() });
+        expanded.entries.push(ExtCommunityEntry { permit: true, communities: Vec::new(), regex: "^RT:65001:".into() });
+        assert!(expanded.permits(&[rt]) && !expanded.permits(&[soo, rt]) && !expanded.permits(&[]));
+        let mut sets = Sets { ext_community: Some(vec![soo]), ..Sets::default() };
+        assert_eq!(merge_ext_communities(&sets, &[rt]), vec![soo]);
+        sets.ext_community_additive = true;
+        assert_eq!(merge_ext_communities(&sets, &[rt, soo]).len(), 2);
+        assert_eq!(merge_ext_communities(&Sets::default(), &[rt]), vec![rt]);
+        let mut lists = vec![ExtCommunityList::new("a b", false), standard.clone(), standard];
+        lists[0].entries.push(ExtCommunityEntry { permit: true, communities: Vec::new(), regex: String::new() });
+        sanitize_ext_community_lists(&mut lists);
+        assert_eq!(lists.len(), 1, "an empty line and a duplicate name go");
     }
 
     #[test]

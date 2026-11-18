@@ -1049,6 +1049,9 @@ pub struct Device {
     /// Routers: community lists (`ip community-list`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub community_lists: Vec<policy::CommunityList>,
+    /// Routers: extended community lists (`ip extcommunity-list`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub ext_community_lists: Vec<policy::ExtCommunityList>,
     /// Routers: AS-path lists (`ip as-path access-list`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub as_path_lists: Vec<policy::AsPathList>,
@@ -2300,6 +2303,7 @@ impl Device {
             prefix_lists: Vec::new(),
             route_maps: Vec::new(),
             community_lists: Vec::new(),
+            ext_community_lists: Vec::new(),
             as_path_lists: Vec::new(),
             bgp_community_new_format: false,
             eigrp_if: BTreeMap::new(),
@@ -2413,6 +2417,7 @@ impl Device {
         self.prefix_lists.clear();
         self.route_maps.clear();
         self.community_lists.clear();
+        self.ext_community_lists.clear();
         self.as_path_lists.clear();
         self.bgp_community_new_format = false;
         self.acls6.clear();
@@ -3091,6 +3096,7 @@ impl Topology {
                 policy::sanitize_prefix_lists(&mut d.prefix_lists);
                 policy::sanitize_route_maps(&mut d.route_maps);
                 policy::sanitize_community_lists(&mut d.community_lists);
+                policy::sanitize_ext_community_lists(&mut d.ext_community_lists);
                 policy::sanitize_as_path_lists(&mut d.as_path_lists);
                 d.fhrp.sanitize();
                 d.default_networks.truncate(MAX_DEFAULT_NETWORKS);

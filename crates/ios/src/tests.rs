@@ -11,6 +11,7 @@ mod acl_icmp;
 mod archive;
 mod bgp;
 mod bgp_communities;
+mod bgp_extcommunities;
 mod bgp_leftovers;
 mod bgp_password;
 mod bgp_peer_groups;

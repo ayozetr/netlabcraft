@@ -4705,6 +4705,13 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::RmSetOrigin
         | Id::NoRmSetOrigin
         | Id::CommunityListLine
+        | Id::ExtCommunityListLine
+        | Id::NoExtCommunityList
+        | Id::ShowIpExtCommunityList
+        | Id::RmMatchExtCommunity
+        | Id::NoRmMatchExtCommunity
+        | Id::RmSetExtCommunity
+        | Id::NoRmSetExtCommunity
         | Id::NoCommunityList
         | Id::AsPathListLine
         | Id::NoAsPathList

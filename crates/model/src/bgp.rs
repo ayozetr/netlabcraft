@@ -124,6 +124,9 @@ pub struct Neighbor {
     /// `send-community`: attach the communities a path carries when advertising it.
     #[serde(default)]
     pub send_community: bool,
+    /// `send-community extended`: attach the extended communities a path carries.
+    #[serde(default)]
+    pub send_extended: bool,
     /// `timers KEEPALIVE HOLD` (seconds); none means 60 and 180.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timers: Option<(u16, u16)>,
@@ -217,6 +220,7 @@ pub fn follow(n: &mut Neighbor, old: &Neighbor, new: &Neighbor) {
         route_map_in,
         route_map_out,
         send_community,
+        send_extended,
         timers,
         filter_list_in,
         filter_list_out,
@@ -255,6 +259,7 @@ impl Neighbor {
             route_map_in: None,
             route_map_out: None,
             send_community: false,
+            send_extended: false,
             timers: None,
             filter_list_in: None,
             filter_list_out: None,

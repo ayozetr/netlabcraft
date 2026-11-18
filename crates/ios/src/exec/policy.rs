@@ -8,11 +8,12 @@ use std::net::Ipv4Addr;
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::Device;
 use netlabcraft_model::policy::{
-    AsPathEntry, AsPathList, Clause, CommunityEntry, CommunityList, FIRST_CLAUSE, MAX_AS_PATH_LISTS, MAX_COMMUNITIES, MAX_COMMUNITY_LISTS,
-    MAX_LIST_LINES, MAX_MATCH_NAMES, MAX_NAME, MAX_PREFIX_LISTS, MAX_PREPEND, MAX_ROUTE_MAPS, MAX_SEQ, PrefixEntry, PrefixList, RouteMap,
-    community_text, origin_word, parse_community,
+    AsPathEntry, AsPathList, Clause, CommunityEntry, CommunityList, ExtCommunityEntry, ExtCommunityList, FIRST_CLAUSE, MAX_AS_PATH_LISTS,
+    MAX_COMMUNITIES, MAX_COMMUNITY_LISTS, MAX_EXT_COMMUNITIES, MAX_EXT_COMMUNITY_LISTS, MAX_LIST_LINES, MAX_MATCH_NAMES, MAX_NAME, MAX_PREFIX_LISTS,
+    MAX_PREPEND, MAX_ROUTE_MAPS, MAX_SEQ, PrefixEntry, PrefixList, RouteMap, community_text, origin_word, parse_community,
 };
 use netlabcraft_model::textmatch;
+use netlabcraft_wire::bgp::{ExtKind, ext_kind, ext_parse, ext_text};
 
 use super::{Ctx, Mode, R};
 use crate::grammar::Id;
@@ -153,6 +154,95 @@ fn community_list_head<'a>(words: &'a [&'a str]) -> Result<(bool, String, &'a [&
             Ok((n >= 100, n.to_string(), words.get(1..).unwrap_or(&[])))
         }
     }
+}
+
+/// `standard NAME …`, `expanded NAME …` or `NUMBER …` of an extended community list.
+fn ext_list_head<'a>(words: &'a [&'a str]) -> Result<(bool, String, &'a [&'a str]), String> {
+    let first = words.first().map(|w| w.to_ascii_lowercase()).unwrap_or_default();
+    match first.as_str() {
+        "standard" | "expanded" => {
+            let name = name_ok(words.get(1).copied().unwrap_or(""))?;
+            Ok((first == "expanded", name, words.get(2..).unwrap_or(&[])))
+        }
+        _ => {
+            let n = first
+                .parse::<u32>()
+                .ok()
+                .filter(|n| (1..=500).contains(n))
+                .ok_or("% ip extcommunity-list {standard|expanded} NAME ..., or a list number 1-500")?;
+            Ok((n >= 100, n.to_string(), words.get(1..).unwrap_or(&[])))
+        }
+    }
+}
+
+/// The values after `rt` or `soo` words (a kind word switches the kind until the next one).
+fn ext_words(words: &[&str]) -> Result<Vec<u64>, String> {
+    let mut kind: Option<ExtKind> = None;
+    let mut out: Vec<u64> = Vec::new();
+    for w in words {
+        match w.to_ascii_lowercase().as_str() {
+            "rt" => kind = Some(ExtKind::RouteTarget),
+            "soo" => kind = Some(ExtKind::RouteOrigin),
+            _ => {
+                let k = kind.ok_or("% Start with rt (a route target) or soo (a site of origin)")?;
+                out.push(ext_parse(k, w).ok_or_else(|| format!("% `{w}` is not a route target or site of origin: write ASN:NN or A.B.C.D:NN"))?);
+            }
+        }
+    }
+    if out.is_empty() {
+        return Err("% Name at least one value after rt or soo".into());
+    }
+    if out.len() > MAX_EXT_COMMUNITIES {
+        return Err(format!("% At most {MAX_EXT_COMMUNITIES} extended communities on a line"));
+    }
+    Ok(out)
+}
+
+/// The words `ext_words` reads, written back: `rt 65001:100 soo 10.0.0.1:5`.
+fn ext_words_text(list: &[u64]) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut last: Option<ExtKind> = None;
+    for c in list {
+        let kind = ext_kind(*c);
+        if kind.is_some() && kind != last {
+            parts.push(kind.map_or("", ExtKind::word).to_string());
+            last = kind;
+        }
+        let text = ext_text(*c);
+        parts.push(text.split_once(':').filter(|_| kind.is_some()).map_or(text.clone(), |(_, v)| v.to_string()));
+    }
+    parts.join(" ")
+}
+
+fn ext_entry_text(e: &ExtCommunityEntry, expanded: bool) -> String {
+    let word = if e.permit { "permit" } else { "deny" };
+    if expanded { format!("{word} {}", e.regex) } else { format!("{word} {}", ext_words_text(&e.communities)) }
+}
+
+fn show_ext_community_lists(d: &Device, only: Option<&str>) -> R {
+    let lists: Vec<&ExtCommunityList> = d.ext_community_lists.iter().filter(|l| only.is_none_or(|n| l.name == n)).collect();
+    if lists.is_empty() {
+        return match only {
+            Some(n) => Err(format!("% No extended community list named {n}")),
+            None => Ok("(no extended community lists: add one with `ip extcommunity-list standard NAME permit rt 65001:100`)".into()),
+        };
+    }
+    let mut s = String::new();
+    for l in lists {
+        let _ = writeln!(
+            s,
+            "Extended community list {} ({}): {} line{}",
+            l.name,
+            if l.expanded { "expanded" } else { "standard" },
+            l.entries.len(),
+            if l.entries.len() == 1 { "" } else { "s" }
+        );
+        for e in &l.entries {
+            let _ = writeln!(s, "  {}", ext_entry_text(e, l.expanded));
+        }
+        s.push_str("  (a path no line matches is denied)\n");
+    }
+    Ok(s.trim_end().to_string())
 }
 
 /// An AS-path list name: a number 1-500.
@@ -501,6 +591,110 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             d.community_lists.retain(|l| !l.entries.is_empty());
             if removed { Ok(String::new()) } else { Err(format!("% No such line in community list {name}")) }
         }
+        Id::ExtCommunityListLine => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (expanded, name, rest) = ext_list_head(&words)?;
+            let permit = permit_word(rest.first().copied().unwrap_or(""))?;
+            let body = rest.get(1..).unwrap_or(&[]);
+            let entry = if expanded {
+                let regex = body.join(" ");
+                if !textmatch::valid(&regex) {
+                    return Err(format!("% `{regex}` is not a usable regular expression (at most {} characters)", textmatch::MAX_PATTERN));
+                }
+                ExtCommunityEntry { permit, communities: Vec::new(), regex }
+            } else {
+                ExtCommunityEntry { permit, communities: ext_words(body)?, regex: String::new() }
+            };
+            let d = c.dm()?;
+            if let Some(l) = d.ext_community_lists.iter_mut().find(|l| l.name == name) {
+                if l.expanded != expanded {
+                    return Err(format!("% {name} is already a{} list", if l.expanded { "n expanded" } else { " standard" }));
+                }
+                if l.entries.contains(&entry) {
+                    return Ok(String::new());
+                }
+                if l.entries.len() >= MAX_LIST_LINES {
+                    return Err(format!("% An extended community list holds at most {MAX_LIST_LINES} lines"));
+                }
+                l.entries.push(entry);
+            } else {
+                if d.ext_community_lists.len() >= MAX_EXT_COMMUNITY_LISTS {
+                    return Err(format!("% At most {MAX_EXT_COMMUNITY_LISTS} extended community lists"));
+                }
+                let mut l = ExtCommunityList::new(name, expanded);
+                l.entries.push(entry);
+                d.ext_community_lists.push(l);
+            }
+            Ok(String::new())
+        }
+        Id::NoExtCommunityList => {
+            let words: Vec<&str> = arg(0).split_whitespace().collect();
+            let (expanded, name, rest) = ext_list_head(&words)?;
+            let d = c.dm()?;
+            let at = d.ext_community_lists.iter().position(|l| l.name == name).ok_or_else(|| format!("% No extended community list named {name}"))?;
+            if rest.is_empty() {
+                d.ext_community_lists.remove(at);
+                return Ok(String::new());
+            }
+            let permit = permit_word(rest.first().copied().unwrap_or(""))?;
+            let body: Vec<&str> = rest.get(1..).unwrap_or(&[]).to_vec();
+            let want = if expanded { Vec::new() } else { ext_words(&body)? };
+            let l = d.ext_community_lists.get_mut(at).ok_or("% No such extended community list")?;
+            let before = l.entries.len();
+            l.entries.retain(|e| {
+                let same = if expanded { e.regex == body.join(" ") } else { e.communities == want };
+                !(e.permit == permit && same)
+            });
+            let removed = l.entries.len() != before;
+            d.ext_community_lists.retain(|l| !l.entries.is_empty());
+            if removed { Ok(String::new()) } else { Err(format!("% No such line in extended community list {name}")) }
+        }
+        Id::ShowIpExtCommunityList => show_ext_community_lists(c.d()?, args.first().map(String::as_str)),
+        Id::RmMatchExtCommunity | Id::NoRmMatchExtCommunity => {
+            let add = id == Id::RmMatchExtCommunity;
+            let names = list_names(arg(0), false)?;
+            if add && names.is_empty() {
+                return Err("% Name at least one list".into());
+            }
+            let target = &mut clause(c)?.ext_community_lists;
+            if !add && names.is_empty() {
+                target.clear();
+                return Ok(String::new());
+            }
+            for n in names {
+                if add {
+                    if !target.contains(&n) {
+                        if target.len() >= MAX_MATCH_NAMES {
+                            return Err(format!("% A match line holds at most {MAX_MATCH_NAMES} names"));
+                        }
+                        target.push(n);
+                    }
+                } else {
+                    target.retain(|x| *x != n);
+                }
+            }
+            Ok(String::new())
+        }
+        Id::RmSetExtCommunity => {
+            let mut words: Vec<&str> = arg(0).split_whitespace().collect();
+            let additive = words.last().is_some_and(|w| w.eq_ignore_ascii_case("additive"));
+            if additive {
+                words.pop();
+            }
+            let mut list = ext_words(&words)?;
+            list.sort_unstable();
+            list.dedup();
+            let cl = clause(c)?;
+            cl.sets.ext_community = Some(list);
+            cl.sets.ext_community_additive = additive;
+            Ok(String::new())
+        }
+        Id::NoRmSetExtCommunity => {
+            let cl = clause(c)?;
+            cl.sets.ext_community = None;
+            cl.sets.ext_community_additive = false;
+            Ok(String::new())
+        }
         Id::AsPathListLine => {
             let words: Vec<&str> = arg(0).split_whitespace().collect();
             let name = as_path_name(words.first().copied().unwrap_or(""))?;
@@ -709,6 +903,9 @@ fn show_route_maps(d: &Device, only: Option<&str>) -> R {
             if !c.community_lists.is_empty() {
                 let _ = writeln!(s, "    match community list: {}", c.community_lists.join(", "));
             }
+            if !c.ext_community_lists.is_empty() {
+                let _ = writeln!(s, "    match extended community list: {}", c.ext_community_lists.join(", "));
+            }
             if !c.as_path_lists.is_empty() {
                 let _ = writeln!(s, "    match AS-path list: {}", c.as_path_lists.join(", "));
             }
@@ -725,6 +922,7 @@ fn show_route_maps(d: &Device, only: Option<&str>) -> R {
                 && c.acls.is_empty()
                 && c.metric.is_none()
                 && c.community_lists.is_empty()
+                && c.ext_community_lists.is_empty()
                 && c.as_path_lists.is_empty()
                 && c.tags.is_empty()
             {
@@ -763,6 +961,9 @@ fn set_lines(c: &Clause, new_format: bool) -> Vec<String> {
     if let Some(x) = c.sets.origin {
         v.push(format!("origin {}", origin_word(x)));
     }
+    if let Some(list) = &c.sets.ext_community {
+        v.push(format!("extcommunity {}{}", ext_words_text(list), if c.sets.ext_community_additive { " additive" } else { "" }));
+    }
     if let Some(list) = &c.sets.community {
         if list.is_empty() {
             v.push("community none".to_string());
@@ -790,12 +991,18 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             );
         }
     }
+    for l in &d.ext_community_lists {
+        for e in &l.entries {
+            let _ =
+                writeln!(s, "ip extcommunity-list {} {} {}", if l.expanded { "expanded" } else { "standard" }, l.name, ext_entry_text(e, l.expanded));
+        }
+    }
     for l in &d.as_path_lists {
         for e in &l.entries {
             let _ = writeln!(s, "ip as-path access-list {} {} {}", l.name, if e.permit { "permit" } else { "deny" }, e.regex);
         }
     }
-    if d.bgp_community_new_format || !d.community_lists.is_empty() || !d.as_path_lists.is_empty() {
+    if d.bgp_community_new_format || !d.community_lists.is_empty() || !d.ext_community_lists.is_empty() || !d.as_path_lists.is_empty() {
         let _ = writeln!(s, "!");
     }
     for l in &d.prefix_lists {
@@ -817,6 +1024,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
             }
             if !c.community_lists.is_empty() {
                 let _ = writeln!(s, " match community {}", c.community_lists.join(" "));
+            }
+            if !c.ext_community_lists.is_empty() {
+                let _ = writeln!(s, " match extcommunity {}", c.ext_community_lists.join(" "));
             }
             if !c.as_path_lists.is_empty() {
                 let _ = writeln!(s, " match as-path {}", c.as_path_lists.join(" "));
