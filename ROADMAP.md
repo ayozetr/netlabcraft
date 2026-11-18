@@ -26,7 +26,7 @@ in places: real frames you can open in any packet analyser, an open lab format, 
 | **CCNA 2 student** | **~94%** | estimated (was ~88%: nine lab-book labs run, a real PEAP tunnel and central switching, VRRP timers, CoS) |
 | **CCNA 3 student** | **~91%** | estimated (re-scored from ~90% after OSPF, ACL, NAT, VPN and automation work; was ~84%: seven lab-book labs run, real Diffie-Hellman and IKEv1 ciphers, TLS and SSH under RESTCONF and NETCONF, a fuller controller) |
 | **Instructor** (graded activities) | **~92%** | estimated (re-scored from ~90%: results verified by replay; was ~78%: answer network, assessment tree, initial network, instructions per language, connectivity tests, signed results, locks) |
-| Engine commands | 206 | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
+| Engine commands | 217 | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
 | Console grammar entries | 1341 across 45 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models · sample labs · lab-book labs | 146 · 33 · 48 (+1 unnumbered) | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model and the 8 router cards in `MODULES` not counted), `SAMPLES` in `crates/engine/src/sample.rs`, numbered labs in `docs/labs/` |
 | Tests | 770 | measured: sum of "passed" from the CI run on `main` after the last of the nine M9 merges (`cargo test --workspace --lib --bins --tests`) (unit, console scripts, sample labs and the lab book end to end, the lab book over MCP, UI harness, fuzz of every command); not re-measured since |

@@ -126,7 +126,7 @@ fn furniture_is_resized_by_command_and_one_undo_takes_it_back() {
     s.execute("furniture.mount", json!({"device": a, "furniture": rack, "slot": 6, "units": 2})).unwrap();
     assert!(s.execute("furniture.resize", json!({"furniture": rack})).is_err(), "`size` is required");
     assert!(s.execute("furniture.resize", json!({"furniture": rack, "size": 3})).is_err());
-    assert!(s.execute("furniture.resize", json!({"furniture": rack, "size": 7})).is_err(), "the device ends on unit 8");
+    assert!(s.execute("furniture.resize", json!({"furniture": rack, "size": 6})).is_err(), "the device ends on unit 7");
     s.execute("furniture.resize", json!({"furniture": rack, "size": 20})).unwrap();
     assert_eq!(s.topology.furniture_piece(rack as u32).unwrap().size, 20);
     s.execute("edit.undo", json!({})).unwrap();
