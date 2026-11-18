@@ -207,10 +207,7 @@ fn debug_ntp_reports_the_exchange_and_the_clock() {
     secs(&mut lab, 1);
     let client = lab.run(r2, "show logging");
     assert!(client.contains("NTP debug: answer from 10.0.0.1 (stratum 3)"), "{client}");
-    assert!(
-        client.contains("NTP debug: clock: synchronised with 10.0.0.1") || client.contains("NTP debug: clock appeared: synchronised with 10.0.0.1"),
-        "{client}"
-    );
+    assert!(client.contains("clock changed: not synchronised -> synchronised with 10.0.0.1"), "{client}");
     let server = lab.run(r1, "show logging");
     assert!(server.contains("NTP debug: time request from 10.0.0.2"), "{server}");
 }
