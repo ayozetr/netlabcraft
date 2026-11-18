@@ -472,7 +472,7 @@ pub(super) fn command(c: &mut Ctx<'_>, id: Id, args: &[String]) -> R {
                 .map(|r| r.id)
                 .collect();
             let sv = c.dm()?.pki.server.as_mut().ok_or("% The certificate authority was deleted")?;
-            if sv.revoked.iter().any(|r| *r == hexed) {
+            if sv.revoked.contains(&hexed) {
                 return Err(format!("% Serial {hexed} is already revoked"));
             }
             if sv.revoked.len() >= netlabcraft_model::pki::MAX_REVOKED {
