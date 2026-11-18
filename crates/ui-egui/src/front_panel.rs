@@ -76,7 +76,7 @@ pub(crate) fn show(app: &PacketApp, ui: &mut egui::Ui, dev: &Device) {
     let ink = theme::readable_on(body);
     chassis(&p, dev, rect, body, ink, &tk);
 
-    let sel_id = egui::Id::new(("front_panel_port", dev.id.0));
+    let sel_id = ui.make_persistent_id(("front_panel_port", dev.id.0));
     let mut selected: Option<usize> = ui.data(|d| d.get_temp::<usize>(sel_id)).filter(|i| *i < dev.ports.len());
     // PoE switches: a bar under each port that can give power, lit while it powers a device.
     let poe = netlabcraft_model::poe::budget_mw(dev.catalogue_model()).map(|_| t.power_inline(dev.id));
