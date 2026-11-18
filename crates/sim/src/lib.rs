@@ -64,6 +64,7 @@ pub mod pdu;
 pub mod peap;
 pub mod pki;
 pub mod pppoe;
+pub mod proximity;
 pub mod qos;
 pub mod ravpn;
 
@@ -3329,7 +3330,7 @@ impl Sim {
                     };
                     self.send_ip(t, d, out)
                 }
-                (port, k) if k.is_host() && u.src_port == dns::PORT => {
+                (port, k) if (k.is_host() || matches!(k, DeviceKind::Router | DeviceKind::Switch)) && u.src_port == dns::PORT => {
                     let ans = dns::Dns::decode(&u.payload).map_err(|e| e.to_string())?;
                     let st = self.st(d.id);
                     if st.dns_wait != Some((port, ans.id)) {

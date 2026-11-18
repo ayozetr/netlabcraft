@@ -1,8 +1,8 @@
 # NetLabCraft lab book
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (labs 73 and 74: Python and JavaScript on boards) · also merged with minor (lab 48: Dial-up) · also merged with minor (lab 47: BGP session passwords and a conditional default route) · also merged with minor (lab 45: OSPF stub, NSSA and virtual-link areas) · also merged with minor (lab 46: route tags and BGP peer groups) · earlier: minor (lab 43: PPPoE with routers) · also merged with minor (lab 44: secure a wireless network) · earlier: minor (lab 41: PPPoE client and access concentrator) · earlier: minor (lab 42: BGP route reflectors) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
-Forty-eight hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
-from scratch. Labs 1 to 20, 32, 33 and 36 to 48 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
+> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (lab 49: OSPF authentication rollover, key chains and OSPFv3 with AH) · also merged with minor (labs 73 and 74: Python and JavaScript on boards) · also merged with minor (lab 48: Dial-up) · also merged with minor (lab 47: BGP session passwords and a conditional default route) · also merged with minor (lab 45: OSPF stub, NSSA and virtual-link areas) · also merged with minor (lab 46: route tags and BGP peer groups) · earlier: minor (lab 43: PPPoE with routers) · also merged with minor (lab 44: secure a wireless network) · earlier: minor (lab 41: PPPoE client and access concentrator) · earlier: minor (lab 42: BGP route reflectors) · earlier: minor (BGP communities, aggregation, timers and lab 40) · earlier: minor (lab 38: capture traffic with port mirroring) · earlier: minor (lab 39: redistribute between routing protocols and filter with a distribute list) · earlier: minor (lab 37: filter routes with a prefix list and a route map) · earlier: minor (lab 36: BGP between two autonomous systems) · earlier: minor (four more labs, 32 to 35: EIGRP, IPv6 routing, EtherChannel faults, port-security faults) · earlier: minor (an unnumbered cellular lab, M9.10) · earlier: minor (four more labs, 28 to 31: OSPF authentication, ICMP in ACLs, spanning-tree views, the OSPF database) · earlier: minor (seven troubleshooting labs, 21 to 27) · earlier: major (created: 20 labs over the three CCNA courses) · **Target:** Cisco Packet Tracer 9.0
+Fifty-one hands-on labs over the topics of the three CCNA courses, written for NetLabCraft
+from scratch. Labs 1 to 20, 32, 33 and 36 to 49, 73 and 74 each build one topic; labs 21 to 29, 34 and 35 are troubleshooting labs: they
 build a working network, break it with commands, and walk the symptoms, the `show` commands
 that tell the faults apart, and the repairs; labs 30 and 31 are inspection labs that teach
 reading a protocol's own views (spanning-tree roles and states, the OSPF database), the second
@@ -13,7 +13,7 @@ command to type, and what to check with which command.
 Every lab is also a script: its `lab`, `console` and `verify` blocks are run end to end, as
 written, by `crates/engine/tests/lab_book.rs` (straight through the engine) and, for several
 labs, by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` (through `netlabcraft-cli mcp`, the way an
-agent drives it; 16 of the 48). A lab that passes there works when typed by hand.
+agent drives it; 16 of the 49). A lab that passes there works when typed by hand.
 
 ## How to read a lab
 
@@ -85,6 +85,7 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 46 | [Route tags and BGP peer groups](46-route-tags-and-bgp-peer-groups.md) | CCNA 3 follow-up | `ip route … tag`, `show ip route tag`, tags in OSPF external LSAs, `match tag` and `set tag`, `redistribute … tag`, `neighbor NAME peer-group`, members that keep their own settings, `show ip bgp peer-group` |
 | 47 | [BGP session passwords and a conditional default route](47-bgp-passwords-and-conditional-default.md) | CCNA 3 follow-up | `neighbor … password` (TCP MD5), why a mismatch leaves a session in Active, what the console shows of a password, `service password-encryption`, `neighbor … default-originate`, `default-originate route-map`, a default route that follows a prefix list |
 | 48 | [Dial-up: a modem, the telephone network and an access server](48-dial-up.md) | CCNA 3 follow-up | `cloud.number`, `modem inout` with a `bba-group` and a virtual template, `dialup.connect` and `dialup.disconnect`, a busy line, a missing number, a wrong password, a line that stops answering |
+| 49 | [OSPF authentication: rolling a key over, key chains and OSPFv3 with AH](49-ospf-authentication-rollover-key-chains-ospfv3-ah.md) | CCNA 3 follow-up | `ip ospf message-digest-key` rollover, `key chain` with `send-lifetime` and `accept-lifetime`, `ip ospf authentication key-chain`, `show key chain`, `clock set`, `ospfv3 authentication ipsec spi`, `show ipv6 ospf neighbor` |
 | 73 | [Python on a single-board computer](73-python-on-a-board.md) | IoT follow-up | the board's language, `analogRead`, `digitalWrite`, `time.sleep` in simulated time, `print`, run-time errors with their line, the step cap |
 | 74 | [JavaScript on a microcontroller board](74-javascript-on-a-microcontroller.md) | IoT follow-up | a `loop` function the board calls again and again, `delay`, `console.log`, template literals, the subset's limits |
 
@@ -110,6 +111,7 @@ A failing step names its line in the lab's Markdown.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-18 | minor | Lab 49 (OSPF authentication: rolling a key over, key chains and OSPFv3 with AH) joins the book: 49 labs. |
 | 2026-11-16 | minor | Lab 48 (Dial-up) joins the book: 48 labs. |
 | 2026-11-16 | minor | Lab 47 (BGP session passwords and a conditional default route) joins the book: 47 labs. |
 | 2026-11-16 | minor | Lab 45 (OSPF stub, NSSA and virtual-link areas) joins the book: 46 labs. |

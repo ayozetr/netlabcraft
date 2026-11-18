@@ -2829,6 +2829,47 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             d.access.users.retain(|u| u.name != arg(0));
             if d.access.users.len() == before { Err(format!("% No user {}", arg(0))) } else { Ok(String::new()) }
         }
+        Id::IpHost => {
+            let name: String = arg(0).chars().filter(|ch| !ch.is_control()).take(64).collect();
+            if name.is_empty() || name.parse::<std::net::Ipv4Addr>().is_ok() {
+                return Err("% A host name is a word that is not an address".into());
+            }
+            let a = parse_ip(arg(1)).map_err(|e| format!("% {e}"))?;
+            let d = c.dm()?;
+            d.access.hosts.retain(|(n, _)| !n.eq_ignore_ascii_case(&name));
+            if d.access.hosts.len() >= 64 {
+                return Err("% At most 64 host names".into());
+            }
+            d.access.hosts.push((name, a));
+            Ok(String::new())
+        }
+        Id::NoIpHost => {
+            let d = c.dm()?;
+            let before = d.access.hosts.len();
+            d.access.hosts.retain(|(n, _)| !n.eq_ignore_ascii_case(arg(0)));
+            if d.access.hosts.len() == before { Err(format!("% No host named {}", arg(0))) } else { Ok(String::new()) }
+        }
+        Id::IpNameServer | Id::NoIpNameServer => {
+            let mut given = Vec::new();
+            for w in arg(0).split_whitespace().take(6) {
+                given.push(parse_ip(w).map_err(|e| format!("% {e}"))?);
+            }
+            let d = c.dm()?;
+            if spec.id == Id::IpNameServer {
+                for a in given {
+                    if !d.access.name_servers.contains(&a) {
+                        d.access.name_servers.push(a);
+                    }
+                }
+                d.access.name_servers.truncate(6);
+            } else if given.is_empty() {
+                d.access.name_servers.clear();
+            } else {
+                d.access.name_servers.retain(|a| !given.contains(a));
+            }
+            d.dns = d.access.name_servers.first().copied();
+            Ok(String::new())
+        }
         Id::DomainName | Id::NoDomainName => {
             let v = (spec.id == Id::DomainName).then(|| arg(0).chars().take(64).collect::<String>());
             c.dm()?.access.domain_name = v;
@@ -3130,14 +3171,30 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
-        Id::Ipv6DhcpServer | Id::NoIpv6DhcpServer | Id::NdManaged | Id::NoNdManaged | Id::NdOther | Id::NoNdOther => {
+        Id::Ipv6DhcpServer
+        | Id::NoIpv6DhcpServer
+        | Id::NdManaged
+        | Id::NoNdManaged
+        | Id::NdOther
+        | Id::NoNdOther
+        | Id::NdSuppress
+        | Id::NoNdSuppress
+        | Id::NdRaLifetime
+        | Id::NoNdRaLifetime => {
             let id = spec.id;
             let pool = arg(0).to_string();
+            let lifetime = if id == Id::NdRaLifetime {
+                Some(arg(0).parse::<u16>().ok().filter(|n| *n <= 9_000).ok_or("% The router lifetime is 0-9000 seconds")?)
+            } else {
+                None
+            };
             c.each_v6(|v6, _, _| {
                 match id {
                     Id::Ipv6DhcpServer => v6.dhcp_server = Some(pool.clone()),
                     Id::NoIpv6DhcpServer => v6.dhcp_server = None,
                     Id::NdManaged | Id::NoNdManaged => v6.nd_managed = id == Id::NdManaged,
+                    Id::NdSuppress | Id::NoNdSuppress => v6.nd_suppress = id == Id::NdSuppress,
+                    Id::NdRaLifetime | Id::NoNdRaLifetime => v6.nd_ra_lifetime = lifetime,
                     _ => v6.nd_other = id == Id::NdOther,
                 }
                 Ok(())
@@ -3514,11 +3571,23 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         }),
         Id::ShowHosts => {
             let a = &c.d()?.access;
-            Ok(format!(
-                "Default domain: {}\nName lookup: {}",
+            let servers = if a.name_servers.is_empty() {
+                "no name servers set".to_string()
+            } else {
+                format!("name servers {}", a.name_servers.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "))
+            };
+            let mut s = format!(
+                "Default domain: {}\nName lookup: {} ({servers})",
                 a.domain_name.clone().unwrap_or_else(|| "not set".into()),
-                if a.no_domain_lookup { "off (no ip domain-lookup)" } else { "on (no name servers set)" }
-            ))
+                if a.no_domain_lookup { "off (no ip domain-lookup)" } else { "on" },
+            );
+            if !a.hosts.is_empty() {
+                s.push_str(&format!("\n\n{:<24} {}", "Host", "Address"));
+                for (n, ip) in &a.hosts {
+                    s.push_str(&format!("\n{n:<24} {ip} (static)"));
+                }
+            }
+            Ok(s)
         }
         Id::NatSideCmd | Id::NoNatSide => {
             let side = match arg(0).to_ascii_lowercase().as_str() {
@@ -5545,7 +5614,35 @@ impl Ctx<'_> {
         Ok(render::ping(dst.into(), &probes, opts))
     }
 
+    /// A name typed where an address goes: the device's own host table first, then its DNS server.
+    /// Returns the address as text and the line that says how the name was resolved.
+    fn name_to_address(&mut self, target: &str) -> Result<(String, String), String> {
+        let t = target.trim();
+        if t.parse::<std::net::IpAddr>().is_ok() || !t.chars().any(|ch| ch.is_ascii_alphabetic()) {
+            return Ok((t.to_string(), String::new()));
+        }
+        let d = self.d()?;
+        if let Some((_, a)) = d.access.hosts.iter().find(|(n, _)| n.eq_ignore_ascii_case(t)) {
+            return Ok((a.to_string(), format!("Translating \"{t}\"...static [OK]\n")));
+        }
+        let (Some(server), false) = (d.dns, d.access.no_domain_lookup) else {
+            return Err("% Unrecognized host or address, or protocol not running.".into());
+        };
+        let name = match &d.access.domain_name {
+            Some(dn) if !t.contains('.') => format!("{t}.{dn}"),
+            _ => t.to_string(),
+        };
+        let a = self.sim.dns_resolve(self.t, self.dev, &name).map_err(|e| format!("% {e}"))?;
+        Ok((a.to_string(), format!("Translating \"{t}\"...domain server ({server}) [OK]\n")))
+    }
+
     fn ping(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
+        let (target, said) = self.name_to_address(target)?;
+        let out = self.ping_address(&target, count, data)?;
+        Ok(format!("{said}{out}"))
+    }
+
+    fn ping_address(&mut self, target: &str, count: u16, data: Option<usize>) -> R {
         let mut opts = PingOptions { count, ..PingOptions::default() };
         if let Some(n) = data {
             opts.size = n;
@@ -5560,6 +5657,12 @@ impl Ctx<'_> {
     }
 
     fn traceroute(&mut self, target: &str) -> R {
+        let (target, said) = self.name_to_address(target)?;
+        let out = self.traceroute_address(&target)?;
+        Ok(format!("{said}{out}"))
+    }
+
+    fn traceroute_address(&mut self, target: &str) -> R {
         if let Ok(dst6) = target.parse::<std::net::Ipv6Addr>() {
             let hops = self.sim.traceroute6(self.t, self.dev, dst6, 30, 2_000_000).map_err(|e| format!("% {e}"))?;
             return Ok(render::traceroute(dst6.into(), &hops));
