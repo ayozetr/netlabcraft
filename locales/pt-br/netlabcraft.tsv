@@ -1894,6 +1894,16 @@ event	write request for	requisição de escrita de
 	Rename	Renomear
 	Name:	Nome:
 	{}, {} units	{}, {} unidades
+	Turn to the Front	Girar para a frente
+	Turn to the Back	Girar para trás
+	Loose Devices	Dispositivos soltos
+	As a Grid	Em grade
+	As a List	Em lista
+	Width in cells ({} to {}):	Largura em células ({} a {}):
+	Depth in cells ({} to {}):	Profundidade em células ({} a {}):
+	{}, {} by {} cells	{}, {} por {} células
+	{}, rear view	{}, vista traseira
+	{} (rear)	{} (traseira)
 	{}, {} levels	{}, {} níveis
 	{}, on {}	{}, em {}
 	Rack	Rack

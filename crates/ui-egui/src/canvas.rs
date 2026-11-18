@@ -425,33 +425,54 @@ pub fn note_editor(app: &mut PacketApp, ctx: &egui::Context) {
     }
 }
 
-/// The IoT custom cable under the pointer: its board and pin.
-fn hit_wire(app: &PacketApp, view: &View, p: Pos2) -> Option<(DeviceId, String)> {
+/// The IoT custom cable under the pointer.
+fn hit_wire(app: &PacketApp, view: &View, p: Pos2) -> Option<CableRef> {
     let t = &app.session.topology;
     t.devices.iter().filter(|b| view.visible(b.id)).find_map(|b| {
         b.board.wires.iter().filter(|w| view.visible(w.thing)).find_map(|w| {
             let th = t.device(w.thing)?;
-            (segment_distance(p, view.screen(b.x, b.y), view.screen(th.x, th.y)) < 6.0).then(|| (b.id, w.pin.clone()))
+            (segment_distance(p, view.screen(b.x, b.y), view.screen(th.x, th.y)) < 6.0).then_some(CableRef::Pin { board: b.id, thing: w.thing })
         })
     })
 }
 
-/// The console cable under the pointer: the PC at its RS-232 end.
-fn hit_console(app: &PacketApp, view: &View, p: Pos2) -> Option<DeviceId> {
+/// The console or USB cable under the pointer.
+fn hit_console(app: &PacketApp, view: &View, p: Pos2) -> Option<CableRef> {
     let t = &app.session.topology;
     t.consoles.iter().filter(|c| view.visible(c.pc) && view.visible(c.device)).find_map(|c| {
         let (a, b) = (t.device(c.pc)?, t.device(c.device)?);
-        (segment_distance(p, view.screen(a.x, a.y), view.screen(b.x, b.y)) < 6.0).then_some(c.pc)
+        (segment_distance(p, view.screen(a.x, a.y), view.screen(b.x, b.y)) < 6.0).then_some(CableRef::Console(c.device))
     })
 }
 
-/// The octal cable under the pointer: the device at its Console end.
-fn hit_octal(app: &PacketApp, view: &View, p: Pos2) -> Option<DeviceId> {
+/// The octal cable under the pointer.
+fn hit_octal(app: &PacketApp, view: &View, p: Pos2) -> Option<CableRef> {
     let t = &app.session.topology;
     t.octals.iter().filter(|o| view.visible(o.router) && view.visible(o.device)).find_map(|o| {
         let (a, b) = (t.device(o.router)?, t.device(o.device)?);
-        (segment_distance(p, view.screen(a.x, a.y), view.screen(b.x, b.y)) < 6.0).then_some(o.device)
+        (segment_distance(p, view.screen(a.x, a.y), view.screen(b.x, b.y)) < 6.0).then_some(CableRef::Octal(o.device))
     })
+}
+
+/// The cable of any kind under the pointer: a network cable first, then console and USB, octal
+/// and IoT custom cables.
+fn hit_cable(app: &PacketApp, view: &View, p: Pos2) -> Option<CableRef> {
+    hit_link(app, view, p)
+        .map(CableRef::Link)
+        .or_else(|| hit_console(app, view, p))
+        .or_else(|| hit_octal(app, view, p))
+        .or_else(|| hit_wire(app, view, p))
+}
+
+/// Where a cable of any kind is drawn: a network cable's own line, or the line between the
+/// devices a console, USB, octal or IoT custom cable joins.
+fn cable_segment(t: &netlabcraft_model::Topology, view: &View, r: CableRef) -> Option<(Pos2, Pos2)> {
+    if let CableRef::Link(end) = r {
+        return cable_ends(t, view, t.link_at(end)?);
+    }
+    let info = t.cable_info(r)?;
+    let (a, b) = (t.device(info.a)?, t.device(info.b)?);
+    Some((view.screen(a.x, a.y), view.screen(b.x, b.y)))
 }
 
 fn hit_link(app: &PacketApp, view: &View, p: Pos2) -> Option<End> {
@@ -1318,17 +1339,23 @@ fn device_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
     }
 }
 
-/// The widget id of a cable's accessible node: a port holds one cable, so its first end names it.
-fn cable_node_id(e: End) -> egui::Id {
-    egui::Id::unique(("canvas-cable", e.device.0, e.port))
+/// The widget id of a cable's accessible node: the cable's name is unique to it.
+fn cable_node_id(r: CableRef) -> egui::Id {
+    egui::Id::unique(("canvas-cable", r))
 }
 
 /// What a screen reader says about a cable: its kind and the two ports it joins, `Cable, kind, A port - B port`.
-fn cable_label(t: &netlabcraft_model::Topology, l: &netlabcraft_model::Link) -> String {
-    let end = |e: End| {
-        t.device(e.device).map_or(String::new(), |d| format!("{} {}", d.display_name(), d.ports.get(e.port).map_or("", |p| p.name.as_str())))
-    };
-    format!("{}, {}, {} - {}", tl("Cable"), crate::i18n::tr(t.resolved_cable(l).label()), end(l.a), end(l.b))
+fn cable_label(t: &netlabcraft_model::Topology, r: CableRef) -> Option<String> {
+    let info = t.cable_info(r)?;
+    if let CableRef::Link(end) = r {
+        // A network cable names its ends by what the workspace shows under each icon.
+        let end_name = |e: End| {
+            t.device(e.device).map_or(String::new(), |d| format!("{} {}", d.display_name(), d.ports.get(e.port).map_or("", |p| p.name.as_str())))
+        };
+        let l = t.link_at(end)?;
+        return Some(format!("{}, {}, {} - {}", tl("Cable"), crate::i18n::tr(t.resolved_cable(l).label()), end_name(l.a), end_name(l.b)));
+    }
+    Some(format!("{}, {}, {} - {}", tl("Cable"), crate::i18n::tr(info.kind.label()), info.a_label, info.b_label))
 }
 
 /// Registers each cable shown in this view as a focusable, labelled node, like the devices: Tab
@@ -1346,13 +1373,16 @@ fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
         labels: app.ui.prefs.labels(),
     };
     let t = &app.session.topology;
-    let mut cables: Vec<(End, Rect, String)> = t
-        .links
-        .iter()
-        .filter(|l| view.visible(l.a.device) && view.visible(l.b.device))
-        .filter_map(|l| cable_ends(t, &view, l).map(|(pa, pb)| (l.a, Rect::from_two_pos(pa, pb).expand(6.0), cable_label(t, l))))
+    let mut cables: Vec<(CableRef, Rect, String)> = t
+        .cable_refs()
+        .into_iter()
+        .filter(|r| t.cable_info(*r).is_some_and(|i| view.visible(i.a) && view.visible(i.b)))
+        .filter_map(|r| {
+            let (pa, pb) = cable_segment(t, &view, r)?;
+            Some((r, Rect::from_two_pos(pa, pb).expand(6.0), cable_label(t, r)?))
+        })
         .collect();
-    cables.sort_by_key(|(e, ..)| (e.device.0, e.port));
+    cables.sort_by_key(|(r, ..)| *r);
     let mut focused = None;
     let mut open = None;
     for (i, (end, rect, label)) in cables.iter().enumerate() {
@@ -1362,7 +1392,7 @@ fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
             open = Some((*end, label.clone()));
         }
         if r.has_focus() {
-            focused = Some(CableRef::Link(*end));
+            focused = Some(*end);
             // The arrows step between cables (in port order), not egui's spatial focus move.
             ui.memory_mut(|m| {
                 m.set_focus_lock_filter(r.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
@@ -1382,14 +1412,14 @@ fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
             };
             if let Some((to, ..)) = target {
                 ui.memory_mut(|m| m.request_focus(cable_node_id(*to)));
-                focused = Some(CableRef::Link(*to));
+                focused = Some(*to);
             }
         }
     }
     app.ui.cable_focus = focused;
     if let Some((end, label)) = open {
         app.ui.selected = None;
-        crate::cable_window::open(app, end);
+        crate::cable_window::open_ref(app, end);
         app.ui.status = Some((label, false));
     }
 }
@@ -1399,10 +1429,8 @@ fn draw_cable_focus(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &
     let t = &app.session.topology;
     // The cable under the pointer is lit lightly, the picked one and the focused one strongly.
     for (end, strength) in [(app.ui.hover_cable, 0.25), (app.ui.selected_cable, 0.45), (app.ui.cable_focus, 0.45)] {
-        let Some(CableRef::Link(end)) = end else { continue };
-        if let Some(l) = t.links.iter().find(|l| l.a == end)
-            && let Some((pa, pb)) = cable_ends(t, view, l)
-        {
+        let Some(r) = end else { continue };
+        if let Some((pa, pb)) = cable_segment(t, view, r) {
             painter.line_segment([pa, pb], Stroke::new((6.0 * view.zoom).max(4.0), tk.selection.gamma_multiply(strength)));
         }
     }
@@ -1411,7 +1439,7 @@ fn draw_cable_focus(app: &PacketApp, painter: &egui::Painter, view: &View, tk: &
 fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
     // The cable under the pointer (not when a device is there), for the hover highlight.
     app.ui.hover_cable = if matches!(app.ui.tool, Tool::Select | Tool::Delete) {
-        resp.hover_pos().filter(|p| hit_device(app, view, *p).is_none()).and_then(|p| hit_link(app, view, p)).map(CableRef::Link)
+        resp.hover_pos().filter(|p| hit_device(app, view, *p).is_none()).and_then(|p| hit_cable(app, view, p))
     } else {
         None
     };
@@ -1665,9 +1693,9 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 app.ui.canvas.context_cluster = Some(cl);
             } else if let Some(n) = hit_note(app, view, p) {
                 app.ui.canvas.context_note = Some(n);
-            } else if let Some(end) = hit_link(app, view, p) {
-                app.ui.canvas.context_cable = Some(CableRef::Link(end));
-                crate::cable_window::select(app, end);
+            } else if let Some(r) = hit_cable(app, view, p) {
+                app.ui.canvas.context_cable = Some(r);
+                app.ui.selected_cable = Some(r);
             }
         }
     }
@@ -1677,8 +1705,8 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
         resp.context_menu(|ui| cluster_menu(app, ui, c));
     } else if let Some(n) = app.ui.canvas.context_note {
         resp.context_menu(|ui| note_menu(app, ui, n));
-    } else if let Some(CableRef::Link(e)) = app.ui.canvas.context_cable {
-        resp.context_menu(|ui| cable_menu(app, ui, e));
+    } else if let Some(r) = app.ui.canvas.context_cable {
+        resp.context_menu(|ui| cable_menu(app, ui, r));
     }
 
     // A tile dragged from the device box and released over the workspace.
@@ -1727,9 +1755,9 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
             {
                 app.ui.selected_note = Some(n);
             } else if hit_note(app, view, p).is_none()
-                && let Some(end) = hit_link(app, view, p)
+                && let Some(r) = hit_cable(app, view, p)
             {
-                crate::cable_window::select(app, end);
+                app.ui.selected_cable = Some(r);
             }
         }
         Tool::Draw(_) => {}
@@ -1798,29 +1826,21 @@ fn interact(app: &mut PacketApp, ui: &Ui, resp: &egui::Response, view: &View) {
                 app.ui.picked_clusters.remove(&c);
             } else if let Some(n) = hit_note(app, view, p) {
                 app.run("note.remove", json!({"id": n}));
-            } else if let Some(end) = hit_link(app, view, p) {
-                crate::cable_window::delete(app, end);
-            } else if let Some(pc) = hit_console(app, view, p) {
-                app.run("link.remove", json!({"device": pc.0, "port": netlabcraft_model::cable::RS232_PORT}));
-            } else if let Some(dev) = hit_octal(app, view, p) {
-                app.run("link.remove", json!({"device": dev.0, "port": netlabcraft_model::cable::CONSOLE_PORT}));
-            } else if let Some((board, pin)) = hit_wire(app, view, p) {
-                app.run("link.remove", json!({"device": board.0, "port": pin}));
+            } else if let Some(r) = hit_cable(app, view, p) {
+                crate::cable_window::delete_ref(app, r);
             }
         }
     }
 }
 
 /// A cable's right-click menu: Properties, the devices at its ends, its length and Delete.
-fn cable_menu(app: &mut PacketApp, ui: &mut Ui, end: End) {
-    let Some(title) =
-        app.session.topology.link_at(end).map(|l| format!("{} - {}", app.session.topology.end_label(l.a), app.session.topology.end_label(l.b)))
-    else {
+fn cable_menu(app: &mut PacketApp, ui: &mut Ui, r: CableRef) {
+    let Some(title) = app.session.topology.cable_info(r).map(|i| format!("{} - {}", i.a_label, i.b_label)) else {
         ui.close();
         return;
     };
     ui.label(egui::RichText::new(title).strong());
-    crate::cable_window::menu_items(app, ui, end, false);
+    crate::cable_window::menu_items(app, ui, r, false);
 }
 
 /// A cluster's right-click menu.

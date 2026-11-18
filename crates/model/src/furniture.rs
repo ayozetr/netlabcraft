@@ -36,6 +36,12 @@ pub const MAX_ITEM_UNITS: u32 = 4;
 pub const SHELF_CAPACITY: usize = 4;
 /// Items a table holds.
 pub const TABLE_CAPACITY: usize = 8;
+/// A table's width in cells as made, and its depth in rows of cells.
+pub const TABLE_COLS: u32 = 4;
+pub const TABLE_ROWS: u32 = 2;
+/// The widths (cells in a row) and depths (rows) a table may be set to.
+pub const TABLE_WIDTH_RANGE: (u32, u32) = (2, 8);
+pub const TABLE_DEPTH_RANGE: (u32, u32) = (1, 6);
 /// Hooks in a row of a cable pegboard.
 pub const PEGS_PER_ROW: u32 = 6;
 /// Most cables hung on pegboards in a lab.
@@ -173,6 +179,36 @@ pub struct Furniture {
     /// Rack units or shelf levels.
     #[serde(default)]
     pub size: u32,
+    /// A table's width in cells (0: as made, [`TABLE_COLS`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub width: u32,
+    /// A table's depth in rows of cells (0: as made, [`TABLE_ROWS`]).
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub depth: u32,
+    /// A rack turned around: its back faces the viewer.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub back: bool,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl Furniture {
+    /// A table's cells to a row.
+    pub fn table_cols(&self) -> u32 {
+        if self.width == 0 { TABLE_COLS } else { self.width }
+    }
+
+    /// A table's rows of cells.
+    pub fn table_rows(&self) -> u32 {
+        if self.depth == 0 { TABLE_ROWS } else { self.depth }
+    }
+
+    /// How many items a table holds.
+    pub fn table_capacity(&self) -> usize {
+        (self.table_cols() as usize).saturating_mul(self.table_rows() as usize)
+    }
 }
 
 /// A passive device.
@@ -453,7 +489,7 @@ fn check_slot(f: &Furniture, others: &[Mount], slot: u32, units: u32) -> Result<
             if slot != 0 || units != 1 {
                 return bad("a table has one place to stand things".into());
             }
-            if others.len() >= TABLE_CAPACITY {
+            if others.len() >= f.table_capacity() {
                 return bad(format!("{} is full", f.name));
             }
         }
@@ -542,7 +578,7 @@ impl Topology {
         let id = self.physical.furniture.iter().map(|f| f.id).max().unwrap_or(0).saturating_add(1);
         let n = self.physical.furniture.iter().filter(|f| f.kind == kind).count();
         let name = name.and_then(clean_name).unwrap_or_else(|| format!("{}{n}", kind.label()));
-        self.physical.furniture.push(Furniture { id, place, kind, name, x: finite(x), y: finite(y), size });
+        self.physical.furniture.push(Furniture { id, place, kind, name, x: finite(x), y: finite(y), size, width: 0, depth: 0, back: false });
         Ok(id)
     }
 
@@ -580,6 +616,62 @@ impl Topology {
             return Err(ModelError::Invalid(format!("{} stands at {at}: take it off or move it up first", self.item_name(m.item))));
         }
         self.furniture_mut(id)?.size = size;
+        Ok(())
+    }
+
+    /// Gives a table another width (cells in a row) and depth (rows). Refused when more items
+    /// stand on it than the new table holds (take some off first).
+    pub fn resize_table(&mut self, id: u32, width: Option<u32>, depth: Option<u32>) -> Result<()> {
+        let f = self.furniture_piece(id).cloned().ok_or_else(|| ModelError::Invalid(format!("no furniture {id}")))?;
+        if f.kind != FurnitureKind::Table {
+            return Err(ModelError::Invalid("only a table has a width and a depth".into()));
+        }
+        if width.is_none() && depth.is_none() {
+            return Err(ModelError::Invalid("a width or a depth is required".into()));
+        }
+        let (w, d) = (width.unwrap_or(f.table_cols()), depth.unwrap_or(f.table_rows()));
+        let ((wlo, whi), (dlo, dhi)) = (TABLE_WIDTH_RANGE, TABLE_DEPTH_RANGE);
+        if !(wlo..=whi).contains(&w) {
+            return Err(ModelError::Invalid(format!("a table is {wlo} to {whi} cells wide")));
+        }
+        if !(dlo..=dhi).contains(&d) {
+            return Err(ModelError::Invalid(format!("a table is {dlo} to {dhi} cells deep")));
+        }
+        let held = self.mounts_on(id).len();
+        if held > (w as usize).saturating_mul(d as usize) {
+            return Err(ModelError::Invalid(format!("{held} items stand on {}: take some off first", f.name)));
+        }
+        let t = self.furniture_mut(id)?;
+        t.width = if w == TABLE_COLS { 0 } else { w };
+        t.depth = if d == TABLE_ROWS { 0 } else { d };
+        Ok(())
+    }
+
+    /// Turns a rack around (`back`) or to its front again; none flips it. Returns whether its
+    /// back faces the viewer now. Only a rack has a back.
+    pub fn turn_furniture(&mut self, id: u32, back: Option<bool>) -> Result<bool> {
+        let f = self.furniture_mut(id)?;
+        if f.kind != FurnitureKind::Rack {
+            return Err(ModelError::Invalid("only a rack can be turned around".into()));
+        }
+        f.back = back.unwrap_or(!f.back);
+        Ok(f.back)
+    }
+
+    /// Whether the loose items of a closet are laid out as a list (one to a row) rather than a grid.
+    pub fn floor_is_list(&self, place: u32) -> bool {
+        self.physical.floor_lists.contains(&place)
+    }
+
+    /// Lays the loose items of a closet out as a list or as a grid.
+    pub fn set_floor_list(&mut self, place: u32, list: bool) -> Result<()> {
+        self.closet_of(place)?;
+        self.materialize_places();
+        self.physical.floor_lists.retain(|p| *p != place);
+        if list {
+            self.physical.floor_lists.push(place);
+            self.physical.floor_lists.sort_unstable();
+        }
         Ok(())
     }
 
@@ -1132,6 +1224,7 @@ impl Topology {
     pub(crate) fn prune_furniture(&mut self) {
         let closets = self.closet_ids();
         self.physical.furniture.retain(|f| closets.contains(&f.place));
+        self.physical.floor_lists.retain(|p| closets.contains(p));
         self.physical.fittings.retain(|f| closets.contains(&f.place));
         let mounts: Vec<Mount> =
             self.physical.mounts.iter().filter(|m| self.item_exists(m.item) && self.furniture_piece(m.furniture).is_some()).copied().collect();
@@ -1172,7 +1265,22 @@ impl Topology {
             f.y = finite(f.y);
             let (lo, hi) = f.kind.size_range();
             f.size = f.size.clamp(lo, hi);
+            if f.kind == FurnitureKind::Table {
+                if f.width != 0 {
+                    f.width = f.width.clamp(TABLE_WIDTH_RANGE.0, TABLE_WIDTH_RANGE.1);
+                }
+                if f.depth != 0 {
+                    f.depth = f.depth.clamp(TABLE_DEPTH_RANGE.0, TABLE_DEPTH_RANGE.1);
+                }
+            } else {
+                f.width = 0;
+                f.depth = 0;
+            }
+            f.back = f.back && f.kind == FurnitureKind::Rack;
         }
+        ph.floor_lists.retain(|p| closets.contains(p));
+        ph.floor_lists.sort_unstable();
+        ph.floor_lists.dedup();
         ph.fittings.truncate(MAX_FITTINGS);
         let mut seen = BTreeSet::new();
         ph.fittings.retain(|f| closets.contains(&f.place) && seen.insert(f.id));
@@ -1252,6 +1360,8 @@ pub const SHELF_W: f32 = 800.0;
 pub const SHELF_LEVEL_H: f32 = 110.0;
 /// What an item on a shelf or a table is as wide as, with its gap.
 pub const CELL_W: f32 = 190.0;
+/// The room a table keeps around its cells (so a table of the default width is [`SHELF_W`] wide).
+pub const TABLE_MARGIN: f32 = 40.0;
 /// A row of hooks on a cable pegboard.
 pub const PEG_ROW_H: f32 = 70.0;
 /// The name bar at the top of a piece of furniture, and the foot below.
@@ -1260,6 +1370,8 @@ pub const FRAME_FOOT: f32 = 14.0;
 /// An item standing loose on the closet floor.
 pub const FLOOR_CELL_W: f32 = 260.0;
 pub const FLOOR_CELL_H: f32 = 104.0;
+/// An item standing loose on the floor of a closet laid out as a list.
+pub const FLOOR_LIST_W: f32 = 520.0;
 /// Loose items to a row of the floor.
 pub const FLOOR_COLUMNS: usize = 3;
 
@@ -1271,7 +1383,9 @@ impl Furniture {
             FurnitureKind::Rack | FurnitureKind::ControlPanel => (RACK_W, FRAME_HEAD + levels * RACK_UNIT_H + FRAME_FOOT),
             FurnitureKind::CablePegboard => (SHELF_W, FRAME_HEAD + levels * PEG_ROW_H + FRAME_FOOT),
             FurnitureKind::Shelf | FurnitureKind::InventoryShelf => (SHELF_W, FRAME_HEAD + levels * SHELF_LEVEL_H + FRAME_FOOT),
-            FurnitureKind::Table => (SHELF_W, FRAME_HEAD + 2.0 * SHELF_LEVEL_H + FRAME_FOOT),
+            FurnitureKind::Table => {
+                (TABLE_MARGIN + self.table_cols() as f32 * CELL_W, FRAME_HEAD + self.table_rows() as f32 * SHELF_LEVEL_H + FRAME_FOOT)
+            }
         }
     }
 
@@ -1384,7 +1498,8 @@ impl Topology {
                         let n = count.entry(0).or_insert(0);
                         let k = *n;
                         *n += 1;
-                        Cell { x: f.x + 20.0 + (k % 4) as f32 * CELL_W, y: top + (k / 4) as f32 * SHELF_LEVEL_H, w: CELL_W, h: SHELF_LEVEL_H }
+                        let cols = if f.kind == FurnitureKind::Table { f.table_cols() as usize } else { 4 };
+                        Cell { x: f.x + 20.0 + (k % cols) as f32 * CELL_W, y: top + (k / cols) as f32 * SHELF_LEVEL_H, w: CELL_W, h: SHELF_LEVEL_H }
                     }
                 };
                 items.push(Placed { item: m.item, cell, furniture: Some(f.id) });
@@ -1396,13 +1511,10 @@ impl Topology {
         loose.sort();
         loose.extend(self.fittings_in(place).iter().map(|f| Item::Fitting(f.id)));
         let loose = loose.into_iter().filter(|i| self.mount_of(*i).is_none());
+        // A list is one item to a row, each as wide as three cells of the grid.
+        let (columns, cell_w) = if self.floor_is_list(place) { (1, FLOOR_LIST_W) } else { (FLOOR_COLUMNS, FLOOR_CELL_W) };
         for (i, item) in loose.enumerate() {
-            let cell = Cell {
-                x: 20.0 + (i % FLOOR_COLUMNS) as f32 * FLOOR_CELL_W,
-                y: floor_y + (i / FLOOR_COLUMNS) as f32 * FLOOR_CELL_H,
-                w: FLOOR_CELL_W,
-                h: FLOOR_CELL_H,
-            };
+            let cell = Cell { x: 20.0 + (i % columns) as f32 * cell_w, y: floor_y + (i / columns) as f32 * FLOOR_CELL_H, w: cell_w, h: FLOOR_CELL_H };
             items.push(Placed { item, cell, furniture: None });
         }
         ClosetLayout { frames, items }
@@ -1880,5 +1992,105 @@ mod tests {
         assert_eq!(file::from_json(&file::to_json(&t).unwrap()).unwrap().working_closet(), Some(c2));
         t.remove_place(c2).unwrap();
         assert_eq!(t.working_closet(), Some(DEFAULT_CLOSET), "it falls back when the marked closet is gone");
+    }
+
+    #[test]
+    fn a_table_is_resized_in_cells_and_never_under_what_stands_on_it() {
+        let (mut t, a, b, c) = lab();
+        let tb = t.add_furniture(FurnitureKind::Table, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        let f = t.furniture_piece(tb).unwrap();
+        assert_eq!((f.table_cols(), f.table_rows(), f.table_capacity()), (TABLE_COLS, TABLE_ROWS, TABLE_CAPACITY));
+        assert_eq!(f.dims().0, SHELF_W, "a table as made is as wide as it always was");
+        t.resize_table(tb, Some(6), Some(3)).unwrap();
+        let f = t.furniture_piece(tb).unwrap();
+        assert_eq!((f.width, f.depth, f.table_capacity()), (6, 3, 18));
+        assert_eq!(f.dims(), (TABLE_MARGIN + 6.0 * CELL_W, FRAME_HEAD + 3.0 * SHELF_LEVEL_H + FRAME_FOOT));
+        // Only the width: the depth stays.
+        t.resize_table(tb, Some(2), None).unwrap();
+        assert_eq!(t.furniture_piece(tb).unwrap().table_rows(), 3);
+        for d in [a, b, c] {
+            t.mount_item(Item::Device(d), tb, None, None).unwrap();
+        }
+        let cells = t.closet_layout(DEFAULT_CLOSET);
+        let at = |d| cells.cell_of(Item::Device(d)).unwrap();
+        assert!(at(b).x > at(a).x && at(c).y > at(a).y, "two cells to a row: the third item starts the next row");
+        // Under what stands on it: refused, and nothing changes.
+        assert!(t.resize_table(tb, Some(2), Some(1)).is_err());
+        assert_eq!(t.furniture_piece(tb).unwrap().table_capacity(), 6);
+        t.resize_table(tb, Some(3), Some(1)).unwrap();
+        let strip = t.add_fitting(FittingKind::PowerStrip, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        assert!(t.mount_item(Item::Fitting(strip), tb, None, None).is_err(), "a full table takes no more");
+        // Out of range, nothing to change, not a table, no such table.
+        assert!(t.resize_table(tb, Some(1), None).is_err() && t.resize_table(tb, Some(9), None).is_err());
+        assert!(t.resize_table(tb, None, Some(0)).is_err() && t.resize_table(tb, None, Some(7)).is_err());
+        assert!(t.resize_table(tb, None, None).is_err());
+        let r = t.add_furniture(FurnitureKind::Rack, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        assert!(t.resize_table(r, Some(3), None).is_err() && t.resize_table(99, Some(3), None).is_err());
+        // Back to the default size: nothing is written.
+        t.unmount_item(Item::Device(a));
+        t.unmount_item(Item::Device(b));
+        t.unmount_item(Item::Device(c));
+        t.resize_table(tb, Some(TABLE_COLS), Some(TABLE_ROWS)).unwrap();
+        let f = t.furniture_piece(tb).unwrap();
+        assert_eq!((f.width, f.depth), (0, 0));
+        assert!(!serde_json::to_string(t.furniture_piece(tb).unwrap()).unwrap().contains("width"));
+    }
+
+    #[test]
+    fn only_a_rack_turns_around_and_the_side_is_saved() {
+        let (mut t, ..) = lab();
+        let r = t.add_furniture(FurnitureKind::Rack, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        let s = t.add_furniture(FurnitureKind::Shelf, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        assert!(!t.furniture_piece(r).unwrap().back);
+        assert!(t.turn_furniture(r, None).unwrap(), "it flips");
+        assert!(!t.turn_furniture(r, None).unwrap());
+        assert!(t.turn_furniture(r, Some(true)).unwrap() && t.turn_furniture(r, Some(true)).unwrap(), "naming the side is idempotent");
+        assert!(t.turn_furniture(s, None).is_err() && t.turn_furniture(99, None).is_err());
+        let again = file::from_json(&file::to_json(&t).unwrap()).unwrap();
+        assert!(again.furniture_piece(r).unwrap().back);
+        // A hostile file cannot give a shelf a back or a rack a table's size.
+        let mut v: serde_json::Value = serde_json::from_str(&file::to_json(&t).unwrap()).unwrap();
+        v["topology"]["physical"]["furniture"][1]["back"] = serde_json::json!(true);
+        v["topology"]["physical"]["furniture"][1]["width"] = serde_json::json!(5);
+        v["topology"]["physical"]["furniture"][0]["depth"] = serde_json::json!(9);
+        let r2 = file::from_json(&v.to_string()).unwrap();
+        assert!(r2.physical.furniture.iter().all(|f| f.width == 0 && f.depth == 0));
+        assert!(!r2.furniture_piece(s).unwrap().back);
+        // A table's size in a hostile file is clamped.
+        let tb = t.add_furniture(FurnitureKind::Table, None, DEFAULT_CLOSET, 0.0, 0.0, None).unwrap();
+        let mut v: serde_json::Value = serde_json::from_str(&file::to_json(&t).unwrap()).unwrap();
+        v["topology"]["physical"]["furniture"][2]["width"] = serde_json::json!(4000);
+        v["topology"]["physical"]["furniture"][2]["depth"] = serde_json::json!(1);
+        let f = file::from_json(&v.to_string()).unwrap().furniture_piece(tb).cloned().unwrap();
+        assert_eq!((f.width, f.depth), (TABLE_WIDTH_RANGE.1, 1));
+    }
+
+    #[test]
+    fn the_loose_items_of_a_closet_are_laid_out_as_a_grid_or_a_list() {
+        use crate::physical::DEFAULT_BUILDING;
+        let (mut t, a, b, c) = lab();
+        assert!(!t.floor_is_list(DEFAULT_CLOSET));
+        let grid = t.closet_layout(DEFAULT_CLOSET);
+        let (ga, gb) = (grid.cell_of(Item::Device(a)).unwrap(), grid.cell_of(Item::Device(b)).unwrap());
+        assert_eq!(ga.y, gb.y, "a grid puts neighbours side by side");
+        t.set_floor_list(DEFAULT_CLOSET, true).unwrap();
+        assert!(t.floor_is_list(DEFAULT_CLOSET));
+        let list = t.closet_layout(DEFAULT_CLOSET);
+        let cells: Vec<Cell> = [a, b, c].iter().map(|d| list.cell_of(Item::Device(*d)).unwrap()).collect();
+        assert!(cells.windows(2).all(|w| w[0].x == w[1].x && w[1].y > w[0].y), "a list is one item to a row: {cells:?}");
+        assert!(cells[0].w > ga.w);
+        let again = file::from_json(&file::to_json(&t).unwrap()).unwrap();
+        assert!(again.floor_is_list(DEFAULT_CLOSET), "the choice is saved with the lab");
+        t.set_floor_list(DEFAULT_CLOSET, false).unwrap();
+        assert!(t.physical.floor_lists.is_empty());
+        assert!(t.set_floor_list(DEFAULT_BUILDING, true).is_err() && t.set_floor_list(999, true).is_err());
+        // A place that goes takes its setting along; a hostile file cannot list a city or repeat itself.
+        let c2 = t.add_place(PlaceKind::Closet, None, Some(DEFAULT_BUILDING), 0.0, 0.0).unwrap();
+        t.set_floor_list(c2, true).unwrap();
+        t.remove_place(c2).unwrap();
+        assert!(t.physical.floor_lists.is_empty());
+        let mut v: serde_json::Value = serde_json::from_str(&file::to_json(&t).unwrap()).unwrap();
+        v["topology"]["physical"]["floor_lists"] = serde_json::json!([3, 3, 1, 77]);
+        assert_eq!(file::from_json(&v.to_string()).unwrap().physical.floor_lists, vec![3]);
     }
 }

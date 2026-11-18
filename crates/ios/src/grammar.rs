@@ -664,6 +664,8 @@ pub enum Id {
     NoIpsecSaLifetime,
     CryptoSetSaLifetime,
     NoCryptoSetSaLifetime,
+    CryptoSetPfs,
+    NoCryptoSetPfs,
     CryptoMatchAddress,
     NoCryptoMatchAddress,
     CryptoMapIf,
@@ -1036,6 +1038,23 @@ pub enum Id {
     ShowIpPrefixList,
     ShowRouteMap,
     RouteMapEnter,
+    // Policy-based routing (exec/pbr.rs).
+    IpPolicyRouteMap,
+    NoIpPolicyRouteMap,
+    IpLocalPolicy,
+    NoIpLocalPolicy,
+    ShowIpPolicy,
+    RmMatchLength,
+    NoRmMatchLength,
+    RmSetDefaultNextHop,
+    NoRmSetDefaultNextHop,
+    RmSetInterface,
+    NoRmSetInterface,
+    RmSetPrecedence,
+    NoRmSetPrecedence,
+    RmSetDscp,
+    NoRmSetDscp,
+    RmSetNextHopVerify,
     // IP SLA (exec/sla.rs).
     IpSla,
     NoIpSla,
@@ -1139,6 +1158,8 @@ pub enum Id {
     NoBgpNeighborPassword,
     BgpNeighborRemovePrivate,
     NoBgpNeighborRemovePrivate,
+    BgpNeighborLocalAs,
+    NoBgpNeighborLocalAs,
     BgpNeighborSoftReconf,
     NoBgpNeighborSoftReconf,
     BgpAlwaysCompareMed,
@@ -2252,6 +2273,14 @@ pub static SPECS: &[Spec] = &[
         [K("no"), K("set"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}")],
         "Use the global key lifetime"
     ),
+    spec!(
+        CryptoSetPfs,
+        Modes::CRYPTO_MAP,
+        Modes::ROUTER,
+        [K("set"), K("pfs"), Arg("{group2|group5|group14|group15|group16|group19|group20|group24}")],
+        "Run a fresh Diffie-Hellman exchange for every new set of IPsec keys"
+    ),
+    spec!(NoCryptoSetPfs, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("pfs")], "Derive IPsec keys from the IKE keys alone"),
     spec!(CryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("match"), K("address"), Arg("ACL")], "The access list choosing what to protect"),
     spec!(NoCryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("match"), K("address")], "Protect nothing"),
     spec!(CryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("crypto"), K("map"), Arg("WORD")], "Protect traffic leaving this interface"),
@@ -2802,6 +2831,7 @@ pub static SPECS: &[Spec] = &[
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("isakmp")], "Report the IKE exchanges of this device"),
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("ipsec")], "Report IPsec SAs coming and going"),
     spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("crypto"), K("pki")], "Report certificates checked, requests, grants and revocations"),
+    spec!(DebugTopic, Modes::EXEC, Modes::BOTH, [K("debug"), K("ip"), K("policy")], "Report the decisions of policy-based routing"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("undebug"), K("all")], "Turn every debug off"),
     spec!(UndebugAll, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("all")], "Turn every debug off"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("icmp")], "Stop reporting echo messages"),
@@ -2840,6 +2870,7 @@ pub static SPECS: &[Spec] = &[
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("isakmp")], "Stop reporting ISAKMP"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("ipsec")], "Stop reporting IPsec"),
     spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("crypto"), K("pki")], "Stop reporting PKI"),
+    spec!(NoDebugTopic, Modes::EXEC, Modes::BOTH, [K("no"), K("debug"), K("ip"), K("policy")], "Stop reporting policy routing"),
     spec!(
         DebugDhcpPacket,
         Modes::EXEC,
@@ -3755,6 +3786,89 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map")], "Every route map"),
     spec!(ShowRouteMap, EXECS, Modes::BOTH, [K("show"), K("route-map"), Arg("NAME")], "One route map"),
     spec!(
+        IpPolicyRouteMap,
+        IFS,
+        Modes::ROUTER,
+        [K("ip"), K("policy"), K("route-map"), Arg("NAME")],
+        "Route the packets that arrive here by a route map first"
+    ),
+    spec!(
+        NoIpPolicyRouteMap,
+        IFS,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("policy"), K("route-map")],
+        "Route the packets that arrive here by the table only"
+    ),
+    spec!(
+        NoIpPolicyRouteMap,
+        IFS,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("policy"), K("route-map"), Arg("NAME")],
+        "Route the packets that arrive here by the table only"
+    ),
+    spec!(
+        IpLocalPolicy,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("ip"), K("local"), K("policy"), K("route-map"), Arg("NAME")],
+        "Route this router's own packets by a route map first"
+    ),
+    spec!(
+        NoIpLocalPolicy,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("no"), K("ip"), K("local"), K("policy"), K("route-map")],
+        "Route this router's own packets by the table only"
+    ),
+    spec!(
+        ShowIpPolicy,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("ip"), K("policy")],
+        "Which route map routes the packets of each interface, and what each clause took"
+    ),
+    spec!(
+        RmMatchLength,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("match"), K("length"), Arg("<0-65535>"), Arg("<0-65535>")],
+        "Match packets of this length (policy routing)"
+    ),
+    spec!(NoRmMatchLength, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("match"), K("length")], "Remove the length match"),
+    spec!(
+        RmSetDefaultNextHop,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("ip"), K("default"), K("next-hop"), Arg("A.B.C.D")],
+        "Policy routing: send here when the table has no route to the destination"
+    ),
+    spec!(
+        NoRmSetDefaultNextHop,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("no"), K("set"), K("ip"), K("default"), K("next-hop")],
+        "Forget the default next hop"
+    ),
+    spec!(RmSetInterface, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("interface"), Arg("INTERFACE")], "Policy routing: send out of this interface"),
+    spec!(NoRmSetInterface, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("interface")], "Forget the exit interface"),
+    spec!(
+        RmSetPrecedence,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("ip"), K("precedence"), Arg("<0-7>")],
+        "Policy routing: mark the packets with this IP precedence"
+    ),
+    spec!(NoRmSetPrecedence, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ip"), K("precedence")], "Leave the precedence alone"),
+    spec!(RmSetDscp, Modes::ROUTE_MAP, Modes::BOTH, [K("set"), K("ip"), K("dscp"), Arg("DSCP")], "Policy routing: mark the packets with this DSCP"),
+    spec!(NoRmSetDscp, Modes::ROUTE_MAP, Modes::BOTH, [K("no"), K("set"), K("ip"), K("dscp")], "Leave the DSCP alone"),
+    spec!(
+        RmSetNextHopVerify,
+        Modes::ROUTE_MAP,
+        Modes::BOTH,
+        [K("set"), K("ip"), K("next-hop"), K("verify-availability"), Arg("A.B.C.D"), Arg("<1-65535>"), K("track"), Arg("<1-1000>")],
+        "Policy routing: use this next hop only while a tracked object is up"
+    ),
+    spec!(
         TrackInterface,
         Modes::CONFIG,
         Modes::BOTH,
@@ -4260,6 +4374,34 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("remove-private-as")],
         "Send the AS numbers as they are"
+    ),
+    spec!(
+        BgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as"), Arg("<1-4294967295>")],
+        "Present this AS number to the external neighbour instead of the router's own"
+    ),
+    spec!(
+        BgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as"), Arg("<1-4294967295>"), Rest("no-prepend [replace-as [dual-as]]")],
+        "Also keep it off the paths received (no-prepend), swap it for the real AS in the paths sent (replace-as) and let the neighbour use the real AS (dual-as)"
+    ),
+    spec!(
+        NoBgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as")],
+        "Present the router's own AS number again"
+    ),
+    spec!(
+        NoBgpNeighborLocalAs,
+        Modes::BGP,
+        Modes::BOTH,
+        [K("no"), K("neighbor"), Arg("A.B.C.D|NAME"), K("local-as"), Rest("<1-4294967295> [no-prepend [replace-as [dual-as]]]")],
+        "Present the router's own AS number again"
     ),
     spec!(
         BgpNeighborSoftReconf,
