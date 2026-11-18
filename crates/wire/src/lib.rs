@@ -37,6 +37,7 @@ pub mod ipv6;
 pub mod lacp;
 pub mod lldp;
 pub mod md5;
+pub mod pim;
 pub mod ripng;
 pub mod rsa;
 pub mod vrrp;
@@ -607,6 +608,10 @@ fn summarize_depth(bytes: &[u8], depth: u8) -> (Protocol, String) {
                     igmp::PROTO_IGMP => match igmp::Igmp::decode(&ip.payload) {
                         Ok(m) => (Protocol::Other, format!("{} {route}{tag}", m.describe())),
                         Err(e) => (Protocol::Other, format!("IGMP ({e}) {route}{tag}")),
+                    },
+                    pim::PROTO_PIM => match pim::Pim::decode(&ip.payload) {
+                        Ok(m) => (Protocol::Other, format!("{} {route}{tag}", m.describe())),
+                        Err(e) => (Protocol::Other, format!("PIM ({e}) {route}{tag}")),
                     },
                     PROTO_ICMP => {
                         let what = match Icmp::decode(&ip.payload) {

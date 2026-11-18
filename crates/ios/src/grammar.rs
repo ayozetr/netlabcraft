@@ -113,6 +113,8 @@ impl Modes {
     pub const ARCHIVE: Modes = Modes(1 << 62);
     /// `spanning-tree mst configuration`.
     pub const MST: Modes = Modes(1 << 61);
+    /// `ip vrf NAME`.
+    pub const VRF: Modes = Modes(1 << 36);
     /// Every command mode, either device.
     pub const ANY_MODE: Modes = Modes(
         (1 << 63)
@@ -159,7 +161,8 @@ impl Modes {
             | (1 << 59)
             | (1 << 60)
             | (1 << 61)
-            | (1 << 62),
+            | (1 << 62)
+            | (1 << 36),
     );
     pub const BOTH: Modes = Modes(192);
     /// A router with a switch card (a device flag): the VLAN database and the switching
@@ -1351,6 +1354,30 @@ pub enum Id {
     IpFtpPassword,
     NoIpFtpLogin,
     StpMode,
+    IpVrf,
+    NoIpVrf,
+    VrfRd,
+    NoVrfRd,
+    VrfRouteTarget,
+    NoVrfRouteTarget,
+    VrfDescription,
+    IpVrfForwarding,
+    NoIpVrfForwarding,
+    IpRouteVrf,
+    NoIpRouteVrf,
+    ShowIpRouteVrf,
+    ShowIpVrf,
+    ShowIpVrfDetail,
+    ShowIpVrfInterfaces,
+    ShowIpArpVrf,
+    PingVrf,
+    PingVrfRepeat,
+    RouterOspfVrf,
+    NoRouterOspfVrf,
+    BgpAddressFamilyVrf,
+    ShowIpBgpVrf,
+    ShowIpBgpVrfSummary,
+    ShowOspfNeighborVrf,
     MstConfiguration,
     NoMstConfiguration,
     MstName,
@@ -1591,6 +1618,7 @@ const SUBMODES: Modes = Modes::IF
     .or(Modes::KEYCHAIN_KEY)
     .or(Modes::ARCHIVE)
     .or(Modes::MST)
+    .or(Modes::VRF)
     .or(VPN_MODES)
     .or(QOS_MODES)
     .or(Modes::OBJECT)
@@ -1615,6 +1643,7 @@ const SEC_IFS: Modes = IFS.or(Modes::TUNNEL);
 const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
 /// The site-to-site VPN sub-modes.
+const VRF_IFACES: Modes = Modes::IF.or(Modes::SUBIF).or(Modes::SVI).or(Modes::LOOPBACK);
 const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM).or(Modes::CLIENT_GROUP);
 /// The QoS sub-modes.
 const QOS_MODES: Modes = Modes::CLASS_MAP.or(Modes::POLICY_MAP).or(Modes::POLICY_CLASS);
@@ -6129,6 +6158,105 @@ pub static SPECS: &[Spec] = &[
         [K("spanning-tree"), K("mode"), Arg("{pvst|rapid-pvst|mst}")],
         "Classic (30 s to forward), rapid, or multiple spanning tree"
     ),
+    // ---- VRF-lite (exec/vrf.rs) ----
+    spec!(IpVrf, Modes::CONFIG, Modes::BOTH, [K("ip"), K("vrf"), Arg("NAME")], "Define a VRF and edit it: its own routing and ARP tables"),
+    spec!(NoIpVrf, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("vrf"), Arg("NAME")], "Delete a VRF; its interfaces go back to the global table"),
+    spec!(VrfRd, Modes::VRF, Modes::BOTH, [K("rd"), Arg("ASN:NN|A.B.C.D:NN")], "The route distinguisher that makes this VRF's prefixes unique"),
+    spec!(NoVrfRd, Modes::VRF, Modes::BOTH, [K("no"), K("rd")], "Remove the route distinguisher"),
+    spec!(
+        VrfRouteTarget,
+        Modes::VRF,
+        Modes::BOTH,
+        [K("route-target"), Arg("{import|export|both}"), Arg("ASN:NN|A.B.C.D:NN")],
+        "A route target this VRF imports or exports (kept and shown; VRF-lite does not move routes with it)"
+    ),
+    spec!(
+        NoVrfRouteTarget,
+        Modes::VRF,
+        Modes::BOTH,
+        [K("no"), K("route-target"), Arg("{import|export|both}"), Arg("ASN:NN|A.B.C.D:NN")],
+        "Remove a route target"
+    ),
+    spec!(VrfDescription, Modes::VRF, Modes::BOTH, [K("description"), Rest("TEXT")], "Describe the VRF"),
+    spec!(
+        IpVrfForwarding,
+        VRF_IFACES,
+        Modes::BOTH,
+        [K("ip"), K("vrf"), K("forwarding"), Arg("NAME")],
+        "Put this interface in a VRF (its IPv4 address is removed)"
+    ),
+    spec!(
+        NoIpVrfForwarding,
+        VRF_IFACES,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("vrf"), K("forwarding")],
+        "Back to the global table (its IPv4 address is removed)"
+    ),
+    spec!(
+        IpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface> [distance] [tag <1-4294967295>]")],
+        "Add a static route to a VRF's table"
+    ),
+    spec!(
+        NoIpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK"), Rest("<next hop or interface>")],
+        "Remove a static route of a VRF"
+    ),
+    spec!(
+        NoIpRouteVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("ip"), K("route"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Arg("MASK")],
+        "Remove the static routes of a VRF to a network"
+    ),
+    spec!(ShowIpRouteVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("route"), K("vrf"), Arg("NAME")], "A VRF's routing table"),
+    spec!(ShowIpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf")], "The VRFs: route distinguisher and interfaces"),
+    spec!(ShowIpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf"), K("brief")], "The VRFs: route distinguisher and interfaces"),
+    spec!(
+        ShowIpVrfDetail,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("vrf"), K("detail")],
+        "Every VRF with its route targets, interfaces and protocols"
+    ),
+    spec!(ShowIpVrfInterfaces, EXECS, Modes::BOTH, [K("show"), K("ip"), K("vrf"), K("interfaces")], "Each VRF interface, its address and VRF"),
+    spec!(ShowIpArpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("arp"), K("vrf"), Arg("NAME")], "A VRF's ARP table"),
+    spec!(PingVrf, EXECS, Modes::BOTH, [K("ping"), K("vrf"), Arg("NAME"), Arg("A.B.C.D")], "Send echo requests through a VRF"),
+    spec!(
+        PingVrfRepeat,
+        EXECS,
+        Modes::BOTH,
+        [K("ping"), K("vrf"), Arg("NAME"), Arg("A.B.C.D"), Rest("[repeat <1-1000>] [size <36-18024>] [source A.B.C.D] [timeout <0-3600>]")],
+        "Send echo requests through a VRF with options"
+    ),
+    spec!(
+        RouterOspfVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("router"), K("ospf"), Arg("<1-65535>"), K("vrf"), Arg("NAME")],
+        "Start or configure the OSPF process of a VRF"
+    ),
+    spec!(
+        NoRouterOspfVrf,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("no"), K("router"), K("ospf"), Arg("<1-65535>"), K("vrf"), Arg("NAME")],
+        "Remove the OSPF process of a VRF"
+    ),
+    spec!(ShowIpBgpVrf, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("vrf"), Arg("NAME")], "The BGP table of a VRF"),
+    spec!(ShowIpBgpVrfSummary, EXECS, Modes::BOTH, [K("show"), K("ip"), K("bgp"), K("vrf"), Arg("NAME"), K("summary")], "The BGP sessions of a VRF"),
+    spec!(
+        ShowOspfNeighborVrf,
+        EXECS,
+        Modes::BOTH,
+        [K("show"), K("ip"), K("ospf"), K("neighbor"), K("vrf"), Arg("NAME")],
+        "The OSPF neighbours of a VRF"
+    ),
+    spec!(BgpAddressFamilyVrf, Modes::BGP, Modes::BOTH, [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")], "Configure BGP inside a VRF"),
     spec!(
         MstConfiguration,
         Modes::CONFIG,
@@ -8170,6 +8298,7 @@ mod tests {
                 Modes::KEYCHAIN_KEY,
                 Modes::ARCHIVE,
                 Modes::MST,
+                Modes::VRF,
             ]
             .into_iter()
             .find(|m| s.modes.has(*m))

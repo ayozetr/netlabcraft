@@ -405,6 +405,9 @@ pub struct Sets {
     pub prepend: Vec<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next_hop: Option<Ipv4Addr>,
+    /// `set ipv6 next-hop X:X::X`: the next hop of an IPv6 route (global address).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_hop6: Option<std::net::Ipv6Addr>,
     /// 0 igp, 1 egp, 2 incomplete.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub origin: Option<u8>,
@@ -471,6 +474,9 @@ pub struct Clause {
     /// `match ip address NAME|NUMBER…`: any of these access lists permitting the prefix matches.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub acls: Vec<String>,
+    /// `match ipv6 address prefix-list NAME…`: any of these IPv6 prefix lists permitting the prefix matches.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prefix_lists6: Vec<String>,
     /// `match metric N`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metric: Option<u32>,
@@ -500,6 +506,7 @@ impl Clause {
             permit,
             prefix_lists: Vec::new(),
             acls: Vec::new(),
+            prefix_lists6: Vec::new(),
             metric: None,
             community_lists: Vec::new(),
             ext_community_lists: Vec::new(),
@@ -520,6 +527,10 @@ impl Clause {
     /// [`Clause::matches`] with the path attributes `match community` and `match as-path` read.
     pub fn matches_with(&self, d: &Device, s: &Subject, a: &Attrs) -> bool {
         if self.metric.is_some_and(|m| m != s.metric) {
+            return false;
+        }
+        // A clause that asks only about IPv6 prefixes says nothing true of an IPv4 route.
+        if !self.prefix_lists6.is_empty() && self.prefix_lists.is_empty() && self.acls.is_empty() {
             return false;
         }
         if !(self.prefix_lists.is_empty() && self.acls.is_empty()) {
@@ -727,6 +738,7 @@ pub fn sanitize_route_maps(maps: &mut Vec<RouteMap>) {
         m.clauses.truncate(MAX_CLAUSES);
         for c in &mut m.clauses {
             c.prefix_lists = c.prefix_lists.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
+            c.prefix_lists6 = c.prefix_lists6.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
             c.acls = c.acls.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
             c.community_lists = c.community_lists.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();
             c.as_path_lists = c.as_path_lists.iter().map(|n| clean_name(n)).filter(|n| !n.is_empty()).take(MAX_MATCH_NAMES).collect();

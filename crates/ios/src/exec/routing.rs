@@ -112,7 +112,9 @@ pub(super) fn overlap(d: &netlabcraft_model::Device, net: Ipv4Net, except: &str)
     all.extend(d.svis.iter().filter_map(|s| s.ip.map(|ip| (format!("Vlan{}", s.vlan), ip))));
     all.extend(d.tunnels.iter().filter_map(|t| t.ip.map(|ip| (t.name(), ip))));
     all.extend(d.loopbacks.iter().filter_map(|l| l.ip.map(|ip| (l.name(), ip))));
-    all.into_iter().find(|(n, ip)| n != except && ip.overlaps(net)).map(|(n, ip)| format!("% {} overlaps {} on {n}", net.network(), ip.network()))
+    all.into_iter()
+        .find(|(n, ip)| n != except && d.vrf_of(n) == d.vrf_of(except) && ip.overlaps(net))
+        .map(|(n, ip)| format!("% {} overlaps {} on {n}", net.network(), ip.network()))
 }
 
 /// `ip address`, `shutdown`, `description` and their `no` forms on a loopback.
@@ -159,6 +161,7 @@ pub(crate) fn loopback_config(s: &mut String, d: &netlabcraft_model::Device) {
         if !l.description.is_empty() {
             let _ = writeln!(s, " description {}", l.description);
         }
+        crate::exec::vrf::iface_line(s, d, &l.name());
         match l.ip {
             Some(ip) => {
                 let _ = writeln!(s, " ip address {} {}", ip.addr, ip.mask());

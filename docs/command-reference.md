@@ -1816,6 +1816,32 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no spanning-tree vlan <1-4094>[,-] priority` | config | switch | Back to priority 32768 |
 | `spanning-tree vlan <1-4094>[,-] root {primary\|secondary}` | config | switch | Make this switch the root (or the backup root) |
 | `spanning-tree mode {pvst\|rapid-pvst\|mst}` | config | switch | Classic (30 s to forward), rapid, or multiple spanning tree |
+| `ip vrf NAME` | config | router, switch | Define a VRF and edit it: its own routing and ARP tables |
+| `no ip vrf NAME` | config | router, switch | Delete a VRF; its interfaces go back to the global table |
+| `rd ASN:NN\|A.B.C.D:NN` |  | router, switch | The route distinguisher that makes this VRF's prefixes unique |
+| `no rd` |  | router, switch | Remove the route distinguisher |
+| `route-target {import\|export\|both} ASN:NN\|A.B.C.D:NN` |  | router, switch | A route target this VRF imports or exports (kept and shown; VRF-lite does not move routes with it) |
+| `no route-target {import\|export\|both} ASN:NN\|A.B.C.D:NN` |  | router, switch | Remove a route target |
+| `description TEXT` |  | router, switch | Describe the VRF |
+| `ip vrf forwarding NAME` | interface, subinterface | router, switch | Put this interface in a VRF (its IPv4 address is removed) |
+| `no ip vrf forwarding` | interface, subinterface | router, switch | Back to the global table (its IPv4 address is removed) |
+| `ip route vrf NAME A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>]` | config | router, switch | Add a static route to a VRF's table |
+| `no ip route vrf NAME A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route of a VRF |
+| `no ip route vrf NAME A.B.C.D MASK` | config | router, switch | Remove the static routes of a VRF to a network |
+| `show ip route vrf NAME` | user, privileged | router, switch | A VRF's routing table |
+| `show ip vrf` | user, privileged | router, switch | The VRFs: route distinguisher and interfaces |
+| `show ip vrf brief` | user, privileged | router, switch | The VRFs: route distinguisher and interfaces |
+| `show ip vrf detail` | user, privileged | router, switch | Every VRF with its route targets, interfaces and protocols |
+| `show ip vrf interfaces` | user, privileged | router, switch | Each VRF interface, its address and VRF |
+| `show ip arp vrf NAME` | user, privileged | router, switch | A VRF's ARP table |
+| `ping vrf NAME A.B.C.D` | user, privileged | router, switch | Send echo requests through a VRF |
+| `ping vrf NAME A.B.C.D [repeat <1-1000>] [size <36-18024>] [source A.B.C.D] [timeout <0-3600>]` | user, privileged | router, switch | Send echo requests through a VRF with options |
+| `router ospf <1-65535> vrf NAME` | config | router, switch | Start or configure the OSPF process of a VRF |
+| `no router ospf <1-65535> vrf NAME` | config | router, switch | Remove the OSPF process of a VRF |
+| `show ip bgp vrf NAME` | user, privileged | router, switch | The BGP table of a VRF |
+| `show ip bgp vrf NAME summary` | user, privileged | router, switch | The BGP sessions of a VRF |
+| `show ip ospf neighbor vrf NAME` | user, privileged | router, switch | The OSPF neighbours of a VRF |
+| `address-family ipv4 vrf NAME` |  | router, switch | Configure BGP inside a VRF |
 | `spanning-tree mst configuration` | config | switch | Edit the multiple spanning tree region: name, revision and which VLANs each instance holds |
 | `no spanning-tree mst configuration` | config | switch | Empty the region's name, revision and instance table |
 | `name NAME` |  | switch | Name the region (switches share a region only with the same name) |

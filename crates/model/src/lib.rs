@@ -48,6 +48,7 @@ pub mod physical;
 pub mod pki;
 pub mod poe;
 pub mod policy;
+pub mod policy6;
 pub mod pppoe;
 pub mod proximity;
 pub mod psu;
@@ -65,6 +66,7 @@ pub mod usb;
 pub mod voice;
 pub mod vpn;
 pub mod vpnclient;
+pub mod vrf;
 pub mod wlan;
 
 pub use drawing::{Cluster, MAX_CLUSTERS, MAX_FREEHAND_POINTS, MAX_POLYGON_POINTS, Shown};
@@ -991,6 +993,9 @@ pub struct Device {
     /// Switches: multiple spanning tree (`spanning-tree mode mst`, which also sets `rapid_stp`).
     #[serde(default, skip_serializing_if = "is_default")]
     pub mst: mst::Mst,
+    /// Routers: VRFs (`ip vrf NAME`), each with its interfaces, static routes, OSPF and BGP.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub vrfs: Vec<vrf::Vrf>,
     /// The saved configuration (`copy running-config startup-config`), as command lines.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub startup: Option<String>,
@@ -1057,6 +1062,9 @@ pub struct Device {
     /// Routers: prefix lists (`ip prefix-list`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prefix_lists: Vec<policy::PrefixList>,
+    /// Routers: IPv6 prefix lists (`ipv6 prefix-list`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prefix_lists6: Vec<policy6::PrefixList6>,
     /// Routers: route maps (`route-map`).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub route_maps: Vec<policy::RouteMap>,
@@ -2298,6 +2306,7 @@ impl Device {
             printer: usb::Printer::default(),
             usb: if model.id == usb::STICK_MODEL { usb::Stick::fresh() } else { usb::Stick::default() },
             mst: mst::Mst::default(),
+            vrfs: Vec::new(),
             startup: None,
             dhcp_pools: Vec::new(),
             dhcp_excluded: Vec::new(),
@@ -2319,6 +2328,7 @@ impl Device {
             eigrp: None,
             bgp: None,
             prefix_lists: Vec::new(),
+            prefix_lists6: Vec::new(),
             route_maps: Vec::new(),
             community_lists: Vec::new(),
             ext_community_lists: Vec::new(),
@@ -2434,6 +2444,7 @@ impl Device {
         self.eigrp = None;
         self.bgp = None;
         self.prefix_lists.clear();
+        self.prefix_lists6.clear();
         self.route_maps.clear();
         self.community_lists.clear();
         self.ext_community_lists.clear();
@@ -3142,6 +3153,7 @@ impl Topology {
                     b.sanitize();
                 }
                 policy::sanitize_prefix_lists(&mut d.prefix_lists);
+                policy6::sanitize_prefix_lists6(&mut d.prefix_lists6);
                 policy::sanitize_route_maps(&mut d.route_maps);
                 policy::sanitize_community_lists(&mut d.community_lists);
                 policy::sanitize_ext_community_lists(&mut d.ext_community_lists);
