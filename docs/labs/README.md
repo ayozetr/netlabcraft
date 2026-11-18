@@ -140,6 +140,7 @@ A failing step names its line in the lab's Markdown.
 | 2026-11-18 | minor | Lab 81 (multiple spanning tree: regions and one tree per group of VLANs) joins the book; numbers 75 to 80 and 82 to 86 are reserved. |
 | 2026-11-18 | minor | Lab 75 (reverse Telnet through an octal card) joins the book. |
 | 2026-11-18 | minor | Labs 57 and 58 join the book (BGP prefix limits and timers; aliases, a scheduled reload, the extended ping and telnet by name); the numbered labs counted again: 73. |
+| 2026-11-18 | minor | Labs 77 and 78: an IP SLA operation with a tracked default route that fails over to a floating one, and policy-based routing read with `show ip policy` and `debug ip policy`. |
 | 2026-11-18 | minor | Labs 61 to 72 join the book: 63 labs with 49, 73 and 74. Site-to-site and remote-access VPN faults, wireless clients, IP phones, five labs on reading `debug` output, IPv6, HSRP, DHCP snooping and ACL order. |
 | 2026-11-18 | minor | Labs 50 to 52 join the book. OSPF adjacency states read with `debug ip ospf adj` and the DR and BDR of four routers on a switch, flooding with the request and retransmission lists, `ip ospf retransmit-interval` and an LSA's refresh, and `redistribute … nssa-only` in an NSSA. |
 | 2026-11-18 | minor | Lab 49 (OSPF authentication: rolling a key over, key chains and OSPFv3 with AH) joins the book: 49 labs. |

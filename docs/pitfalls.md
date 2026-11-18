@@ -46,6 +46,13 @@ new mistake worth not repeating, add it in the same change.
   setup line in `every_command_survives_hostile_arguments` so the fuzzer reaches the commands inside it. A
   `try_run` takes one line: a `\n` inside it is not a second command, it is a parse error.
 
+- **`Modes` is a `u64` and every bit is taken.** Bit 63 is the last one, and the tracked-object and IP SLA modes share it
+  (`Modes::TRACK`, as `Object` and `ObjectGroup` share `OBJECT`): a command of one is offered in the other and its handler
+  refuses it. The next new console mode has to widen `Modes` (to a `u128`) instead of looking for a free bit.
+- **A pull request that conflicts with `main` gets no CI at all.** GitHub runs the checks on the merge result, so a push to
+  a conflicting branch starts nothing and the check list stays empty or stale. Merge `origin/main` first, and put new
+  lines (an `Id` arm, a `Mode` variant) where other work is not adding its own: the end of a list is where everyone adds.
+
 ## Simulator
 
 - **Periodic control traffic is scheduled for the whole `run_for` window up front.** `schedule_control` walks every

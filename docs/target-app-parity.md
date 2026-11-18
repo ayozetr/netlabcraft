@@ -14,7 +14,7 @@ to end is in [`labs/`](labs/README.md).
 | Number | Value | Kind |
 |---|---|---|
 | Engine commands | **232** | measured: `c!(` entries in `crates/engine/src/catalog.rs` |
-| Console grammar entries | **1879** across 47 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
+| Console grammar entries | **2030** across 50 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
 | Lab-book labs | **77** (+1 unnumbered: the cellular lab) | measured: numbered files in `docs/labs/` (the course column of the table in `docs/labs/README.md` has the split) |
@@ -180,6 +180,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | 2026-11-18 | minor | Console sweep: the commands the public courses teach were checked against the grammar; 155 settings are kept and shown, routers and switches resolve host names, router advertisements can be suppressed, BGP gains distribute lists, bestpath settings and activation (see [protocol-parity.md](protocol-parity.md) and [gaps.md](gaps.md) items 9 and 17). The grammar has 1823 entries (measured:  rows). |
 | 2026-11-18 | minor | IKE `authentication rsa-sig` is real (IKEv1 main mode and IKEv2 IKE_AUTH sign and verify with trustpoint certificates); the console grammar gains `pki trustpoint` in the IKEv2 profile. |
 | 2026-11-18 | minor | The PKI flows of gaps item 3 are done (terminal enrollment, manual grant, revocation lists, host names); the console grammar has 1354 entries. |
+| 2026-11-18 | minor | Object tracking, IP SLA, policy-based routing, `show ip cef` and `ip default-network` (see [protocol-parity.md](protocol-parity.md)); the console counts are measured again: 2030 grammar entries across 50 modes. |
 | 2026-11-18 | minor | PEAP's Diffie-Hellman is MODP group 14 (2048 bits) instead of a 61-bit toy group (M9.12). |
 | 2026-11-18 | minor | Reverse Telnet through an octal line, power strip breakers and cable reach (see [hardware-parity.md](hardware-parity.md)): 2 engine commands added (`power.rating`, `power.load`) and 6 grammar rows (`telnet ADDRESS PORT`, `clear line`, `line N`, `line FIRST LAST`, `modem`); counts measured again: 232 engine commands, 1879 grammar entries across 47 modes; percentages not re-scored. |
 | 2026-11-18 | minor | OSPF NSSA: P bit, Nt bit, forwarding address and `translate type7 always` (see [protocol-parity.md](protocol-parity.md)); percentages not re-scored. |
