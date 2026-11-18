@@ -33,6 +33,7 @@ pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod mst;
 pub(crate) mod netflow;
+pub(crate) mod pbr;
 pub(crate) mod pki;
 pub(crate) mod policy;
 pub(crate) mod pppoe;
@@ -4938,6 +4939,22 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(rows.join("\n"))
         }
+        Id::IpPolicyRouteMap
+        | Id::NoIpPolicyRouteMap
+        | Id::IpLocalPolicy
+        | Id::NoIpLocalPolicy
+        | Id::ShowIpPolicy
+        | Id::RmMatchLength
+        | Id::NoRmMatchLength
+        | Id::RmSetDefaultNextHop
+        | Id::NoRmSetDefaultNextHop
+        | Id::RmSetInterface
+        | Id::NoRmSetInterface
+        | Id::RmSetPrecedence
+        | Id::NoRmSetPrecedence
+        | Id::RmSetDscp
+        | Id::NoRmSetDscp
+        | Id::RmSetNextHopVerify => pbr::command(&mut c, spec.id, &args),
         Id::ShowIpProtocols => {
             let st = c.sim.ospf_state(c.t);
             let rs = c.sim.rip_state(c.t);

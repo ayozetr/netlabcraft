@@ -705,6 +705,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `debug crypto isakmp` | privileged | router, switch | Report the IKE exchanges of this device |
 | `debug crypto ipsec` | privileged | router, switch | Report IPsec SAs coming and going |
 | `debug crypto pki` | privileged | router, switch | Report certificates checked, requests, grants and revocations |
+| `debug ip policy` | privileged | router, switch | Report the decisions of policy-based routing |
 | `undebug all` | privileged | router, switch | Turn every debug off |
 | `no debug all` | privileged | router, switch | Turn every debug off |
 | `no debug ip icmp` | privileged | router, switch | Stop reporting echo messages |
@@ -743,6 +744,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto isakmp` | privileged | router, switch | Stop reporting ISAKMP |
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `no debug crypto pki` | privileged | router, switch | Stop reporting PKI |
+| `no debug ip policy` | privileged | router, switch | Stop reporting policy routing |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
 | `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet\|retransmission` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again |
@@ -983,6 +985,23 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip prefix-list NAME` | user, privileged | router, switch | One prefix list |
 | `show route-map` | user, privileged | router, switch | Every route map |
 | `show route-map NAME` | user, privileged | router, switch | One route map |
+| `ip policy route-map NAME` | interface, subinterface | router | Route the packets that arrive here by a route map first |
+| `no ip policy route-map` | interface, subinterface | router | Route the packets that arrive here by the table only |
+| `no ip policy route-map NAME` | interface, subinterface | router | Route the packets that arrive here by the table only |
+| `ip local policy route-map NAME` | config | router | Route this router's own packets by a route map first |
+| `no ip local policy route-map` | config | router | Route this router's own packets by the table only |
+| `show ip policy` | user, privileged | router | Which route map routes the packets of each interface, and what each clause took |
+| `match length <0-65535> <0-65535>` |  | router, switch | Match packets of this length (policy routing) |
+| `no match length` |  | router, switch | Remove the length match |
+| `set ip default next-hop A.B.C.D` |  | router, switch | Policy routing: send here when the table has no route to the destination |
+| `no set ip default next-hop` |  | router, switch | Forget the default next hop |
+| `set interface INTERFACE` |  | router, switch | Policy routing: send out of this interface |
+| `no set interface` |  | router, switch | Forget the exit interface |
+| `set ip precedence <0-7>` |  | router, switch | Policy routing: mark the packets with this IP precedence |
+| `no set ip precedence` |  | router, switch | Leave the precedence alone |
+| `set ip dscp DSCP` |  | router, switch | Policy routing: mark the packets with this DSCP |
+| `no set ip dscp` |  | router, switch | Leave the DSCP alone |
+| `set ip next-hop verify-availability A.B.C.D <1-65535> track <1-1000>` |  | router, switch | Policy routing: use this next hop only while a tracked object is up |
 | `track <1-1000> interface <interface> {line-protocol\|ip routing}` | config | router, switch | Track whether an interface works (or routes IP) |
 | `track <1-1000> ip route A.B.C.D/<0-32> reachability` | config | router, switch | Track whether the routing table has a prefix |
 | `track <1-1000> ip route A.B.C.D MASK reachability` | config | router, switch | Track whether the routing table has a prefix |
