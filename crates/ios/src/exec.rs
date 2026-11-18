@@ -23,6 +23,7 @@ pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
 pub(crate) mod keychain;
+pub(crate) mod knobs;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod netflow;
@@ -34,6 +35,7 @@ pub(crate) mod redist;
 pub(crate) mod routing;
 pub(crate) mod security;
 pub(crate) mod span;
+pub(crate) mod sweep;
 pub(crate) mod swroute;
 pub(crate) mod voice;
 mod vpn;
@@ -1166,6 +1168,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             let r = c.iface_ref(arg(0))?;
             Ok(render::interfaces(c.t, c.sim, d, Some(r)))
         }
+        Id::ShowIntTransceiver => Ok(render::interface_transceivers(c.t, c.d()?)),
         Id::ShowIntStatus => Ok(render::interface_status(c.t, c.d()?, None)),
         Id::ShowIpInterface => {
             let only = match args.first().map(|a| a.trim()).filter(|a| !a.is_empty()) {
@@ -1244,16 +1247,31 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::DebugTopic | Id::NoDebugTopic | Id::UndebugAll | Id::ShowDebugging => debug::command(&mut c, spec, &args),
         Id::DebugIpOspf | Id::NoDebugIpOspf => {
             let what = arg(0).trim().to_ascii_lowercase();
-            let pick = ["adj", "events", "hello"].into_iter().find(|w| !what.is_empty() && w.starts_with(what.as_str()));
+            let pick = ["adj", "events", "hello", "lsa-generation", "flood", "packet"]
+                .into_iter()
+                .find(|w| !what.is_empty() && w.starts_with(what.as_str()));
             if !what.is_empty() && pick.is_none() {
-                return Err("% debug ip ospf adj, events or hello".into());
+                return Err("% debug ip ospf adj, events, hello, lsa-generation, flood or packet".into());
             }
             let on = spec.id == Id::DebugIpOspf;
             let (kinds, note): (&[DebugKind], &str) = match pick {
                 Some("adj") => (&[DebugKind::OspfAdj], "each neighbour's adjacency states are reported"),
                 Some("events") => (&[DebugKind::OspfEvents], "interface, DR election and SPF events are reported"),
+                Some("lsa-generation") => (&[DebugKind::OspfLsa], "the LSAs this router originates and flushes are reported"),
+                Some("flood") => (&[DebugKind::OspfFlood], "the LSAs sent and received in updates are reported"),
+                Some("packet") => (&[DebugKind::OspfPacket], "every OSPF packet this router hears is reported"),
                 Some(_) => (&[DebugKind::OspfHello], "the hellos this router hears are reported"),
-                None => (&[DebugKind::OspfHello, DebugKind::OspfAdj, DebugKind::OspfEvents], "all of it"),
+                None => (
+                    &[
+                        DebugKind::OspfHello,
+                        DebugKind::OspfAdj,
+                        DebugKind::OspfEvents,
+                        DebugKind::OspfLsa,
+                        DebugKind::OspfFlood,
+                        DebugKind::OspfPacket,
+                    ],
+                    "all of it",
+                ),
             };
             for k in kinds {
                 c.sim.set_debug(c.dev, *k, on);
@@ -1261,7 +1279,7 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if on {
                 format!("OSPF debugging is on: {note}.")
             } else {
-                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj and events"))
+                format!("OSPF debugging is off ({}).", pick.unwrap_or("hello, adj, events, lsa-generation, flood and packet"))
             })
         }
         Id::ShowClock => {
@@ -1906,9 +1924,11 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
+        Id::ShowIpOspfMaxage => routing::ospf_maxage(&mut c),
         Id::ShowIpOspf => {
             let st = c.sim.ospf_state(c.t);
-            Ok(render::ospf_summary(c.d()?, &st))
+            let now = c.sim.now_us();
+            Ok(render::ospf_summary(c.d()?, &st, c.sim.state(c.dev), now))
         }
         Id::ShowIpOspfVirtualLinks => {
             let st = c.sim.ospf_state(c.t);
@@ -3471,6 +3491,33 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 Ok(())
             })
         }
+        Id::IfTransceiver => {
+            let removed = line.split_whitespace().next().is_some_and(|w| w.eq_ignore_ascii_case("no"));
+            let single = if removed {
+                false
+            } else {
+                match arg(0).to_ascii_lowercase().as_str() {
+                    "single-mode" => true,
+                    "multi-mode" => false,
+                    _ => return Err("% multi-mode or single-mode".into()),
+                }
+            };
+            let ifs = match &c.cli.mode {
+                Mode::Iface(ifs) => ifs.clone(),
+                _ => return Err("% Not in interface mode".into()),
+            };
+            let d = c.d()?;
+            for r in &ifs {
+                if !matches!(d.port_medium(r.port), Some(netlabcraft_model::cable::Medium::Fiber | netlabcraft_model::cable::Medium::Combo)) {
+                    let name = d.ports.get(r.port).map_or(String::new(), |p| p.name.clone());
+                    return Err(format!("% {name} takes no transceiver: only fiber and combo ports do"));
+                }
+            }
+            c.each_if(|p, _| {
+                p.single_mode = single;
+                Ok(())
+            })
+        }
         Id::IfMdix | Id::NoIfMdix => {
             let off = spec.id == Id::NoIfMdix;
             c.each_if(|p, _| {
@@ -4258,6 +4305,20 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             }
             Ok(String::new())
         }
+        Id::OspfTimersThrottleSpf | Id::NoOspfTimersThrottleSpf => {
+            let o = c.dm()?.ospf.as_mut().ok_or("% Not in OSPF mode")?;
+            if spec.id == Id::NoOspfTimersThrottleSpf {
+                o.spf_throttle = None;
+                return Ok(String::new());
+            }
+            let ms = |i: usize| arg(i).parse::<u32>().ok().filter(|n| *n <= 600_000).ok_or("% Milliseconds: 0-600000".to_string());
+            let (start, hold, max) = (ms(0)?, ms(1)?, ms(2)?);
+            if max < hold {
+                return Err("% The longest wait must be at least the hold interval".into());
+            }
+            o.spf_throttle = Some((start, hold, max));
+            Ok(String::new())
+        }
         Id::OspfPassive | Id::NoOspfPassive if c.cli.mode == Mode::Ospf => routing::ospf_passive(&mut c, spec.id == Id::OspfPassive, arg(0)),
         Id::OspfPassive | Id::NoOspfPassive => {
             let r = c.iface_ref(arg(0))?;
@@ -4648,6 +4709,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
             Ok(if warn { "Login is on but the line has no password yet: it won't ask for one until you set it.".into() } else { String::new() })
         }
         Id::Accepted => Ok("Accepted (not simulated yet).".into()),
+        Id::Knob | Id::NoKnob => knobs::command(&mut c, spec, &args),
+        Id::ShowTerminal
+        | Id::ShowLine
+        | Id::ShowCdpInterface
+        | Id::ShowMacAging
+        | Id::More
+        | Id::Pwd
+        | Id::ShowSnmpCommunity
+        | Id::ShowSnmpHost
+        | Id::ShowSnmpGroup
+        | Id::ShowSnmpUser => sweep::command(&mut c, spec.id, &args),
         Id::BannerMotd => {
             let text = arg(0);
             let mut chars = text.chars();

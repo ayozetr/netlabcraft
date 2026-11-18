@@ -219,6 +219,14 @@
 	cable	Kabel
 	Cable Length	Kabellänge
 	Cable Length…	Kabellänge…
+	Loss budget	Dämpfungsbudget
+	within the budget	innerhalb des Budgets
+	degraded: little margin left	eingeschränkt: kaum Reserve
+	over the budget	über dem Budget
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB verloren von {} dB ({} Steckverbinder, {} Spleiße)
+	More splices	Mehr Spleiße
+	Fewer splices	Weniger Spleiße
+	fiber loses {} dB, over the {} dB the transceivers tolerate	die Faser verliert {} dB, mehr als die {} dB, die die Transceiver vertragen
 	Resize…	Größe ändern…
 	Resize	Größe ändern
 	Units ({} to {}):	Einheiten ({} bis {}):
@@ -682,15 +690,6 @@
 	New File	Neue Datei
 	New from sample	Neu aus Beispiel
 	New Wiring Closet	Neuer Verteilerraum
-	Container	Container
-	New Container	Neuer Container
-	Inventory Shelf	Lagerregal
-	Cable Pegboard	Kabel-Lochwand
-	Industrial Control Panel	Industrie-Schaltschrank
-	{}, {} DIN slots	{}, {} DIN-Plätze
-	{}, {} rows of hooks	{}, {} Hakenreihen
-	Hang on a Peg	An einen Haken hängen
-	Take off the Peg	Vom Haken nehmen
 	Create New…	Neu erstellen…
 	Create New City	Neue Stadt erstellen
 	Create New Building	Neues Gebäude erstellen
@@ -714,6 +713,15 @@
 	Added {}.	{} hinzugefügt.
 	Set as Working Closet	Als Arbeitsschrank festlegen
 	New Generic Container	Neuer allgemeiner Container
+	Container	Container
+	New Container	Neuer Container
+	Inventory Shelf	Lagerregal
+	Cable Pegboard	Kabel-Lochwand
+	Industrial Control Panel	Industrie-Schaltschrank
+	{}, {} DIN slots	{}, {} DIN-Plätze
+	{}, {} rows of hooks	{}, {} Hakenreihen
+	Hang on a Peg	An einen Haken hängen
+	Take off the Peg	Vom Haken nehmen
 	Next Hop	Next Hop
 	No	Nein
 	No adding or removing devices	Kein Hinzufügen oder Entfernen von Geräten

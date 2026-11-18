@@ -649,15 +649,6 @@
 	New City	Nueva ciudad
 	New Building	Nuevo edificio
 	New Wiring Closet	Nuevo armario de cableado
-	Container	Contenedor
-	New Container	Nuevo contenedor
-	Inventory Shelf	Estantería de inventario
-	Cable Pegboard	Panel de ganchos para cables
-	Industrial Control Panel	Panel de control industrial
-	{}, {} DIN slots	{}, {} posiciones DIN
-	{}, {} rows of hooks	{}, {} filas de ganchos
-	Hang on a Peg	Colgar de un gancho
-	Take off the Peg	Quitar del gancho
 	Create New…	Crear nuevo…
 	Create New City	Crear ciudad nueva
 	Create New Building	Crear edificio nuevo
@@ -681,6 +672,15 @@
 	Added {}.	Se ha añadido {}.
 	Set as Working Closet	Definir como armario de trabajo
 	New Generic Container	Nuevo contenedor genérico
+	Container	Contenedor
+	New Container	Nuevo contenedor
+	Inventory Shelf	Estantería de inventario
+	Cable Pegboard	Panel de ganchos para cables
+	Industrial Control Panel	Panel de control industrial
+	{}, {} DIN slots	{}, {} posiciones DIN
+	{}, {} rows of hooks	{}, {} filas de ganchos
+	Hang on a Peg	Colgar de un gancho
+	Take off the Peg	Quitar del gancho
 	Back to the enclosing place (Intercity is the top)	Volver al lugar que lo contiene (Interurbano es lo más alto)
 	Intercity	Interurbano
 	Back to the Intercity map	Volver al mapa interurbano
@@ -701,6 +701,14 @@
 	Open Device	Abrir dispositivo
 	Move to	Mover a
 	Cable Length…	Longitud del cable…
+	Loss budget	Presupuesto de pérdidas
+	within the budget	dentro del presupuesto
+	degraded: little margin left	degradado: queda poco margen
+	over the budget	por encima del presupuesto
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdidos de {} dB ({} conectores, {} empalmes)
+	More splices	Más empalmes
+	Fewer splices	Menos empalmes
+	fiber loses {} dB, over the {} dB the transceivers tolerate	la fibra pierde {} dB, más de los {} dB que toleran los transceptores
 	Resize…	Cambiar tamaño…
 	Resize	Cambiar tamaño
 	Units ({} to {}):	Unidades ({} a {}):

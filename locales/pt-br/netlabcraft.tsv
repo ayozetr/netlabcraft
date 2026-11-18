@@ -219,6 +219,14 @@
 	cable	cabo
 	Cable Length	Comprimento do cabo
 	Cable Length…	Comprimento do cabo…
+	Loss budget	Orçamento de perdas
+	within the budget	dentro do orçamento
+	degraded: little margin left	degradado: pouca margem
+	over the budget	acima do orçamento
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdidos de {} dB ({} conectores, {} emendas)
+	More splices	Mais emendas
+	Fewer splices	Menos emendas
+	fiber loses {} dB, over the {} dB the transceivers tolerate	a fibra perde {} dB, mais que os {} dB que os transceptores toleram
 	Resize…	Redimensionar…
 	Resize	Redimensionar
 	Units ({} to {}):	Unidades ({} a {}):
@@ -682,15 +690,6 @@
 	New File	Novo arquivo
 	New from sample	Novo a partir de exemplo
 	New Wiring Closet	Novo armário de fiação
-	Container	Contêiner
-	New Container	Novo contêiner
-	Inventory Shelf	Prateleira de estoque
-	Cable Pegboard	Painel de ganchos para cabos
-	Industrial Control Panel	Painel de controle industrial
-	{}, {} DIN slots	{}, {} posições DIN
-	{}, {} rows of hooks	{}, {} fileiras de ganchos
-	Hang on a Peg	Pendurar em um gancho
-	Take off the Peg	Tirar do gancho
 	Create New…	Criar novo…
 	Create New City	Criar nova cidade
 	Create New Building	Criar novo prédio
@@ -714,6 +713,15 @@
 	Added {}.	{} adicionado.
 	Set as Working Closet	Definir como armário de trabalho
 	New Generic Container	Novo contêiner genérico
+	Container	Contêiner
+	New Container	Novo contêiner
+	Inventory Shelf	Prateleira de estoque
+	Cable Pegboard	Painel de ganchos para cabos
+	Industrial Control Panel	Painel de controle industrial
+	{}, {} DIN slots	{}, {} posições DIN
+	{}, {} rows of hooks	{}, {} fileiras de ganchos
+	Hang on a Peg	Pendurar em um gancho
+	Take off the Peg	Tirar do gancho
 	Next Hop	Próximo salto
 	No	Não
 	No adding or removing devices	Sem adicionar nem remover dispositivos

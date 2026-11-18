@@ -219,6 +219,14 @@
 	cable	线缆
 	Cable Length	线缆长度
 	Cable Length…	线缆长度…
+	Loss budget	损耗预算
+	within the budget	在预算之内
+	degraded: little margin left	性能下降：余量不多
+	over the budget	超出预算
+	{} dB lost of {} dB ({} connectors, {} splices)	损耗 {} dB，预算 {} dB（{} 个连接器，{} 个熔接点）
+	More splices	增加熔接点
+	Fewer splices	减少熔接点
+	fiber loses {} dB, over the {} dB the transceivers tolerate	光纤损耗 {} dB，超过收发器可承受的 {} dB
 	Resize…	调整大小…
 	Resize	调整大小
 	Units ({} to {}):	机架单元（{} 至 {}）：
@@ -682,15 +690,6 @@
 	New File	新建文件
 	New from sample	从示例新建
 	New Wiring Closet	新建配线间
-	Container	容器
-	New Container	新建容器
-	Inventory Shelf	库存货架
-	Cable Pegboard	线缆挂板
-	Industrial Control Panel	工业控制面板
-	{}, {} DIN slots	{}，{} 个 DIN 槽位
-	{}, {} rows of hooks	{}，{} 排挂钩
-	Hang on a Peg	挂到挂钩上
-	Take off the Peg	从挂钩上取下
 	Create New…	新建…
 	Create New City	新建城市
 	Create New Building	新建建筑
@@ -714,6 +713,15 @@
 	Added {}.	已添加 {}。
 	Set as Working Closet	设为工作配线间
 	New Generic Container	新建通用容器
+	Container	容器
+	New Container	新建容器
+	Inventory Shelf	库存货架
+	Cable Pegboard	线缆挂板
+	Industrial Control Panel	工业控制面板
+	{}, {} DIN slots	{}，{} 个 DIN 槽位
+	{}, {} rows of hooks	{}，{} 排挂钩
+	Hang on a Peg	挂到挂钩上
+	Take off the Peg	从挂钩上取下
 	Next Hop	下一跳
 	No	否
 	No adding or removing devices	不能添加或移除设备

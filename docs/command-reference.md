@@ -186,7 +186,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `link.add` | Connect with a cable | Insert |  | `{"a": "device", "a_port"?: "interface", "b": "device", "b_port"?: "interface", "cable"?: "auto" (default) \| "console" \| "straight-through" \| "cross-over" \| "fiber-single-mode" \| "fiber-multi-mode" \| "phone" \| "coaxial" \| "serial-dce" \| "serial-dte" \| "octal" \| "iot-custom" \| "usb" ("fiber" reads as multi-mode), "line"?: 0-7 (octal)} → {"a", "b", "cable", "resolved"}: a cable joins two ports of its medium; a console cable joins a PC's RS-232 port to a router's or switch's Console port, a USB cable a PC's USB port to a router's or switch's USB console port, an octal cable a line of a router's octal card (Card-8A) to another router's or switch's Console port (a is the router with the card unless only b has one)` |
 | `link.remove` | Remove cable | Edit |  | `{"device", "port": "interface", or "Console" / "RS-232" / "USB" for a console or USB cable, "Console" on the far device or "Async" on the card's router for an octal cable}` |
 | `link.list` | List cables |  |  | `{} → [{"a", "b", "cable", "resolved", "up", "problem"}] (console cables: cable "console", resolved "console"; USB cables "usb"; octal cables "octal")` |
-| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything` |
+| `link.info` | Cable information |  |  | `{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null \| {"a": "multi-mode" \| "single-mode", "b"}, "budget": null \| {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" \| "degraded" \| "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)` |
+| `link.splices` | Fiber splices |  |  | `{"device", "port": "interface", "count": 0-50} → the cable as `link.info` reports it: the splices on a fiber cable, each costing 0.3 dB of its loss budget (a copper cable has none)` |
 | `pc.terminal` | Terminal (console cable) |  |  | `{"pc": "PC or laptop"} → {"device", "prompt", "log"}: the router or switch its console cable leads to; type into it with cli.exec on that device (the same console its CLI tab shows)` |
 | `octal.terminal` | Terminal (octal cable) |  |  | `{"router": "router with an octal card", "line": 0-7} → {"router", "line", "device", "prompt", "log"}: the router or switch an octal cable reaches from that line of the card; type into it with cli.exec on that device (reverse-telnet style access from a router's own console is not modelled)` |
 | `cli.exec` | Type a command |  |  | `{"device", "line"} → {"output", "prompt", "clear"}` |
@@ -276,6 +277,26 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `reload` | privileged | router, switch, firewall | Restart with the saved configuration |
 | `clear mac address-table` | privileged | switch | Forget learned MAC addresses |
 | `clear arp-cache` | privileged | router | Forget ARP entries |
+| `show mac-address-table` | user, privileged | switch | Learned MAC addresses |
+| `show mac-address-table dynamic` | user, privileged | switch | Learned MAC addresses |
+| `clear mac-address-table dynamic` | privileged | switch | Forget learned MAC addresses |
+| `clear arp` | privileged | router | Forget ARP entries |
+| `show derived-config` | privileged | router, switch, firewall | Current configuration (the same text as running-config) |
+| `write terminal` | privileged | router, switch, firewall | Show the current configuration |
+| `write erase` | privileged | router, switch, firewall | Delete the saved configuration |
+| `erase nvram:` | privileged | router, switch, firewall | Delete the saved configuration |
+| `configure memory` | privileged | router, switch | Merge the saved configuration into the running one |
+| `show terminal` | user, privileged | router, switch | Terminal length, width and history of this session |
+| `show line` | user, privileged | router, switch | How the console and the remote login lines are set up |
+| `show cdp interface` | user, privileged | router, switch | CDP timers on each interface that sends them |
+| `show mac address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `show mac-address-table aging-time` | user, privileged | switch | How long a learned address is kept |
+| `more system:running-config\|nvram:startup-config` | privileged | router, switch | Show the running or the saved configuration |
+| `pwd` | privileged | router, switch | The file system commands work in |
+| `show snmp community` | user, privileged | router, switch | SNMP communities and what they may do |
+| `show snmp host` | user, privileged | router, switch | The managers that get SNMP notifications |
+| `show snmp group` | user, privileged | router, switch | SNMPv3 groups |
+| `show snmp user` | user, privileged | router, switch | SNMPv3 users |
 | `hostname WORD` | config | router, switch, firewall | Set the device name |
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
@@ -368,6 +389,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `show ip ospf maxage-database` | user, privileged | router, switch | LSAs this router still holds at MaxAge, withdrawn by their originator |
+| `timers throttle spf <0-600000> <0-600000> <0-600000>` |  | router, switch | Milliseconds SPF waits after a change, the least between two runs, and the most the hold grows to |
+| `no timers throttle spf` |  | router, switch | The default SPF delays again (50, 200 and 5000 ms) |
 | `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |
 | `no ip ospf authentication key-chain` | interface, subinterface | router, switch | Stop reading the keys from a key chain |
 | `key chain NAME` | config | router, switch | Create or edit a chain of keys with lifetimes |
@@ -577,6 +601,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show memory statistics` | user, privileged | router, switch | Memory in use |
 | `show ip interface` | user, privileged | router, switch | Layer-3 settings of every interface |
 | `show ip interface <interface>` | user, privileged | router, switch | Layer-3 settings of an interface |
+| `show interfaces transceiver` | user, privileged | switch | Transceiver, loss budget and margin of each fiber port |
 | `show interfaces status` | user, privileged | switch | Port state, VLAN and speed |
 | `show running-config interface <interface>` | privileged | router, switch | One interface's configuration |
 | `show logging` | user, privileged | router, switch, firewall | The logging buffer |
@@ -657,8 +682,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no debug crypto ipsec` | privileged | router, switch | Stop reporting IPsec |
 | `debug ip dhcp server packet` | privileged | router, switch | Report every DHCP message this server receives and sends |
 | `no debug ip dhcp server packet` | privileged | router, switch | Stop reporting DHCP messages |
-| `debug ip ospf adj\|events\|hello` | privileged | router | Report OSPF: hellos heard, adjacency states, or events |
-| `no debug ip ospf adj\|events\|hello` | privileged | router | Stop one kind of OSPF report |
+| `debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet |
+| `no debug ip ospf adj\|events\|hello\|lsa-generation\|flood\|packet` | privileged | router | Stop one kind of OSPF report |
 | `no debug ip ospf` | privileged | router | Stop every OSPF report |
 | `show debugging` | user, privileged | router, switch | Which debugs are on |
 | `standby <0-255> ip A.B.C.D` | interface, subinterface | router | HSRP: the group's virtual gateway address |
@@ -1083,6 +1108,318 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no login` |  | router, switch | Don't ask for a password |
 | `exec-timeout <minutes> [<seconds>]` |  | router, switch | Idle timeout (accepted, not simulated) |
 | `logging synchronous` |  | router, switch | Keep messages from breaking your typing (accepted) |
+| `service sequence-numbers` | config | router, switch | Number every log message |
+| `no service sequence-numbers` | config | router, switch | Return this setting to its default |
+| `service tcp-keepalives-in` | config | router, switch | Probe incoming TCP sessions so dead ones are dropped |
+| `no service tcp-keepalives-in` | config | router, switch | Return this setting to its default |
+| `service tcp-keepalives-out` | config | router, switch | Probe outgoing TCP sessions so dead ones are dropped |
+| `no service tcp-keepalives-out` | config | router, switch | Return this setting to its default |
+| `service pad` | config | router, switch | Allow packet assembly for X.25 terminals (on) |
+| `no service pad` | config | router, switch | Turn this off (it is on by default) |
+| `service dhcp` | config | router, switch | Answer DHCP requests and relay them (on) |
+| `no service dhcp` | config | router, switch | Turn this off (it is on by default) |
+| `ip classless` | config | router, switch | Send packets for a missing subnet to the default route (on) |
+| `no ip classless` | config | router, switch | Turn this off (it is on by default) |
+| `ip subnet-zero` | config | router, switch | Allow the all-zeros subnet (on) |
+| `no ip subnet-zero` | config | router, switch | Turn this off (it is on by default) |
+| `ip cef` | config | router, switch | Forward with the express forwarding table (on) |
+| `no ip cef` | config | router, switch | Turn this off (it is on by default) |
+| `ipv6 cef` | config | router, switch | Forward IPv6 with the express forwarding table |
+| `no ipv6 cef` | config | router, switch | Return this setting to its default |
+| `ip source-route` | config | router, switch | Process packets that carry a source route (on) |
+| `no ip source-route` | config | router, switch | Turn this off (it is on by default) |
+| `ip gratuitous-arps` | config | router, switch | Answer gratuitous ARP and send it on address changes (on) |
+| `no ip gratuitous-arps` | config | router, switch | Turn this off (it is on by default) |
+| `ip multicast-routing` | config | router, switch | Route IPv4 multicast |
+| `no ip multicast-routing` | config | router, switch | Return this setting to its default |
+| `ipv6 multicast-routing` | config | router, switch | Route IPv6 multicast |
+| `no ipv6 multicast-routing` | config | router, switch | Return this setting to its default |
+| `ip tcp synwait-time <5-300>` | config | router, switch | Seconds to wait for a TCP connection to open |
+| `no ip tcp synwait-time` | config | router, switch | Return this setting to its default |
+| `ip tcp window-size <68-1073741823>` | config | router, switch | The TCP receive window in bytes |
+| `no ip tcp window-size` | config | router, switch | Return this setting to its default |
+| `ip tcp path-mtu-discovery` | config | router, switch | Find the largest segment a path carries |
+| `no ip tcp path-mtu-discovery` | config | router, switch | Return this setting to its default |
+| `ip icmp rate-limit unreachable <1-4294967295>` | config | router, switch | Milliseconds between ICMP unreachables |
+| `no ip icmp rate-limit unreachable` | config | router, switch | Return this setting to its default |
+| `ip ssh source-interface INTERFACE` | config | router, switch | Interface whose address SSH clients use |
+| `no ip ssh source-interface` | config | router, switch | Return this setting to its default |
+| `ip tftp source-interface INTERFACE` | config | router, switch | Interface whose address TFTP transfers use |
+| `no ip tftp source-interface` | config | router, switch | Return this setting to its default |
+| `ip ftp source-interface INTERFACE` | config | router, switch | Interface whose address FTP transfers use |
+| `no ip ftp source-interface` | config | router, switch | Return this setting to its default |
+| `ip telnet source-interface INTERFACE` | config | router, switch | Interface whose address Telnet clients use |
+| `no ip telnet source-interface` | config | router, switch | Return this setting to its default |
+| `ip http port <1-65535>` | config | router, switch | TCP port of the web server |
+| `no ip http port` | config | router, switch | Return this setting to its default |
+| `ip dhcp ping packets <0-10>` | config | router, switch | Pings sent to test an address before it is offered |
+| `no ip dhcp ping packets` | config | router, switch | Return this setting to its default |
+| `ip dhcp conflict logging` | config | router, switch | Log the addresses found already in use (on) |
+| `no ip dhcp conflict logging` | config | router, switch | Turn this off (it is on by default) |
+| `ip dhcp bootp ignore` | config | router, switch | Ignore BOOTP requests |
+| `no ip dhcp bootp ignore` | config | router, switch | Return this setting to its default |
+| `ip access-list logging interval <0-2147483647>` | config | router, switch | Milliseconds between logged access list matches |
+| `no ip access-list logging interval` | config | router, switch | Return this setting to its default |
+| `ip access-list log-update threshold <1-2147483647>` | config | router, switch | Matches that trigger a log update |
+| `no ip access-list log-update threshold` | config | router, switch | Return this setting to its default |
+| `ipv6 hop-limit <1-255>` | config | router, switch | Hop limit of the IPv6 packets this device sends |
+| `no ipv6 hop-limit` | config | router, switch | Return this setting to its default |
+| `ipv6 icmp error-interval <0-2147483647>` | config | router, switch | Milliseconds between ICMPv6 errors |
+| `no ipv6 icmp error-interval` | config | router, switch | Return this setting to its default |
+| `ip device tracking` | config | router, switch | Track the hosts seen on access ports |
+| `no ip device tracking` | config | router, switch | Return this setting to its default |
+| `cdp advertise-v2` | config | router, switch | Send version 2 CDP advertisements (on) |
+| `no cdp advertise-v2` | config | router, switch | Turn this off (it is on by default) |
+| `cdp timer <5-254>` | config | router, switch | Seconds between CDP advertisements |
+| `no cdp timer` | config | router, switch | Return this setting to its default |
+| `cdp holdtime <10-255>` | config | router, switch | Seconds a neighbour keeps what CDP told it |
+| `no cdp holdtime` | config | router, switch | Return this setting to its default |
+| `cdp source-interface INTERFACE` | config | router, switch | Interface whose address CDP advertises |
+| `no cdp source-interface` | config | router, switch | Return this setting to its default |
+| `lldp holdtime <0-65535>` | config | router, switch | Seconds a neighbour keeps what LLDP told it |
+| `no lldp holdtime` | config | router, switch | Return this setting to its default |
+| `lldp timer <5-65534>` | config | router, switch | Seconds between LLDP advertisements |
+| `no lldp timer` | config | router, switch | Return this setting to its default |
+| `lldp reinit <1-10>` | config | router, switch | Seconds LLDP waits before it starts again |
+| `no lldp reinit` | config | router, switch | Return this setting to its default |
+| `ntp source INTERFACE` | config | router, switch | Interface whose address NTP packets use |
+| `no ntp source` | config | router, switch | Return this setting to its default |
+| `ntp max-associations <0-4294967295>` | config | router, switch | Most NTP peers and clients |
+| `no ntp max-associations` | config | router, switch | Return this setting to its default |
+| `ntp logging` | config | router, switch | Log NTP events |
+| `no ntp logging` | config | router, switch | Return this setting to its default |
+| `ntp passive` | config | router, switch | Accept peers that ask for symmetric mode |
+| `no ntp passive` | config | router, switch | Return this setting to its default |
+| `snmp-server trap-source INTERFACE` | config | router, switch | Interface whose address traps come from |
+| `no snmp-server trap-source` | config | router, switch | Return this setting to its default |
+| `snmp-server chassis-id TEXT` | config | router, switch | The chassis serial text SNMP reports |
+| `no snmp-server chassis-id` | config | router, switch | Return this setting to its default |
+| `snmp-server ifindex persist` | config | router, switch | Keep interface numbers across reloads |
+| `no snmp-server ifindex persist` | config | router, switch | Return this setting to its default |
+| `snmp-server packetsize <484-17940>` | config | router, switch | Largest SNMP packet in bytes |
+| `no snmp-server packetsize` | config | router, switch | Return this setting to its default |
+| `snmp-server queue-length <1-1000>` | config | router, switch | Traps held for each manager |
+| `no snmp-server queue-length` | config | router, switch | Return this setting to its default |
+| `snmp-server system-shutdown` | config | router, switch | Let SNMP managers reload this device |
+| `no snmp-server system-shutdown` | config | router, switch | Return this setting to its default |
+| `snmp-server trap-timeout <1-1000>` | config | router, switch | Seconds to retry sending a trap |
+| `no snmp-server trap-timeout` | config | router, switch | Return this setting to its default |
+| `logging source-interface INTERFACE` | config | router, switch | Interface whose address log messages come from |
+| `no logging source-interface` | config | router, switch | Return this setting to its default |
+| `logging facility WORD` | config | router, switch | Syslog facility sent to servers |
+| `no logging facility` | config | router, switch | Return this setting to its default |
+| `logging history LEVEL` | config | router, switch | Most detailed severity kept for SNMP |
+| `no logging history` | config | router, switch | Return this setting to its default |
+| `logging history size <1-500>` | config | router, switch | Messages kept for SNMP |
+| `no logging history size` | config | router, switch | Return this setting to its default |
+| `logging rate-limit <messages> [except <LEVEL>]` | config | router, switch | Messages per second let through |
+| `no logging rate-limit` | config | router, switch | Return this setting to its default |
+| `logging origin-id {hostname\|ip A.B.C.D\|string TEXT}` | config | router, switch | Identifier sent with each log message |
+| `no logging origin-id` | config | router, switch | Return this setting to its default |
+| `logging queue-limit <1-2147483647>` | config | router, switch | Messages queued for the syslog servers |
+| `no logging queue-limit` | config | router, switch | Return this setting to its default |
+| `clock calendar-valid` | config | router, switch | Treat the hardware calendar as the time source |
+| `no clock calendar-valid` | config | router, switch | Return this setting to its default |
+| `tacacs-server directed-request` | config | router, switch | Allow user@server to pick a TACACS+ server |
+| `no tacacs-server directed-request` | config | router, switch | Return this setting to its default |
+| `radius-server timeout <1-1000>` | config | router, switch | Seconds to wait for a RADIUS answer |
+| `no radius-server timeout` | config | router, switch | Return this setting to its default |
+| `radius-server retransmit <0-100>` | config | router, switch | Times a RADIUS request is sent again |
+| `no radius-server retransmit` | config | router, switch | Return this setting to its default |
+| `radius-server deadtime <0-1440>` | config | router, switch | Minutes a silent RADIUS server is skipped |
+| `no radius-server deadtime` | config | router, switch | Return this setting to its default |
+| `tacacs-server timeout <1-1000>` | config | router, switch | Seconds to wait for a TACACS+ answer |
+| `no tacacs-server timeout` | config | router, switch | Return this setting to its default |
+| `spanning-tree backbonefast` | config | switch | Recover quickly from an indirect link failure |
+| `no spanning-tree backbonefast` | config | switch | Return this setting to its default |
+| `spanning-tree uplinkfast` | config | switch | Recover quickly when the root port fails |
+| `no spanning-tree uplinkfast` | config | switch | Return this setting to its default |
+| `spanning-tree logging` | config | switch | Log spanning tree state changes |
+| `no spanning-tree logging` | config | switch | Return this setting to its default |
+| `spanning-tree extend system-id` | config | switch | Put the VLAN number in the bridge priority (on) |
+| `no spanning-tree extend system-id` | config | switch | Turn this off (it is on by default) |
+| `spanning-tree pathcost method {long\|short}` | config | switch | Width of the port costs |
+| `no spanning-tree pathcost method {long\|short}` | config | switch | Return this setting to its default |
+| `spanning-tree transmit hold-count <1-20>` | config | switch | BPDUs sent per second at most |
+| `no spanning-tree transmit hold-count` | config | switch | Return this setting to its default |
+| `spanning-tree etherchannel guard misconfig` | config | switch | Warn about a misconfigured EtherChannel (on) |
+| `no spanning-tree etherchannel guard misconfig` | config | switch | Turn this off (it is on by default) |
+| `udld enable` | config | switch | Detect one-way fibre links on every fibre port |
+| `no udld enable` | config | switch | Return this setting to its default |
+| `udld aggressive` | config | switch | Detect one-way links and shut the port |
+| `no udld aggressive` | config | switch | Return this setting to its default |
+| `udld message time <1-90>` | config | switch | Seconds between UDLD probes |
+| `no udld message time` | config | switch | Return this setting to its default |
+| `udld recovery` | config | switch | Bring a UDLD-disabled port back on a timer |
+| `no udld recovery` | config | switch | Return this setting to its default |
+| `mac address-table aging-time <0-1000000>` | config | switch | Seconds a learned address is kept (0: forever) |
+| `no mac address-table aging-time` | config | switch | Return this setting to its default |
+| `mac-address-table aging-time <0-1000000>` | config | switch | Seconds a learned address is kept (0: forever) |
+| `no mac-address-table aging-time` | config | switch | Return this setting to its default |
+| `system mtu <1500-1998>` | config | switch | Largest frame on the Fast Ethernet ports |
+| `no system mtu` | config | switch | Return this setting to its default |
+| `system mtu jumbo <1500-9000>` | config | switch | Largest frame on the Gigabit ports |
+| `no system mtu jumbo` | config | switch | Return this setting to its default |
+| `system mtu routing <1500-1998>` | config | switch | Largest routed packet |
+| `no system mtu routing` | config | switch | Return this setting to its default |
+| `load-interval <30-600>` | interface, subinterface | router, switch | Seconds the rate counters average over |
+| `no load-interval` | interface, subinterface | router, switch | Return this setting to its default |
+| `carrier-delay <seconds>\|msec <ms>` | interface, subinterface | router, switch | Wait before a link change is reported |
+| `no carrier-delay` | interface, subinterface | router, switch | Return this setting to its default |
+| `ip redirects` | interface, subinterface | router, switch | Send ICMP redirects (on) |
+| `no ip redirects` | interface, subinterface | router, switch | Turn this off (it is on by default) |
+| `ip unreachables` | interface, subinterface | router, switch | Send ICMP unreachables (on) |
+| `no ip unreachables` | interface, subinterface | router, switch | Turn this off (it is on by default) |
+| `ip directed-broadcast` | interface, subinterface | router, switch | Forward directed broadcasts to the subnet |
+| `no ip directed-broadcast` | interface, subinterface | router, switch | Return this setting to its default |
+| `ip mask-reply` | interface, subinterface | router, switch | Answer ICMP mask requests |
+| `no ip mask-reply` | interface, subinterface | router, switch | Return this setting to its default |
+| `ip route-cache` | interface, subinterface | router, switch | Fast switch the packets of this interface (on) |
+| `no ip route-cache` | interface, subinterface | router, switch | Turn this off (it is on by default) |
+| `ip mroute-cache` | interface, subinterface | router, switch | Fast switch multicast of this interface (on) |
+| `no ip mroute-cache` | interface, subinterface | router, switch | Turn this off (it is on by default) |
+| `ip virtual-reassembly` | interface, subinterface | router, switch | Reassemble fragments before inspecting them |
+| `no ip virtual-reassembly` | interface, subinterface | router, switch | Return this setting to its default |
+| `ip local-proxy-arp` | interface, subinterface | router, switch | Answer ARP for hosts on the same subnet |
+| `no ip local-proxy-arp` | interface, subinterface | router, switch | Return this setting to its default |
+| `ip split-horizon` | interface, subinterface | router, switch | Do not advertise a route out of the interface it came from (on) |
+| `no ip split-horizon` | interface, subinterface | router, switch | Turn this off (it is on by default) |
+| `ipv6 redirects` | interface, subinterface | router, switch | Send ICMPv6 redirects (on) |
+| `no ipv6 redirects` | interface, subinterface | router, switch | Turn this off (it is on by default) |
+| `ipv6 unreachables` | interface, subinterface | router, switch | Send ICMPv6 unreachables (on) |
+| `no ipv6 unreachables` | interface, subinterface | router, switch | Turn this off (it is on by default) |
+| `ipv6 mtu <1280-65535>` | interface, subinterface | router, switch | Largest IPv6 packet on this interface |
+| `no ipv6 mtu` | interface, subinterface | router, switch | Return this setting to its default |
+| `negotiation auto` | interface, subinterface | router, switch | Negotiate speed and flow control |
+| `no negotiation auto` | interface, subinterface | router, switch | Return this setting to its default |
+| `media-type {rj45\|sfp\|auto-select}` | interface, subinterface | router, switch | Connector in use on a dual-media port |
+| `no media-type {rj45\|sfp\|auto-select}` | interface, subinterface | router, switch | Return this setting to its default |
+| `tx-ring-limit <1-32768>` | interface, subinterface | router | Packets the transmit ring holds |
+| `no tx-ring-limit` | interface, subinterface | router | Return this setting to its default |
+| `max-reserved-bandwidth <1-100>` | interface, subinterface | router | Percent of the bandwidth queueing may reserve |
+| `no max-reserved-bandwidth` | interface, subinterface | router | Return this setting to its default |
+| `fair-queue` | interface, subinterface | router | Share the link between flows |
+| `no fair-queue` | interface, subinterface | router | Return this setting to its default |
+| `random-detect` | interface, subinterface | router | Drop packets early when a queue fills |
+| `no random-detect` | interface, subinterface | router | Return this setting to its default |
+| `power efficient-ethernet` | interface, subinterface | switch | Save power when the link is idle |
+| `no power efficient-ethernet` | interface, subinterface | switch | Return this setting to its default |
+| `channel-protocol {lacp\|pagp}` | interface, subinterface | switch | Protocol that bundles this port |
+| `no channel-protocol {lacp\|pagp}` | interface, subinterface | switch | Return this setting to its default |
+| `udld port` | interface, subinterface | switch | Detect one-way links on this port |
+| `no udld port` | interface, subinterface | switch | Return this setting to its default |
+| `udld port aggressive` | interface, subinterface | switch | Detect one-way links on this port and shut it |
+| `no udld port aggressive` | interface, subinterface | switch | Return this setting to its default |
+| `storm-control {broadcast\|multicast\|unicast} level <0.00-100.00>` | interface, subinterface | switch | Traffic level that starts a storm response |
+| `no storm-control {broadcast\|multicast\|unicast} level` | interface, subinterface | switch | Return this setting to its default |
+| `storm-control action {shutdown\|trap}` | interface, subinterface | switch | What to do when a storm is detected |
+| `no storm-control action {shutdown\|trap}` | interface, subinterface | switch | Return this setting to its default |
+| `switchport protected` | interface, subinterface | switch | Do not forward to other protected ports |
+| `no switchport protected` | interface, subinterface | switch | Return this setting to its default |
+| `switchport block {unicast\|multicast}` | interface, subinterface | switch | Do not flood unknown traffic out of this port |
+| `no switchport block {unicast\|multicast}` | interface, subinterface | switch | Return this setting to its default |
+| `arp timeout <0-2147483>` | interface, subinterface | router | Seconds an ARP entry lives |
+| `no arp timeout` | interface, subinterface | router | Return this setting to its default |
+| `crc {16\|32}` | interface, subinterface | router | Width of the serial checksum |
+| `no crc {16\|32}` | interface, subinterface | router | Return this setting to its default |
+| `invert-transmit` | interface, subinterface | router | Invert the transmit clock |
+| `no invert-transmit` | interface, subinterface | router | Return this setting to its default |
+| `down-when-looped` | interface, subinterface | router | Take the interface down when the line is looped |
+| `no down-when-looped` | interface, subinterface | router | Return this setting to its default |
+| `transmit-delay <0-65535>` | interface, subinterface | router | Flag bytes between frames |
+| `no transmit-delay` | interface, subinterface | router | Return this setting to its default |
+| `ignore-dcd` | interface, subinterface | router | Ignore the carrier detect signal |
+| `no ignore-dcd` | interface, subinterface | router | Return this setting to its default |
+| `nrzi-encoding` | interface, subinterface | router | Use NRZI line coding |
+| `no nrzi-encoding` | interface, subinterface | router | Return this setting to its default |
+| `loopback` | interface, subinterface | router | Loop the serial line back on itself |
+| `no loopback` | interface, subinterface | router | Return this setting to its default |
+| `exec` |  | router, switch | Start an EXEC session on this line (on) |
+| `no exec` |  | router, switch | Turn this off (it is on by default) |
+| `session-timeout <0-35791>` |  | router, switch | Minutes an outgoing session may sit idle |
+| `no session-timeout` |  | router, switch | Return this setting to its default |
+| `absolute-timeout <0-35791>` |  | router, switch | Minutes after which the line logs out |
+| `no absolute-timeout` |  | router, switch | Return this setting to its default |
+| `rotary <1-99>` |  | router, switch | Rotary group of this line |
+| `no rotary` |  | router, switch | Return this setting to its default |
+| `location TEXT` |  | router, switch | Where the line leads |
+| `no location` |  | router, switch | Return this setting to its default |
+| `autocommand COMMAND` |  | router, switch | Command to run when a user logs in |
+| `no autocommand` |  | router, switch | Return this setting to its default |
+| `escape-character CHAR` |  | router, switch | Key that ends a session |
+| `no escape-character` |  | router, switch | Return this setting to its default |
+| `terminal-type WORD` |  | router, switch | Terminal type of the line |
+| `no terminal-type` |  | router, switch | Return this setting to its default |
+| `stopbits {1\|1.5\|2}` |  | router, switch | Stop bits of the serial line |
+| `no stopbits {1\|1.5\|2}` |  | router, switch | Return this setting to its default |
+| `databits {5\|6\|7\|8}` |  | router, switch | Data bits of the serial line |
+| `no databits {5\|6\|7\|8}` |  | router, switch | Return this setting to its default |
+| `parity {none\|even\|odd\|space\|mark}` |  | router, switch | Parity of the serial line |
+| `no parity {none\|even\|odd\|space\|mark}` |  | router, switch | Return this setting to its default |
+| `flowcontrol {none\|hardware\|software}` |  | router, switch | Flow control of the serial line |
+| `no flowcontrol {none\|hardware\|software}` |  | router, switch | Return this setting to its default |
+| `motd-banner` |  | router, switch | Show the message of the day on this line (on) |
+| `no motd-banner` |  | router, switch | Turn this off (it is on by default) |
+| `exec-banner` |  | router, switch | Show the EXEC banner on this line (on) |
+| `no exec-banner` |  | router, switch | Turn this off (it is on by default) |
+| `transport output {all\|none\|telnet\|ssh}` |  | router, switch | Protocols the line may open |
+| `no transport output {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
+| `transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Protocol assumed for a host name typed alone |
+| `no transport preferred {all\|none\|telnet\|ssh}` |  | router, switch | Return this setting to its default |
+| `maximum-paths <1-32>` |  | router, switch | Most equal-cost routes RIP installs |
+| `no maximum-paths` |  | router, switch | Return this setting to its default |
+| `distance <1-255>` |  | router, switch | Administrative distance of RIP routes |
+| `no distance` |  | router, switch | Return this setting to its default |
+| `output-delay <8-50>` |  | router, switch | Milliseconds between the packets of an update |
+| `no output-delay` |  | router, switch | Return this setting to its default |
+| `validate-update-source` |  | router, switch | Accept updates only from a neighbour on the same subnet (on) |
+| `no validate-update-source` |  | router, switch | Turn this off (it is on by default) |
+| `eigrp stub` |  | router, switch | Act as a stub router that advertises only what it is told to |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `eigrp stub [connected] [static] [summary] [receive-only] [redistributed]` |  | router, switch | Act as a stub router that advertises only the routes named |
+| `no eigrp stub` |  | router, switch | Return this setting to its default |
+| `distance eigrp <1-255> <1-255>` |  | router, switch | Administrative distances of internal and external EIGRP routes |
+| `no distance eigrp` |  | router, switch | Return this setting to its default |
+| `eigrp log-neighbor-changes` |  | router, switch | Log the neighbours that come and go |
+| `no eigrp log-neighbor-changes` |  | router, switch | Return this setting to its default |
+| `metric weights <0-8> <0-255> <0-255> <0-255> <0-255> <0-255>` |  | router, switch | The K values of the metric |
+| `no metric weights` |  | router, switch | Return this setting to its default |
+| `ip rip send version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface sends |
+| `no ip rip send version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip receive version {1\|2\|1 2}` | interface, subinterface | router | RIP versions this interface accepts |
+| `no ip rip receive version` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication mode {md5\|text}` | interface, subinterface | router | How RIP updates are authenticated here |
+| `no ip rip authentication mode {md5\|text}` | interface, subinterface | router | Return this setting to its default |
+| `ip rip authentication key-chain WORD` | interface, subinterface | router | The key chain that authenticates RIP updates here |
+| `no ip rip authentication key-chain` | interface, subinterface | router | Return this setting to its default |
+| `ip rip v2-broadcast` | interface, subinterface | router | Send RIP version 2 updates as broadcasts |
+| `no ip rip v2-broadcast` | interface, subinterface | router | Return this setting to its default |
+| `ip rip triggered` | interface, subinterface | router | Send RIP updates only when the table changes |
+| `no ip rip triggered` | interface, subinterface | router | Return this setting to its default |
+| `ip bandwidth-percent eigrp <1-65535> <1-999999>` | interface, subinterface | router | Percent of the bandwidth EIGRP may use |
+| `no ip bandwidth-percent eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Sign EIGRP packets here with MD5 |
+| `no ip authentication mode eigrp <1-65535> md5` | interface, subinterface | router | Return this setting to its default |
+| `ip authentication key-chain eigrp <1-65535> WORD` | interface, subinterface | router | The key chain that signs EIGRP packets here |
+| `no ip authentication key-chain eigrp <1-65535>` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers <1-254> <1-254>` | interface, subinterface | router | HSRP hello and hold times in seconds |
+| `no standby <0-255> timers` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> timers msec <15-999> msec <50-3000>` | interface, subinterface | router | HSRP hello and hold times in milliseconds |
+| `no standby <0-255> timers msec` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> authentication [text\|md5 key-string] KEY` | interface, subinterface | router | HSRP authentication string |
+| `no standby <0-255> authentication` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> name WORD` | interface, subinterface | router | A name for the HSRP group |
+| `no standby <0-255> name` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> preempt delay minimum <0-3600>` | interface, subinterface | router | Seconds to wait before taking over |
+| `no standby <0-255> preempt delay minimum` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> mac-address H.H.H` | interface, subinterface | router | The virtual MAC address of the HSRP group |
+| `no standby <0-255> mac-address` | interface, subinterface | router | Return this setting to its default |
+| `standby <0-255> follow WORD` | interface, subinterface | router | Follow another HSRP group |
+| `no standby <0-255> follow` | interface, subinterface | router | Return this setting to its default |
+| `standby use-bia` | interface, subinterface | router | Use the interface MAC address as the virtual one |
+| `no standby use-bia` | interface, subinterface | router | Return this setting to its default |
+| `vrrp <1-255> description TEXT` | interface, subinterface | router | A note on the VRRP group |
+| `no vrrp <1-255> description` | interface, subinterface | router | Return this setting to its default |
 | `ipv6 access-list WORD` | config | router, switch | Create or edit an IPv6 access list |
 | `no ipv6 access-list WORD` | config | router, switch | Delete an IPv6 access list |
 | `permit {ipv6\|icmp\|tcp\|udp} <src> [port] <dst> [port]` |  | router | Allow matching packets |
@@ -1189,6 +1526,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `ip proxy-arp` | interface, subinterface | router | Answer ARP for hosts that are reached through this router |
 | `no ip proxy-arp` | interface, subinterface | router | Answer ARP only for this interface's own address |
 | `no mdix auto` | interface | router, switch | Expect the right cable type |
+| `transceiver type {multi-mode\|single-mode}` | interface | router, switch | The transceiver in a fiber or combo port (both ends of a link need the same) |
+| `no transceiver type` | interface | router, switch | Put the multi-mode transceiver back |
 | `keepalive` | interface | router, switch | Keepalives every 10 seconds again |
 | `keepalive <1-32767>` | interface | router, switch | Seconds between keepalives (shown by `show interfaces`; the simulator sends none) |
 | `no keepalive` | interface | router, switch | No keepalives |

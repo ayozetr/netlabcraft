@@ -219,6 +219,14 @@
 	cable	câble
 	Cable Length	Longueur du câble
 	Cable Length…	Longueur du câble…
+	Loss budget	Bilan de pertes
+	within the budget	dans le bilan
+	degraded: little margin left	dégradé : peu de marge
+	over the budget	au-delà du bilan
+	{} dB lost of {} dB ({} connectors, {} splices)	{} dB perdus sur {} dB ({} connecteurs, {} épissures)
+	More splices	Plus d'épissures
+	Fewer splices	Moins d'épissures
+	fiber loses {} dB, over the {} dB the transceivers tolerate	la fibre perd {} dB, au-delà des {} dB que tolèrent les transceivers
 	Resize…	Redimensionner…
 	Resize	Redimensionner
 	Units ({} to {}):	Unités ({} à {}) :
@@ -682,15 +690,6 @@
 	New File	Nouveau fichier
 	New from sample	Nouveau depuis un exemple
 	New Wiring Closet	Nouvelle armoire de câblage
-	Container	Conteneur
-	New Container	Nouveau conteneur
-	Inventory Shelf	Étagère d'inventaire
-	Cable Pegboard	Panneau perforé pour câbles
-	Industrial Control Panel	Panneau de commande industriel
-	{}, {} DIN slots	{}, {} emplacements DIN
-	{}, {} rows of hooks	{}, {} rangées de crochets
-	Hang on a Peg	Accrocher à un crochet
-	Take off the Peg	Décrocher
 	Create New…	Créer…
 	Create New City	Créer une ville
 	Create New Building	Créer un bâtiment
@@ -714,6 +713,15 @@
 	Added {}.	{} ajouté.
 	Set as Working Closet	Définir comme armoire de travail
 	New Generic Container	Nouveau conteneur générique
+	Container	Conteneur
+	New Container	Nouveau conteneur
+	Inventory Shelf	Étagère d'inventaire
+	Cable Pegboard	Panneau perforé pour câbles
+	Industrial Control Panel	Panneau de commande industriel
+	{}, {} DIN slots	{}, {} emplacements DIN
+	{}, {} rows of hooks	{}, {} rangées de crochets
+	Hang on a Peg	Accrocher à un crochet
+	Take off the Peg	Décrocher
 	Next Hop	Saut suivant
 	No	Non
 	No adding or removing devices	Impossible d'ajouter ou de retirer des équipements
