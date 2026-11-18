@@ -1204,6 +1204,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!(
+        "link.one_way",
+        "Cut a cable one way",
+        "Edit",
+        None,
+        r#"{"device", "port": "interface", "cut"?: true (default) | false} → {"port", "cut"}: what this port sends is lost (a cut fibre strand), while what the far end sends still arrives, so the link stays up and only a protocol that checks both directions (UDLD) notices; `cut: false` restores it"#,
+        true
+    ),
+    c!(
         "link.list",
         "List cables",
         "",
