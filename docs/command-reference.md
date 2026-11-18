@@ -181,7 +181,9 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `patch.unwire` | Remove a patch wire |  |  | `{"a", "b"?}: the wire between the two ends, or with no `b` every wire at `a`; a cable the wire's path carried is unplugged` |
 | `power.plug` | Plug into a power strip |  |  | `{"device", "strip": power distribution device, "outlet"?: from 1 (default: the first free one)} → {"strip", "outlet"}: the device and the strip stand in one closet; plugged into a strip that is off, the device switches off` |
 | `power.unplug` | Unplug from a power strip |  |  | `{"device"}` |
-| `power.strip` | Power strip switch |  |  | `{"strip": power distribution device, "on": true\|false or "on"\|"off"} → {"on", "devices"}: the devices plugged into it switch off or boot from their saved configuration as with device.power; one plugged into a strip that is off cannot be switched on` |
+| `power.strip` | Power strip switch |  |  | `{"strip": power distribution device, "on": true\|false or "on"\|"off"} → {"on", "tripped", "devices"}: the devices plugged into it switch off or boot from their saved configuration as with device.power; one plugged into a strip that is off cannot be switched on; switching on more than the breaker rating carries trips it again, and a tripped strip stays off while what is plugged in is over its rating` |
+| `power.rating` | Power strip breaker rating |  |  | `{"strip": power distribution device, "watts": 100-3680} → {"rating_w", "load_w", "tripped"}: the breaker carries the nominal draws of the devices that are on (Device::nominal_watts, a table per model); a rating below the load trips it at once` |
+| `power.load` | Power strip load |  |  | `{"strip": power distribution device} → {"strip", "on", "tripped", "rating_w", "load_w" (devices that are on), "demand_w" (everything plugged in), "outlets": [{"outlet", "device", "watts", "on"}]}; over the rating the breaker trips: the strip switches off and its devices lose power, and power.strip on resets it once what is plugged in fits` |
 | `view.enter_cluster` | Open cluster |  |  | `{"id"} → {"cluster", "path": [{"id", "name"}]}` |
 | `view.up` | Back to the parent cluster |  |  | `{} → {"cluster", "path"}` |
 | `view.root` | Back to the top level |  |  | `{} → {"cluster": null, "path": []}` |
@@ -1029,6 +1031,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `maximum-paths ibgp <1-32>` |  | router, switch | Put up to this many equal internal paths in the routing table |
 | `no maximum-paths ibgp` |  | router, switch | One internal path per prefix again |
 | `show ip bgp neighbors A.B.C.D received-routes` | user, privileged | router, switch | What a neighbour sent before the inbound policy (needs soft-reconfiguration inbound) |
+| `timers bgp <0-65535> <0\|3-65535>` |  | router, switch | Keepalive interval and hold time of every neighbour that has none of its own (seconds) |
+| `no timers bgp` |  | router, switch | Keepalive 60 and hold time 180 again |
 | `show ip bgp neighbors A.B.C.D advertised-routes` | user, privileged | router, switch | What this router sends a neighbour after the outbound policy |
 | `show ip bgp neighbors A.B.C.D routes` | user, privileged | router, switch | The paths accepted from a neighbour after the inbound policy |
 | `show ip bgp regexp <regular expression>` | user, privileged | router, switch | The paths whose AS path matches a regular expression |
