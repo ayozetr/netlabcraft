@@ -124,7 +124,6 @@ An environment can be exported from the Environments window (`environment.export
 | Date | Change | Summary |
 |---|---|---|
 | 2026-11-18 | minor | `access.async_transport`: what a reverse Telnet to a line of an octal card may use. Additive; the file version is unchanged. |
-| 2026-11-18 | minor | A power strip's `rating_w` and `tripped`. Additive; the file version is unchanged. |
 | 2026-11-18 | minor | `board.language` (`python` or `javascript`) for the language of a board's program. Left out for BoardScript and older files read as before, so the file version stays 12. |
 | 2026-11-18 | minor | File version 12: top-level `images` (PNG and JPEG pictures keyed by the hash of their bytes) and `background` (the logical workspace's), and `physical.scenes` (each place's background, icon and size). All are left out when empty; files of versions 1 to 11 open unchanged. |
 | 2026-11-18 | minor | `environments.physics` (the places' own physics); left out when off, older files read as before and the file version is unchanged. |
