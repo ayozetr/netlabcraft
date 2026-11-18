@@ -35,6 +35,7 @@ pub mod loopback;
 mod mtu;
 
 pub mod bgp;
+pub mod bgp6;
 pub mod channel;
 pub mod control;
 pub mod debug;
