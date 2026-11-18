@@ -1607,7 +1607,13 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowArp, EXECS, BOTH_FW, [K("show"), K("arp")], "ARP cache"),
     spec!(ShowInterfaces, EXECS, BOTH_FW, [K("show"), K("interfaces")], "Interface details"),
     spec!(ShowIntTrunk, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("trunk")], "Trunk ports"),
-    spec!(ShowIntSwitchport, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("interfaces"), K("switchport")], "Switchport settings of every port"),
+    spec!(
+        ShowIntSwitchport,
+        EXECS,
+        Modes::SWITCH.or(Modes::CARD),
+        [K("show"), K("interfaces"), K("switchport")],
+        "Switchport settings of every port"
+    ),
     spec!(ShowInterface, EXECS, BOTH_FW, [K("show"), K("interfaces"), Rest("<interface>")], "One interface's details"),
     spec!(ShowVlan, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan")], "VLAN database"),
     spec!(ShowVlanBrief, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("vlan"), K("brief")], "VLAN database"),
