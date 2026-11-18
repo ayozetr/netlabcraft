@@ -231,6 +231,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::l2sec::global_lines(&mut s, d);
+    crate::exec::igmp::global_lines(&mut s, d);
     crate::exec::archive::running_config(&mut s, d);
     crate::exec::srcguard::global_lines(&mut s, d);
     crate::exec::l2sec::relay_global_lines(&mut s, d);
@@ -710,6 +711,7 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    crate::exec::track::running_config(&mut s, d);
     for r in &d.routes {
         let via = match &r.via {
             NextHop::Address(a) => a.to_string(),
@@ -717,7 +719,9 @@ pub fn running_config(d: &Device) -> String {
         };
         let distance = r.distance.map_or(String::new(), |a| format!(" {a}"));
         let tag = if r.tag == 0 { String::new() } else { format!(" tag {}", r.tag) };
-        let _ = writeln!(s, "ip route {} {} {via}{distance}{tag}", r.net.addr, r.net.mask());
+        let permanent = if d.track.is_permanent(&r.net, &r.via) { " permanent" } else { "" };
+        let track = d.track.follows(&r.net, &r.via).map_or(String::new(), |n| format!(" track {n}"));
+        let _ = writeln!(s, "ip route {} {} {via}{distance}{tag}{permanent}{track}", r.net.addr, r.net.mask());
     }
     if !d.routes.is_empty() {
         let _ = writeln!(s, "!");

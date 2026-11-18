@@ -22,6 +22,33 @@ pub(super) fn split_distance(text: &str) -> Result<(String, Option<u8>), String>
     }
 }
 
+/// A static route's words with `permanent` and `track N` taken out wherever they stand: the
+/// words left, whether the route is permanent, and the object it follows.
+pub(super) fn split_route_flags(text: &str) -> Result<(String, bool, Option<u32>), String> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut keep = Vec::new();
+    let (mut permanent, mut track) = (false, None);
+    let mut i = 0;
+    while let Some(w) = words.get(i) {
+        if w.eq_ignore_ascii_case("permanent") {
+            permanent = true;
+            i += 1;
+        } else if w.eq_ignore_ascii_case("track") {
+            let n = words
+                .get(i + 1)
+                .and_then(|n| n.parse::<u32>().ok())
+                .filter(|n| (1..=netlabcraft_model::track::MAX_ID).contains(n))
+                .ok_or("% The tracked object is 1-1000")?;
+            track = Some(n);
+            i += 2;
+        } else {
+            keep.push(*w);
+            i += 1;
+        }
+    }
+    Ok((keep.join(" "), permanent, track))
+}
+
 /// A static route's words with a trailing `tag N` taken off: the words before it and the tag
 /// (0 when none was typed).
 pub(super) fn split_tag(text: &str) -> Result<(String, u32), String> {

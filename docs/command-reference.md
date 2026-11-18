@@ -334,7 +334,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `interface range <interfaces>` | config | router, switch | Configure several interfaces |
 | `interface <interface>` | config | router, switch, firewall | Configure an interface |
 | `no interface <subinterface>` | config | router | Delete a subinterface |
-| `ip route A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup, a tag labels it) |
+| `ip route A.B.C.D MASK <next hop or interface> [distance] [tag <1-4294967295>] [track <1-1000>] [permanent]` | config | router, switch | Add a static route (a distance above the protocol's makes it a backup, a tag labels it, track ties it to a tracked object) |
 | `no ip route A.B.C.D MASK <next hop or interface>` | config | router, switch | Remove a static route |
 | `no ip route A.B.C.D MASK` | config | router, switch | Remove static routes |
 | `vlan <1-4094>[,-]` | config | switch | Create or edit VLANs |
@@ -1698,6 +1698,19 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show spanning-tree mst <0-15>` | user, privileged | switch | One instance's tree |
 | `spanning-tree portfast` | interface | switch | An edge port: forward at once |
 | `no spanning-tree portfast` | interface | switch | Not an edge port |
+| `ip igmp snooping` | config | switch | Listen to IGMP and send multicast only where it is wanted |
+| `no ip igmp snooping` | config | switch | Flood multicast again |
+| `ip igmp snooping vlan <1-4094>[,-]` | config | switch | Snoop these VLANs (all of them are snooped unless turned off) |
+| `no ip igmp snooping vlan <1-4094>[,-]` | config | switch | Do not snoop these VLANs: multicast floods in them |
+| `ip igmp snooping querier` | config | switch | Send an IGMP general query every minute in each snooped VLAN |
+| `no ip igmp snooping querier` | config | switch | Stop sending queries |
+| `ip igmp snooping querier address A.B.C.D` | config | switch | Source address of the queries in a VLAN that has no interface address |
+| `no ip igmp snooping querier address` | config | switch | No query source address |
+| `show ip igmp snooping` | user, privileged | switch | IGMP snooping settings and the VLANs it watches |
+| `show ip igmp snooping groups` | user, privileged | switch | The groups learned and the ports that joined them |
+| `show ip igmp snooping mrouter` | user, privileged | switch | Ports that lead to a multicast router |
+| `show ip igmp snooping querier` | user, privileged | switch | The queries this switch sends |
+| `clear ip igmp snooping` | privileged | switch | Forget the groups and router ports learned |
 | `ip verify source` | interface | switch | IP source guard: only addresses with a binding on this port may send |
 | `ip verify source port-security` | interface | switch | IP source guard that also checks the source MAC address against the binding |
 | `no ip verify source` | interface | switch | No IP source guard on this port |
@@ -2102,6 +2115,21 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no vtp pruning` | config | switch | Flood every VLAN on every trunk again |
 | `switchport trunk pruning vlan {VLANS\|add VLANS\|remove VLANS\|except VLANS\|none}` | interface | switch | The VLANs VTP pruning may stop on this trunk |
 | `no switchport trunk pruning vlan` | interface | switch | VLANs 2-1001 eligible again |
+| `track <1-1000> interface <interface> {line-protocol\|ip routing}` | config | router, switch | Track whether an interface works (or routes IP) |
+| `track <1-1000> ip route A.B.C.D/<0-32> reachability` | config | router, switch | Track whether the routing table has a prefix |
+| `track <1-1000> ip route A.B.C.D MASK reachability` | config | router, switch | Track whether the routing table has a prefix |
+| `track <1-1000> ip sla <1-2147483647>` | config | router, switch | Track an IP SLA operation (up while its last probe succeeded) |
+| `track <1-1000> ip sla <1-2147483647> {reachability\|state}` | config | router, switch | Track an IP SLA operation: its reachability (a slow probe counts) or its state |
+| `track <1-1000> list boolean {and\|or}` | config | router, switch | Track several objects together |
+| `track <1-1000>` | config | router, switch | Edit a tracked object |
+| `no track <1-1000>` | config | router, switch | Delete a tracked object |
+| `delay {up\|down} <0-180> [{up\|down} <0-180>]` |  | router, switch | Wait this many seconds before reporting a change of state |
+| `no delay` |  | router, switch | Report changes at once |
+| `object <1-1000>` |  | router, switch | Add an object to the list |
+| `object <1-1000> not` |  | router, switch | Add an object to the list, negated |
+| `no object <1-1000>` |  | router, switch | Take an object out of the list |
+| `show track` | user, privileged | router, switch | Every tracked object, its state and what follows it |
+| `show track <1-1000>` | user, privileged | router, switch | One tracked object |
 | `bba-group pppoe NAME` | config | router | Define or edit a group of PPPoE concentrator settings |
 | `no bba-group pppoe NAME` | config | router | Delete a PPPoE group |
 | `virtual-template <0-255>` |  | router | The virtual template this group builds its sessions from |
@@ -2171,6 +2199,7 @@ Commands:
   ftp <address>                          send and fetch files on an FTP server
   cellular [on|off|apn <name|none>]      phones and tablets: cellular status, data and APN
   netstat                                TCP connections this host set up
+  igmp [join|leave <group>]              list, join or leave multicast groups
   dir                                    list this host's files
   arp -a                                 show the ARP cache
   arp -d [address]                       empty the ARP cache (or forget one entry)
