@@ -130,6 +130,59 @@ impl Stick {
     }
 }
 
+/// Most jobs a printer keeps (the oldest are dropped).
+pub const MAX_JOBS: usize = 20;
+/// Most text of one print job (bytes).
+pub const MAX_JOB_TEXT: usize = 4 * 1024;
+
+/// A page sent to a printer.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrintJob {
+    /// The host that sent it.
+    pub from: String,
+    /// How it got there: `usb` or `network`.
+    pub via: String,
+    pub text: String,
+}
+
+/// What a printer has printed. Empty on every other device, and then not saved.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Printer {
+    /// The last jobs, oldest first.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub jobs: Vec<PrintJob>,
+    /// How many jobs it has printed in all (the list keeps the last [`MAX_JOBS`]).
+    #[serde(skip_serializing_if = "is_zero")]
+    pub total: u32,
+}
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+impl Printer {
+    /// Prints a page: kept as the newest job.
+    pub fn print(&mut self, from: &str, via: &str, text: &str) {
+        let text: String = text.chars().take(MAX_JOB_TEXT).collect();
+        self.jobs.push(PrintJob { from: from.chars().take(MAX_NAME).collect(), via: via.to_string(), text });
+        while self.jobs.len() > MAX_JOBS {
+            self.jobs.remove(0);
+        }
+        self.total = self.total.saturating_add(1);
+    }
+
+    pub(crate) fn sanitize(&mut self) {
+        self.jobs.truncate(MAX_JOBS);
+        for j in &mut self.jobs {
+            j.text = j.text.chars().take(MAX_JOB_TEXT).collect();
+            j.from = j.from.chars().take(MAX_NAME).collect();
+            j.via = if j.via == "usb" { "usb".into() } else { "network".into() };
+        }
+        self.total = self.total.max(u32::try_from(self.jobs.len()).unwrap_or(u32::MAX));
+    }
+}
+
 /// A USB data cable: a host's USB port to a USB device.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct UsbCable {
@@ -267,6 +320,19 @@ impl Topology {
         self.usbs.len() != before
     }
 
+    /// The stick a host has mounted: the first one plugged into it and not ejected.
+    pub fn stick_of_host(&self, host: DeviceId) -> Option<DeviceId> {
+        self.usbs.iter().filter(|c| c.host == host && !c.ejected).map(|c| c.device).find(|d| self.device(*d).is_some_and(Device::is_usb_stick))
+    }
+
+    /// Why a USB cable carries nothing: a device at one end is off, or it is longer than 5 m.
+    pub fn usb_problem(&self, c: &UsbCable) -> Option<String> {
+        if [c.host, c.device].into_iter().any(|d| self.device(d).is_some_and(|x| x.powered_off)) {
+            return Some("a device at one end is powered off".into());
+        }
+        self.run_problem(crate::cable::Cable::Usb, c.host, c.device)
+    }
+
     /// A stick's host while it is mounted: plugged into a host that has not ejected it.
     pub fn stick_host(&self, stick: DeviceId) -> Option<DeviceId> {
         self.usb_of_device(stick).filter(|c| !c.ejected).map(|c| c.host)
@@ -290,6 +356,10 @@ impl Topology {
             d.usb.sanitize();
             if !d.is_usb_stick() {
                 d.usb = Stick::default();
+            }
+            d.printer.sanitize();
+            if d.kind != DeviceKind::Printer {
+                d.printer = Printer::default();
             }
         }
     }
@@ -463,5 +533,30 @@ mod tests {
         ] {
             assert_eq!(port_index(name), want, "{name}");
         }
+    }
+
+    #[test]
+    fn a_printer_keeps_its_last_jobs_and_counts_them_all() {
+        let mut p = Printer::default();
+        for i in 0..MAX_JOBS + 5 {
+            p.print("PC1", if i % 2 == 0 { "usb" } else { "network" }, &format!("page {i}"));
+        }
+        assert_eq!((p.jobs.len(), p.total as usize), (MAX_JOBS, MAX_JOBS + 5));
+        assert_eq!(p.jobs[0].text, "page 5");
+        p.print("PC1", "usb", &"x".repeat(MAX_JOB_TEXT + 10));
+        assert_eq!(p.jobs.last().map(|j| j.text.len()), Some(MAX_JOB_TEXT));
+        let (mut t, pc, _, printer, stick) = lab();
+        t.device_mut(printer).unwrap().printer.print("PC1", "usb", "hello");
+        t.device_mut(pc).unwrap().printer.print("x", "usb", "not a printer");
+        let mut v: serde_json::Value = serde_json::from_str(&file::to_json(&t).unwrap()).unwrap();
+        let _ = stick;
+        let text = v.to_string();
+        let r = file::from_json(&text).unwrap();
+        assert_eq!(r.device(printer).unwrap().printer.jobs.len(), 1);
+        assert!(r.device(pc).unwrap().printer.jobs.is_empty(), "only a printer prints");
+        v["topology"]["devices"][2]["printer"] = serde_json::json!({"jobs": [{"from": "A", "via": "carrier pigeon", "text": "t"}], "total": 0});
+        let r = file::from_json(&v.to_string()).unwrap();
+        let job = &r.device(printer).unwrap().printer;
+        assert_eq!((job.jobs[0].via.as_str(), job.total), ("network", 1));
     }
 }

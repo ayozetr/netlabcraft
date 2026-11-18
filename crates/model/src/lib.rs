@@ -982,6 +982,9 @@ pub struct Device {
     /// A USB stick's files (empty on every other device).
     #[serde(default, skip_serializing_if = "is_default")]
     pub usb: usb::Stick,
+    /// A printer's jobs (empty on every other device).
+    #[serde(default, skip_serializing_if = "is_default")]
+    pub printer: usb::Printer,
     /// Switches: multiple spanning tree (`spanning-tree mode mst`, which also sets `rapid_stp`).
     #[serde(default, skip_serializing_if = "is_default")]
     pub mst: mst::Mst,
@@ -2285,6 +2288,7 @@ impl Device {
             rapid_stp: false,
             igmp: igmp::Igmp::default(),
             archive: archive::Archive::default(),
+            printer: usb::Printer::default(),
             usb: if model.id == usb::STICK_MODEL { usb::Stick::fresh() } else { usb::Stick::default() },
             mst: mst::Mst::default(),
             startup: None,

@@ -41,6 +41,7 @@ mod pictures;
 mod pppoe;
 pub mod settings;
 mod traffic;
+mod usb;
 mod voice;
 mod vpnclient;
 

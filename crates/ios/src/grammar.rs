@@ -352,6 +352,10 @@ pub enum Id {
     CopyHttpRun,
     CopyHttpStart,
     CopyHttpFlash,
+    ShowUsb,
+    DirUsb,
+    CopyFlashUsb,
+    CopyUsbFlash,
     DhcpLease,
     NoDhcpLease,
     DhcpDomain,
@@ -2533,6 +2537,8 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash:")], "Files in flash memory"),
     spec!(ShowFlash, EXECS, Modes::BOTH, [K("show"), K("flash")], "Files in flash memory"),
     spec!(ShowFlash, Modes::EXEC, Modes::BOTH, [K("dir"), K("flash:")], "Files in flash memory"),
+    spec!(ShowUsb, EXECS, Modes::BOTH, [K("show"), K("usb")], "The USB port and what is plugged into it"),
+    spec!(DirUsb, Modes::EXEC, Modes::BOTH, [K("dir"), K("usbflash0:")], "Files on the USB stick"),
     spec!(
         ServiceTimestamps,
         Modes::CONFIG,
@@ -2684,6 +2690,20 @@ pub static SPECS: &[Spec] = &[
         Modes::BOTH,
         [K("copy"), K("ftp:"), K("flash:"), Rest("<address> <file> [name in flash]")],
         "Copy a file from an FTP server into flash"
+    ),
+    spec!(
+        CopyFlashUsb,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("flash:"), K("usbflash0:"), Rest("<file> [name on the stick]")],
+        "Copy a flash file onto the USB stick"
+    ),
+    spec!(
+        CopyUsbFlash,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("copy"), K("usbflash0:"), K("flash:"), Rest("<file> [name in flash]")],
+        "Copy a file of the USB stick into flash"
     ),
     spec!(
         CopyHttpRun,
