@@ -423,6 +423,23 @@ pub struct Sets {
     /// `additive`: keep the extended communities the route already has.
     #[serde(default, skip_serializing_if = "crate::is_false")]
     pub ext_community_additive: bool,
+    /// Policy routing, `set ip next-hop verify-availability A.B.C.D SEQ track N`: the next hop is
+    /// used only while this tracked object is up.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_hop_track: Option<u32>,
+    /// Policy routing, `set ip default next-hop A.B.C.D`: used when the table has no route to the
+    /// destination (a default route does not count).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default_next_hop: Option<Ipv4Addr>,
+    /// Policy routing, `set interface NAME`: send out of this interface.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interface: Option<String>,
+    /// Policy routing, `set ip precedence 0-7`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub precedence: Option<u8>,
+    /// Policy routing, `set ip dscp 0-63`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dscp: Option<u8>,
 }
 
 impl Sets {
@@ -466,6 +483,9 @@ pub struct Clause {
     /// `match tag N…`: the route's tag is one of these.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tags: Vec<u32>,
+    /// Policy routing, `match length MIN MAX`: the packet's total length, in bytes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub length: Option<(u16, u16)>,
     #[serde(default, skip_serializing_if = "Sets::is_empty")]
     pub sets: Sets,
 }
@@ -482,6 +502,7 @@ impl Clause {
             ext_community_lists: Vec::new(),
             as_path_lists: Vec::new(),
             tags: Vec::new(),
+            length: None,
             sets: Sets::default(),
         }
     }
@@ -723,6 +744,10 @@ pub fn sanitize_route_maps(maps: &mut Vec<RouteMap>) {
             c.sets.prepend.truncate(MAX_PREPEND);
             c.sets.origin = c.sets.origin.map(|o| o.min(2));
             c.sets.metric_type = c.sets.metric_type.filter(|t| (1..=2).contains(t));
+            c.sets.precedence = c.sets.precedence.map(|p| p.min(7));
+            c.sets.dscp = c.sets.dscp.map(|p| p.min(63));
+            c.sets.interface = c.sets.interface.take().map(|n| clean_name(&n)).filter(|n| !n.is_empty());
+            c.length = c.length.map(|(a, b)| (a.min(b), a.max(b)));
         }
     }
     maps.retain(|m| !m.name.is_empty());

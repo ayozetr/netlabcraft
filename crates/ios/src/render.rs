@@ -366,6 +366,7 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::pppoe::port_lines(&mut s, d, &p.name);
         standby_lines(&mut s, d, &p.name, &p.standby);
         crate::exec::fhrp::iface_lines(&mut s, d, &p.name);
+        crate::exec::pbr::iface_line(&mut s, d, &p.name);
         ospf_if_lines(&mut s, d, &p.name);
         if d.kind == DeviceKind::Router {
             if netlabcraft_model::ifname::is_serial(&p.name) {
@@ -422,6 +423,7 @@ pub fn running_config(d: &Device) -> String {
             ipv6_lines(&mut s, &sub.ipv6);
             standby_lines(&mut s, d, &format!("{}.{}", p.name, sub.number), &sub.standby);
             crate::exec::fhrp::iface_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
+            crate::exec::pbr::iface_line(&mut s, d, &format!("{}.{}", p.name, sub.number));
             ospf_if_lines(&mut s, d, &format!("{}.{}", p.name, sub.number));
             for h in &sub.helpers {
                 let _ = writeln!(s, " ip helper-address {h}");
@@ -712,6 +714,7 @@ pub fn running_config(d: &Device) -> String {
         let _ = writeln!(s, "!");
     }
     crate::exec::sla::running_config(&mut s, d);
+    crate::exec::pbr::local_line(&mut s, d);
     for dn in &d.default_networks {
         let _ = writeln!(s, "ip default-network {dn}");
     }
@@ -1233,43 +1236,6 @@ pub fn arp(t: &Topology, sim: &Sim, d: &Device) -> String {
         let _ = writeln!(s, "{:<17} {:<10} {:<19} {iface}", ip.to_string(), age, mac);
     }
     s.trim_end().to_string()
-}
-
-pub fn version(sim: &Sim, d: &Device) -> String {
-    let m = d.catalogue_model();
-    let up = sim.now_us() / 1_000_000;
-    let mut kinds: Vec<(String, usize)> = Vec::new();
-    for p in &d.ports {
-        let k = ifname::parse(&p.name).map_or("other", |n| n.kind).to_string();
-        match kinds.iter_mut().find(|(n, _)| *n == k) {
-            Some(e) => e.1 += 1,
-            None => kinds.push((k, 1)),
-        }
-    }
-    let ports: Vec<String> = kinds.iter().map(|(k, n)| format!("{n} {k}")).collect();
-    format!(
-        "NetLabCraft simulated {}, software {v}\n\
-         Model {} ({})\n\
-         {} has been up {} h {} min {} s (since the simulation started)\n\
-         System image flash:{}\n\
-         Ports: {}\n\
-         Base hardware address {}\n\
-         Configuration {}\n\
-         Configuration register 0x{:04x}",
-        d.kind.label().to_lowercase(),
-        m.label,
-        m.description,
-        d.name,
-        up / 3_600,
-        up / 60 % 60,
-        up % 60,
-        crate::exec::mgmt::boot_image(d),
-        ports.join(", "),
-        d.ports.first().map_or("-".to_string(), |p| p.mac.to_string()),
-        if d.startup.is_some() { "saved (startup-config present)" } else { "not saved" },
-        d.nvram.register(),
-        v = env!("CARGO_PKG_VERSION"),
-    )
 }
 
 pub fn ms(us: u64) -> String {
@@ -2321,6 +2287,57 @@ pub fn running_config_interface(d: &Device, name: &str) -> String {
     if out.is_empty() { format!("% {name} has no configuration block") } else { out.join("\n") }
 }
 
+/// Whether an interface setting kept by the console is in force: a setting that is on unless a
+/// `no` line was typed (`default_on`), or one that is off unless its line is present.
+fn if_knob(d: &Device, iface: &str, key: &str, default_on: bool) -> bool {
+    use netlabcraft_model::knobs::Scope;
+    match d.knobs.get(Scope::Iface(iface), key) {
+        Some(line) => !line.starts_with("no "),
+        None => default_on,
+    }
+}
+
+/// The lines of `show ip interface` that every layer-3 interface has, after its address.
+fn ip_interface_details(
+    d: &Device,
+    name: &str,
+    acl: &netlabcraft_model::AccessGroups,
+    helpers: &[Ipv4Addr],
+    nat: Option<netlabcraft_model::NatSide>,
+    proxy: Option<bool>,
+) -> String {
+    let mut s = String::new();
+    let _ = writeln!(s, "  Access list in: {}", acl.inbound.as_deref().unwrap_or("none"));
+    let _ = writeln!(s, "  Access list out: {}", acl.outbound.as_deref().unwrap_or("none"));
+    if helpers.is_empty() {
+        s.push_str("  Helper addresses: none\n");
+    } else {
+        let _ = writeln!(s, "  DHCP relay to: {}", helpers.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "));
+    }
+    match nat {
+        Some(netlabcraft_model::NatSide::Inside) => s.push_str("  NAT: inside\n"),
+        Some(netlabcraft_model::NatSide::Outside) => s.push_str("  NAT: outside\n"),
+        None => s.push_str("  NAT: not used on this interface\n"),
+    }
+    match proxy {
+        Some(true) => s.push_str("  Proxy ARP: off\n"),
+        Some(false) => s.push_str("  Proxy ARP: on\n"),
+        None => {}
+    }
+    let on = |b: bool| if b { "on" } else { "off" };
+    s.push_str("  MTU is 1500 bytes\n");
+    let _ = writeln!(s, "  Local proxy ARP: {}", on(if_knob(d, name, "ip local-proxy-arp", false)));
+    let _ = writeln!(s, "  Directed broadcast forwarding: {}", on(if_knob(d, name, "ip directed-broadcast", false)));
+    let _ = writeln!(s, "  Destination-unreachable replies: {}", on(if_knob(d, name, "ip unreachables", true)));
+    let _ = writeln!(s, "  Redirect messages: {}", on(if_knob(d, name, "ip redirects", true)));
+    let _ = writeln!(s, "  Mask replies: {}", on(if_knob(d, name, "ip mask-reply", false)));
+    let _ = writeln!(s, "  Route cache fast path: {}", on(if_knob(d, name, "ip route-cache", true)));
+    let _ = writeln!(s, "  Packet reassembly check: {}", on(if_knob(d, name, "ip virtual-reassembly", false)));
+    let multicast = d.knobs.get(netlabcraft_model::knobs::Scope::Global, "ip multicast-routing").is_some();
+    let _ = writeln!(s, "  Multicast routing: {}", if multicast { "enabled on the device" } else { "not enabled" });
+    s
+}
+
 /// `show ip interface [X]`.
 pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
     let mut blocks = Vec::new();
@@ -2357,38 +2374,31 @@ pub fn ip_interface(t: &Topology, d: &Device, only: Option<IfRef>) -> String {
             match ip {
                 Some(ip) => {
                     let _ = writeln!(s, "  Address {ip}, broadcast {}", ip.broadcast());
+                    let _ = writeln!(s, "  Mask {}", ip.mask());
                 }
                 None => s.push_str("  No IPv4 address\n"),
             }
-            let _ = writeln!(s, "  Access list in: {}", acl.inbound.as_deref().unwrap_or("none"));
-            let _ = writeln!(s, "  Access list out: {}", acl.outbound.as_deref().unwrap_or("none"));
-            if !helpers.is_empty() {
-                let _ = writeln!(s, "  DHCP relay to: {}", helpers.iter().map(ToString::to_string).collect::<Vec<_>>().join(", "));
-            }
-            match nat {
-                Some(netlabcraft_model::NatSide::Inside) => s.push_str("  NAT: inside\n"),
-                Some(netlabcraft_model::NatSide::Outside) => s.push_str("  NAT: outside\n"),
-                None => {}
-            }
-            if d.kind == DeviceKind::Router {
-                s.push_str(if p.proxy_arp_off { "  Proxy ARP: off\n" } else { "  Proxy ARP: on\n" });
-            }
+            let proxy = (d.kind == DeviceKind::Router).then_some(p.proxy_arp_off);
+            s.push_str(&ip_interface_details(d, &name, acl, helpers, nat, proxy));
             blocks.push(s.trim_end().to_string());
         }
     }
     for svi in d.svis.iter().filter(|_| only.is_none()) {
+        let name = format!("Vlan{}", svi.vlan);
         let mut s = if svi.shutdown {
-            format!("Vlan{} is administratively down, line protocol is down\n", svi.vlan)
+            format!("{name} is administratively down, line protocol is down\n")
         } else {
-            format!("Vlan{} is up, line protocol is up\n", svi.vlan)
+            format!("{name} is up, line protocol is up\n")
         };
         match svi.ip {
             Some(ip) => {
-                let _ = write!(s, "  Address {ip}, broadcast {}", ip.broadcast());
+                let _ = writeln!(s, "  Address {ip}, broadcast {}", ip.broadcast());
+                let _ = writeln!(s, "  Mask {}", ip.mask());
             }
-            None => s.push_str("  No IPv4 address"),
+            None => s.push_str("  No IPv4 address\n"),
         }
-        blocks.push(s);
+        s.push_str(&ip_interface_details(d, &name, &svi.access, &svi.helpers, svi.nat, None));
+        blocks.push(s.trim_end().to_string());
     }
     blocks.join("\n")
 }
@@ -2892,71 +2902,6 @@ pub fn lldp_neighbors(t: &Topology, sim: &Sim, d: &Device, detail: bool) -> Stri
     }
     let _ = write!(s, "{} neighbour{}", list.len(), if list.len() == 1 { "" } else { "s" });
     s
-}
-
-/// `show processes [cpu]`: the protocol tasks this device is running. A simulated device has no
-/// real load; the figures are small and steady so the command answers what students look for.
-pub fn processes(t: &Topology, sim: &Sim, d: &Device) -> String {
-    let mut tasks: Vec<&str> = vec!["Console", "IP input", "ARP"];
-    if d.kind == DeviceKind::Switch {
-        tasks.extend(["Spanning tree", "MAC address table"]);
-    }
-    if !d.cdp_off && d.kind != DeviceKind::Pc {
-        tasks.push("CDP");
-    }
-    if d.lldp_on {
-        tasks.push("LLDP");
-    }
-    if d.ospf.is_some() {
-        tasks.push("OSPF");
-    }
-    if d.rip.is_some() {
-        tasks.push("RIP");
-    }
-    if d.eigrp.is_some() {
-        tasks.push("EIGRP");
-    }
-    if !d.dhcp_pools.is_empty() {
-        tasks.push("DHCP server");
-    }
-    if !d.ntp_servers.is_empty() {
-        tasks.push("NTP client");
-    }
-    let busy = 1
-        + u64::from(d.ospf.is_some())
-        + u64::from(d.rip.is_some())
-        + u64::from(d.eigrp.is_some())
-        + u64::try_from((0..d.ports.len()).filter(|i| t.peer(netlabcraft_model::End { device: d.id, port: *i }).is_some()).count() / 8).unwrap_or(0);
-    let up = sim.now_us() / 1_000;
-    let mut s = format!("CPU use: {busy}% over the last 5 s, {busy}% over 1 min, {busy}% over 5 min\n\n");
-    let _ = writeln!(s, "{:>4}  {:<20} {:>12}", "Task", "Name", "Run time (ms)");
-    for (n, name) in tasks.iter().enumerate() {
-        let share = up / 1_000 / (n as u64 + 2);
-        let _ = writeln!(s, "{:>4}  {:<20} {:>12}", n + 1, name, share);
-    }
-    s.trim_end().to_string()
-}
-
-/// `show memory [statistics]`: what the configuration and tables would take.
-pub fn memory(d: &Device) -> String {
-    let total: u64 = match d.kind {
-        DeviceKind::Router => 512 * 1024,
-        DeviceKind::Switch => 128 * 1024,
-        _ => 64 * 1024,
-    };
-    let config = u64::try_from(running_config(d).len()).unwrap_or(0) / 1024 + 1;
-    let used = 24 * 1024 + config * 4 + u64::try_from(d.ports.len()).unwrap_or(0) * 32;
-    format!(
-        "{:<12} {:>10} {:>10} {:>10}\n{:<12} {:>10} {:>10} {:>10}\n(kilobytes)",
-        "",
-        "Total",
-        "Used",
-        "Free",
-        "Main memory",
-        total,
-        used,
-        total.saturating_sub(used)
-    )
 }
 
 /// `show standby`.

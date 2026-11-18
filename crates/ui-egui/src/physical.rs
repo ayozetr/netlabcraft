@@ -682,7 +682,7 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target) {
             if let Some(why) = netlabcraft_sim::cable_problem(t, l.a) {
                 ui.label(egui::RichText::new(crate::i18n::tr_any(&why)).color(theme::tokens(app.ui.dark).error));
             }
-            crate::cable_window::menu_items(app, ui, l.a, true);
+            crate::cable_window::menu_items(app, ui, netlabcraft_model::cable_ref::CableRef::Link(l.a), true);
         }
         Target::Empty(x, y) => {
             if ui.button(tl("Set Background Image…")).clicked() {
