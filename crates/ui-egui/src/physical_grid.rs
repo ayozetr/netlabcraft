@@ -1,17 +1,19 @@
 //! The physical workspace's grid and its Grid Preferences window.
 //!
 //! Every level of the physical workspace that has a map (the Intercity map, a city, a building,
-//! and the generic container once it exists) can show a grid whose lines stand a number of
+//! and the generic container) can show a grid whose lines stand a number of
 //! metres apart. The setting is a view choice of this program, so it lives in [`Prefs`] and the
 //! preferences file (the web build keeps it for the session); it is one setting per level, not
-//! per lab. A wiring closet is drawn in its own units and has no scale, so it has no grid.
+//! per lab. A wiring closet has no scale, so it has no grid; a container is drawn in the same view
+//! but does have one.
 //!
 //! The lines are thin and drawn under the cables and the devices. How many are drawn is bounded:
 //! a spacing that would put lines closer than [`MIN_STEP_PX`] on screen, or more than
 //! [`MAX_LINES`] across the view, draws none and says so in the corner label.
 
 use egui::{Align2, Color32, FontId, Rect, Sense, Stroke, Ui, Vec2, pos2, vec2};
-use netlabcraft_model::physical::{CITY_UNIT_M, INTERCITY_UNIT_M, PlaceKind};
+use netlabcraft_model::backdrop::INTERCITY;
+use netlabcraft_model::physical::{CITY_UNIT_M, PlaceKind};
 
 use crate::PacketApp;
 use crate::i18n::{tl, trf};
@@ -38,8 +40,8 @@ pub enum GridLevel {
     Intercity,
     City,
     Building,
-    /// The generic container. No place of this kind exists yet: when it lands, [`current_level`]
-    /// maps it here and [`metres_per_unit`] gives its scale.
+    /// The generic container: a place that holds things like a closet but has a scale of its own
+    /// (one unit of its view is the scale of its size, 1 m until a size is set).
     Container,
 }
 
@@ -214,19 +216,21 @@ pub fn current_level(app: &PacketApp) -> Option<GridLevel> {
         Some(p) => match p.kind {
             PlaceKind::City => Some(GridLevel::City),
             PlaceKind::Building => Some(GridLevel::Building),
-            PlaceKind::Closet | PlaceKind::Container => None,
+            PlaceKind::Container => Some(GridLevel::Container),
+            PlaceKind::Closet => None,
         },
     }
 }
 
-/// How many metres one map unit of this level stands for.
+/// How many metres one map unit of this level stands for in the view shown.
 ///
-/// The one place that knows the scale. A place that was given a background picture or a size
-/// (a scale of its own) answers here once that lands; until then a level has its fixed unit.
-pub fn metres_per_unit(level: GridLevel) -> f32 {
+/// The one place that knows the scale: the place's own scale (the size set with Set Background
+/// Image, `Topology::map_scale`) when it has one, else the level's fixed unit.
+pub fn metres_per_unit(app: &PacketApp, level: GridLevel) -> f32 {
+    let t = &app.session.topology;
     match level {
-        GridLevel::Intercity => INTERCITY_UNIT_M,
-        GridLevel::City | GridLevel::Building | GridLevel::Container => CITY_UNIT_M,
+        GridLevel::Intercity => t.map_scale(INTERCITY),
+        GridLevel::City | GridLevel::Building | GridLevel::Container => app.session.place_view.map_or(CITY_UNIT_M, |p| t.map_scale(p)),
     }
 }
 
@@ -294,7 +298,7 @@ pub fn snap_xy(app: &PacketApp, x: f32, y: f32) -> (f32, f32) {
         && app.ui.prefs.grid.on(l)
     {
         let (sx, sy) = app.ui.prefs.grid.spacing(l);
-        let s = metres_per_unit(l);
+        let s = metres_per_unit(app, l);
         return (snap_to(x, sx, s), snap_to(y, sy, s));
     }
     ((x / LEGACY_SNAP).round() * LEGACY_SNAP, (y / LEGACY_SNAP).round() * LEGACY_SNAP)
@@ -316,7 +320,7 @@ pub(crate) fn draw(app: &PacketApp, painter: &egui::Painter, rect: Rect, origin:
         return;
     }
     let spacing = app.ui.prefs.grid.spacing(level);
-    let l = lines(rect, origin, zoom, spacing, metres_per_unit(level));
+    let l = lines(rect, origin, zoom, spacing, metres_per_unit(app, level));
     let stroke = Stroke::new(1.0, app.ui.prefs.grid.color32().gamma_multiply(0.55));
     for x in &l.xs {
         painter.line_segment([pos2(*x, rect.top()), pos2(*x, rect.bottom())], stroke);
