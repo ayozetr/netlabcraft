@@ -2,8 +2,8 @@
 //!
 //! PEAP (EAP method 25) wraps an inner EAP login in a TLS tunnel between the host and the
 //! authentication server, so the password never crosses the air or the wire readable. This
-//! module is **not TLS**: no certificates, no cipher-suite negotiation, no real key exchange
-//! group. It keeps TLS's shape so the exchange reads as it would and its secrecy is real:
+//! module is **not TLS**: no certificates, no cipher-suite negotiation. It keeps TLS's shape so
+//! the exchange reads as it would and its secrecy is real:
 //!
 //! - Records as TLS has them: content type (22 handshake, 23 application data, 21 alert),
 //!   version 3.3, a 16-bit length, the body.
@@ -11,10 +11,9 @@
 //!   value), the server hello (random, public value, the server's name standing in for its
 //!   certificate) and the server's Finished, then the client's Finished. Finished messages hold
 //!   12 bytes of PRF over the transcript, as TLS 1.0/1.1 does (RFC 2246 §7.4.9).
-//! - The key exchange is Diffie-Hellman in the multiplicative group modulo the Mersenne prime
-//!   2^61 - 1 ([`DH_PRIME`]): a real exchange (the key isn't on the wire), but a toy size,
-//!   far too small to resist a determined attacker. It is for watching the protocol, not for
-//!   protecting anything.
+//! - The key exchange is Diffie-Hellman in MODP group 14 (RFC 3526, 2048 bits: [`DH_GROUP`]),
+//!   the same big-integer code IKE and TLS use, with 256-bit private values and the peer's
+//!   value checked to be in range.
 //! - Keys come from the TLS 1.0 PRF style, with P_SHA1 only: the master secret, then a key
 //!   block (client and server AES-128 keys and HMAC-SHA1 keys), and the EAP master session key
 //!   (RFC 5216 §2.3's "client EAP encryption" label), whose first 32 bytes are the PMK.
@@ -27,7 +26,9 @@
 //! a PEAPv0 Result TLV (EAP type 33, TLV type 3: 1 success, 2 failure).
 
 use crate::aes::{Aes128, cbc_decrypt, cbc_encrypt};
+use crate::dh;
 use crate::sha1::{hmac_sha1, sha1};
+use crate::sha256::sha256;
 use crate::{Result, WireError, be16};
 
 /// PEAP's data flags: length included, more fragments, start; the low bits are the version (0).
@@ -49,9 +50,10 @@ pub const EAP_TLV: u8 = 33;
 pub const TLV_RESULT: u16 = 3;
 pub const RESULT_SUCCESS: u16 = 1;
 pub const RESULT_FAILURE: u16 = 2;
-/// The toy Diffie-Hellman group: the prime 2^61 - 1 and a generator.
-pub const DH_PRIME: u64 = (1 << 61) - 1;
-pub const DH_GENERATOR: u64 = 37;
+/// The Diffie-Hellman group: MODP group 14 (RFC 3526 §3), a 2048-bit prime.
+pub const DH_GROUP: u16 = 14;
+/// Longest Diffie-Hellman value a hello carries, in bytes.
+const MAX_PUBLIC: usize = 512;
 /// Most records one PEAP message carries, and the longest record body.
 const MAX_RECORDS: usize = 16;
 const MAX_RECORD: usize = 4096;
@@ -60,39 +62,20 @@ fn t() -> WireError {
     WireError::Truncated("peap")
 }
 
-fn mulmod(a: u64, b: u64) -> u64 {
-    ((u128::from(a) * u128::from(b)) % u128::from(DH_PRIME)) as u64
+/// A private value (256 bits) made from a seed.
+pub fn dh_secret(seed: &[u8]) -> Vec<u8> {
+    sha256(seed).to_vec()
 }
 
-/// `base^exp mod DH_PRIME`.
-pub fn powmod(base: u64, mut exp: u64) -> u64 {
-    let mut b = base % DH_PRIME;
-    let mut r = 1u64;
-    while exp > 0 {
-        if exp & 1 == 1 {
-            r = mulmod(r, b);
-        }
-        b = mulmod(b, b);
-        exp >>= 1;
-    }
-    r
+/// The public value of a private one: g^x mod p, 256 bytes.
+pub fn dh_public(secret: &[u8]) -> Vec<u8> {
+    dh::modp(DH_GROUP).map(|g| g.public(secret)).unwrap_or_default()
 }
 
-/// A private exponent from 32 bytes of seed (never 0 or 1).
-pub fn dh_secret(seed: &[u8]) -> u64 {
-    let h = sha1(seed);
-    let mut b = [0u8; 8];
-    b.copy_from_slice(h.get(..8).unwrap_or(&[0; 8]));
-    (u64::from_be_bytes(b) % (DH_PRIME - 3)) + 2
-}
-
-pub fn dh_public(secret: u64) -> u64 {
-    powmod(DH_GENERATOR, secret)
-}
-
-/// The shared value from the peer's public value (0 for a value outside the group).
-pub fn dh_shared(peer_public: u64, secret: u64) -> u64 {
-    if (2..DH_PRIME).contains(&peer_public) { powmod(peer_public, secret) } else { 0 }
+/// The shared value from the peer's public value; `None` for a value that is not valid in the
+/// group.
+pub fn dh_shared(peer_public: &[u8], secret: &[u8]) -> Option<Vec<u8>> {
+    dh::modp(DH_GROUP)?.shared(secret, peer_public)
 }
 
 /// TLS 1.0's P_hash with HMAC-SHA1 (RFC 2246 §5): `len` bytes from `secret`, `label`, `seed`.
@@ -171,15 +154,17 @@ pub fn handshakes(b: &[u8]) -> Result<Vec<(u8, Vec<u8>)>> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Hello {
     pub random: [u8; 32],
-    pub public: u64,
+    pub public: Vec<u8>,
     pub name: String,
 }
 
 impl Hello {
     pub fn encode(&self) -> Vec<u8> {
         let name = self.name.as_bytes().get(..self.name.len().min(64)).unwrap_or_default();
+        let public = self.public.get(..self.public.len().min(MAX_PUBLIC)).unwrap_or_default();
         let mut v = self.random.to_vec();
-        v.extend_from_slice(&self.public.to_be_bytes());
+        v.extend_from_slice(&(public.len() as u16).to_be_bytes());
+        v.extend_from_slice(public);
         v.push(name.len() as u8);
         v.extend_from_slice(name);
         v
@@ -187,9 +172,13 @@ impl Hello {
 
     pub fn decode(b: &[u8]) -> Result<Hello> {
         let random: [u8; 32] = b.get(..32).and_then(|r| r.try_into().ok()).ok_or_else(t)?;
-        let public = u64::from_be_bytes(b.get(32..40).and_then(|r| r.try_into().ok()).ok_or_else(t)?);
-        let n = usize::from(*b.get(40).ok_or_else(t)?);
-        let name = String::from_utf8_lossy(b.get(41..41 + n).ok_or_else(t)?).into_owned();
+        let plen = usize::from(be16(b, 32).ok_or_else(t)?);
+        if plen > MAX_PUBLIC {
+            return Err(WireError::Unsupported("peap", "key share too long".into()));
+        }
+        let public = b.get(34..34 + plen).ok_or_else(t)?.to_vec();
+        let n = usize::from(*b.get(34 + plen).ok_or_else(t)?);
+        let name = String::from_utf8_lossy(b.get(35 + plen..35 + plen + n).ok_or_else(t)?).into_owned();
         Ok(Hello { random, public, name })
     }
 }
@@ -208,9 +197,9 @@ pub struct Keys {
 
 impl Keys {
     /// From the shared Diffie-Hellman value and both randoms.
-    pub fn derive(shared: u64, client_random: &[u8; 32], server_random: &[u8; 32]) -> Keys {
+    pub fn derive(shared: &[u8], client_random: &[u8; 32], server_random: &[u8; 32]) -> Keys {
         let randoms = [&client_random[..], &server_random[..]].concat();
-        let master = prf(&shared.to_be_bytes(), "master secret", &randoms, 48);
+        let master = prf(shared, "master secret", &randoms, 48);
         let block = prf(&master, "key expansion", &[&server_random[..], &client_random[..]].concat(), 72);
         let take = |a: usize| -> [u8; 20] {
             let mut k = [0u8; 20];
@@ -377,14 +366,16 @@ mod tests {
     #[test]
     fn diffie_hellman_agrees_and_the_prf_is_stable() {
         let (a, b) = (dh_secret(b"alice"), dh_secret(b"bob"));
-        let (pa, pb) = (dh_public(a), dh_public(b));
+        let (pa, pb) = (dh_public(&a), dh_public(&b));
+        // A real 2048-bit group: 256-byte values, both ends agree, bad values are refused.
+        assert_eq!((pa.len(), pb.len()), (256, 256));
         assert_ne!(pa, pb);
-        assert_eq!(dh_shared(pb, a), dh_shared(pa, b));
-        assert_ne!(dh_shared(pb, a), 0);
-        assert_eq!(dh_shared(0, a), 0);
-        assert_eq!(dh_shared(DH_PRIME, a), 0);
-        assert_eq!(powmod(2, 61), 1, "2^61 = 1 mod 2^61 - 1");
-        assert_eq!(powmod(DH_GENERATOR, DH_PRIME - 1), 1, "Fermat");
+        let shared = dh_shared(&pb, &a).unwrap();
+        assert_eq!((shared.len(), Some(shared)), (256, dh_shared(&pa, &b)));
+        assert_eq!(dh_shared(&[0; 256], &a), None);
+        assert_eq!(dh_shared(&[], &a), None);
+        // The group is the RFC 3526 one, by its generator: 2^1 is the public value of secret 1.
+        assert_eq!(dh_public(&[1]), dh::modp(DH_GROUP).unwrap().public(&[1]));
         let p = prf(b"secret", "label", b"seed", 45);
         assert_eq!(p.len(), 45);
         assert_eq!(prf(b"secret", "label", b"seed", 20), p[..20]);
@@ -394,7 +385,7 @@ mod tests {
     #[test]
     fn records_seal_and_open_and_refuse_tampering_and_replays() {
         let (cr, sr) = ([1u8; 32], [2u8; 32]);
-        let mut client = Keys::derive(12345, &cr, &sr);
+        let mut client = Keys::derive(&[0x12, 0x34], &cr, &sr);
         let mut server = client.clone();
         assert_eq!(client.finished(true, b"x").len(), 12);
         assert_ne!(client.finished(true, b"x"), client.finished(false, b"x"));
@@ -415,15 +406,15 @@ mod tests {
         assert_eq!(server.open(true, &r).unwrap(), b"ana12345");
         assert!(server.open(true, &r).is_err(), "replay: the sequence number moved on");
         // Other keys.
-        let mut other = Keys::derive(54321, &cr, &sr);
+        let mut other = Keys::derive(&[0x54, 0x32], &cr, &sr);
         assert!(other.open(true, &client.seal(true, b"x", [0; 16])).is_err());
     }
 
     #[test]
     fn peap_data_round_trips_and_every_truncation_is_refused_not_fatal() {
-        let hello = Hello { random: [5; 32], public: 77, name: "RADIUS1".into() };
+        let hello = Hello { random: [5; 32], public: vec![77; 256], name: "RADIUS1".into() };
         assert_eq!(Hello::decode(&hello.encode()).unwrap(), hello);
-        let mut keys = Keys::derive(99, &[0; 32], &[1; 32]);
+        let mut keys = Keys::derive(&[99], &[0; 32], &[1; 32]);
         let records = vec![
             Record { kind: REC_HANDSHAKE, body: [handshake(HS_SERVER_HELLO, &hello.encode()), handshake(HS_FINISHED, &[3; 12])].concat() },
             keys.seal(false, b"inner", [4; 16]),

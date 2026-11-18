@@ -54,7 +54,7 @@ use netlabcraft_wire::vpn::{EspSa, EspSuite};
 use netlabcraft_wire::{Ipv4, PROTO_UDP, Udp};
 
 use crate::vpn::{AhHalf, IkePhase, IpsecSa, acl_permits, same_name};
-use crate::{L3If, Sim};
+use crate::{DebugKind, L3If, Sim};
 
 /// An exchange that hasn't finished (or failed) this long is started again by the next packet.
 const RETRY_US: u64 = 2_000_000;
@@ -510,6 +510,10 @@ impl Sim {
     }
 
     fn ike2_fail(&mut self, d: &Device, peer: Ipv4Addr, why: String) {
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the IKEv2 exchange with {peer} failed: {why}"));
+        if why.contains("certificate") || why.contains("signature") {
+            self.debug_log(d.id, DebugKind::CryptoPki, &format!("the proof of {peer} is refused: {why}"));
+        }
         let sa = self.st(d.id).ipsec.entry(peer).or_default();
         sa.phase = IkePhase::Failed;
         sa.failed = Some(why.clone());
@@ -942,7 +946,16 @@ impl Sim {
         idi_body.extend_from_slice(&id_data);
         let clock = self.clock(d.id).0;
         match check_auth(d, clock, profile, peer, keys.suite.prf, &inner, &v2.msg1, &v2.nr, &keys.sk_pi, &idi_body) {
-            Ok(subject) => v2.peer_cert = subject,
+            Ok(subject) => {
+                if !subject.is_empty() {
+                    self.debug_log(
+                        d.id,
+                        DebugKind::CryptoPki,
+                        &format!("the certificate of {subject} from {peer} chains to a trusted authority and its signature checks out"),
+                    );
+                }
+                v2.peer_cert = subject;
+            }
             Err(why) => {
                 self.ike2_fail(d, peer, format!("{why}; answered AUTHENTICATION_FAILED"));
                 self.ike2_send(t, d, local, peer, refuse(ikev2::AUTHENTICATION_FAILED).encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
@@ -1034,6 +1047,13 @@ impl Sim {
         (sa.ike_life, sa.ike_up_us) = (ike_life, now);
         sa.v2 = Some(Box::new(v2));
         self.log(d.id, &format!("IKEv2 with {peer}: IKE_SA_INIT and IKE_AUTH complete, IKE and IPsec security associations up"));
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the IKE SA with {peer} is up: IKE_AUTH checked both ends"));
+        let (spi_in, spi_out) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).map_or((0, 0), |s| (s.spi_in, s.spi_out));
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIpsec,
+            &format!("IPsec SA with {peer} is up: inbound SPI 0x{spi_in:08x}, outbound SPI 0x{spi_out:08x}"),
+        );
         self.ike2_send(t, d, local, peer, reply.encode_sealed(keys.suite, &keys.sk_er, &keys.sk_ar, iv));
         Ok(())
     }
@@ -1071,7 +1091,16 @@ impl Sim {
             _ => Err("the peer's AUTH value does not match this router's pre-shared key (the keys differ)".to_string()),
         };
         match verdict {
-            Ok(subject) => v2.peer_cert = subject,
+            Ok(subject) => {
+                if !subject.is_empty() {
+                    self.debug_log(
+                        d.id,
+                        DebugKind::CryptoPki,
+                        &format!("the certificate of {subject} from {peer} chains to a trusted authority and its signature checks out"),
+                    );
+                }
+                v2.peer_cert = subject;
+            }
             Err(why) => {
                 self.ike2_fail(d, peer, why);
                 return Ok(());
@@ -1095,6 +1124,13 @@ impl Sim {
         sa.local = local;
         sa.v2 = Some(Box::new(v2));
         self.log(d.id, &format!("IKEv2 with {peer}: IKE_SA_INIT and IKE_AUTH complete, IKE and IPsec security associations up"));
+        self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("the IKE SA with {peer} is up: IKE_AUTH checked both ends"));
+        let (spi_in, spi_out) = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).map_or((0, 0), |s| (s.spi_in, s.spi_out));
+        self.debug_log(
+            d.id,
+            DebugKind::CryptoIpsec,
+            &format!("IPsec SA with {peer} is up: inbound SPI 0x{spi_in:08x}, outbound SPI 0x{spi_out:08x}"),
+        );
         // A transform set with AH next to ESP is two child SAs in IKEv2: the AH one follows.
         if let Some(e) = entry.as_ref().filter(|e| crate::vpn::entry_bundle(d, e).is_some()) {
             self.ike2_ah_child(t, d, local, peer, e, None);
