@@ -1882,6 +1882,8 @@ event	write request for	demande d'écriture de
 	Rename…	Renommer…
 	Switch Off	Éteindre
 	Switch On	Allumer
+	Load {} of {} W	Charge {} sur {} W
+	Breaker tripped	Disjoncteur déclenché
 	Take off the furniture	Retirer du meuble
 	Plug into	Brancher sur
 	Unplug	Débrancher
@@ -2476,6 +2478,7 @@ furniture	Table	Table
 	Why it is down	Pourquoi il est coupé
 	Transceivers	Transceivers
 	set by hand	fixée à la main
+	Reach	Portée
 	from where the devices stand	d'après l'emplacement des appareils
 	Both ends single-mode	Les deux extrémités monomode
 	Both ends multi-mode	Les deux extrémités multimode

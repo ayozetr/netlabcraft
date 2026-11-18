@@ -378,6 +378,22 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             })?;
             Ok(String::new())
         }
+        Id::BgpTimers | Id::NoBgpTimers => {
+            let timers = if id == Id::BgpTimers {
+                let keepalive = arg(0).trim().parse::<u16>().map_err(|_| "% The keepalive interval is 0-65535 seconds".to_string())?;
+                let hold = arg(1)
+                    .trim()
+                    .parse::<u16>()
+                    .ok()
+                    .filter(|h| *h == 0 || *h >= 3)
+                    .ok_or("% The hold time is 0 (never expires) or 3-65535 seconds")?;
+                Some((keepalive, hold)).filter(|t| *t != (KEEPALIVE_SECS, HOLD_SECS))
+            } else {
+                None
+            };
+            process(c)?.timers = timers;
+            Ok(String::new())
+        }
         Id::BgpNeighborFilterList | Id::NoBgpNeighborFilterList => {
             let who = arg(0).trim().to_string();
             let name = arg(1)
@@ -855,6 +871,9 @@ pub(crate) fn running_config(s: &mut String, d: &Device) {
     }
     if b.log_neighbor_changes {
         let _ = writeln!(s, " bgp log-neighbor-changes");
+    }
+    if let Some((k, h)) = b.timers {
+        let _ = writeln!(s, " timers bgp {k} {h}");
     }
     if let Some(l) = b.default_local_pref {
         let _ = writeln!(s, " bgp default local-preference {l}");

@@ -971,7 +971,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Cable length",
         "",
         None,
-        r#"{"device", "port": "interface", "meters": 1-20000000 | null (the length the places give)} → {"meters", "manual", "problem"} (copper over 100 m carries nothing)"#,
+        r#"{"device", "port": "interface", "meters": 1-20000000 | null (the length the places give)} → {"meters", "manual", "problem"} (a cable longer than its medium reaches carries nothing: copper 100 m, multi-mode fiber 550 m, single-mode fiber 10 km, coaxial 500 m, phone line 5 km, serial 1200 m; console and octal cables 15 m and USB cables 5 m, which the Terminal and `link.list` check from where their ends stand)"#,
         true
     ),
     c!(
@@ -1082,8 +1082,24 @@ pub static CATALOG: &[CommandInfo] = &[
         "Power strip switch",
         "",
         None,
-        r#"{"strip": power distribution device, "on": true|false or "on"|"off"} → {"on", "devices"}: the devices plugged into it switch off or boot from their saved configuration as with device.power; one plugged into a strip that is off cannot be switched on"#,
+        r#"{"strip": power distribution device, "on": true|false or "on"|"off"} → {"on", "tripped", "devices"}: the devices plugged into it switch off or boot from their saved configuration as with device.power; one plugged into a strip that is off cannot be switched on; switching on more than the breaker rating carries trips it again, and a tripped strip stays off while what is plugged in is over its rating"#,
         true
+    ),
+    c!(
+        "power.rating",
+        "Power strip breaker rating",
+        "",
+        None,
+        r#"{"strip": power distribution device, "watts": 100-3680} → {"rating_w", "load_w", "tripped"}: the breaker carries the nominal draws of the devices that are on (Device::nominal_watts, a table per model); a rating below the load trips it at once"#,
+        true
+    ),
+    c!(
+        "power.load",
+        "Power strip load",
+        "",
+        None,
+        r#"{"strip": power distribution device} → {"strip", "on", "tripped", "rating_w", "load_w" (devices that are on), "demand_w" (everything plugged in), "outlets": [{"outlet", "device", "watts", "on"}]}; over the rating the breaker trips: the strip switches off and its devices lose power, and power.strip on resets it once what is plugged in fits"#,
+        false
     ),
     c!("view.enter_cluster", "Open cluster", "", None, r#"{"id"} → {"cluster", "path": [{"id", "name"}]}"#, false),
     c!("view.up", "Back to the parent cluster", "", None, r#"{} → {"cluster", "path"}"#, false),
@@ -1128,7 +1144,7 @@ pub static CATALOG: &[CommandInfo] = &[
         "Cable information",
         "",
         None,
-        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}, "budget": null | {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" | "degraded" | "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)"#,
+        r#"{"device", "port": "interface"} → {"a", "b", "a_device", "a_port", "b_device", "b_port", "cable", "resolved", "kind", "meters", "manual", "up", "problem", "reach": {"max_m", "standard"} | null, "why_down", "transceivers": null | {"a": "multi-mode" | "single-mode", "b"}, "budget": null | {"meters", "connectors", "splices", "loss_db", "budget_db", "margin_db", "state": "ok" | "degraded" | "over"}}: the cable plugged into that port (one of its two ends names it); `why_down` says what stops it carrying anything; a fiber cable's `budget` weighs its length, connectors and splices against the transceivers' power budget (over: the link is down; degraded: under 1 dB to spare)"#,
         false
     ),
     c!(

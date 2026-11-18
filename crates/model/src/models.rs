@@ -1281,6 +1281,27 @@ impl Model {
 }
 
 impl Model {
+    /// The nominal draw of the model in watts when it is switched on. These are round figures
+    /// for a lab, taken from the ranges the public product class draws (a desktop PC about
+    /// 120 W, a laptop charger 45 W, a small switch 45 W, a router 60 W, a server 350 W); they
+    /// are nominal, not measured, and exist so a power strip's breaker has something to add up.
+    pub fn nominal_watts(&self) -> u32 {
+        match self.kind {
+            DeviceKind::Router if self.id.starts_with("Firewall") => 90,
+            DeviceKind::Router if self.id.starts_with("Router-M") => 80,
+            DeviceKind::Router => 60,
+            DeviceKind::Switch if self.multilayer() => 150,
+            DeviceKind::Switch => 45,
+            DeviceKind::Hub => 10,
+            DeviceKind::Pc => 120,
+            DeviceKind::Laptop => 45,
+            DeviceKind::Server => 350,
+            DeviceKind::Printer => 40,
+            DeviceKind::Phone => 6,
+            DeviceKind::Iot => 3,
+        }
+    }
+
     /// A provider cloud: frames go only between the ports mapped to each other.
     pub fn cloud(&self) -> bool {
         matches!(self.id, "Cloud" | "PSTN")
