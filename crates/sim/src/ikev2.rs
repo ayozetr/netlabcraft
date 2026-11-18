@@ -91,6 +91,12 @@ pub struct V2State {
     /// A child SA rekey this router asked for: its nonce, its new inbound SPI and the request's
     /// message ID.
     child: Option<(Vec<u8>, u32, u32)>,
+    /// With PFS, the key exchange of that request: the group, this router's private value and
+    /// its public one.
+    child_dh: Option<(u16, Vec<u8>, Vec<u8>)>,
+    /// The group of the Diffie-Hellman exchange that gave the child SA keys now in use (0: the
+    /// first child SA, or a renewal without PFS: the keys come from SK_d alone).
+    pub pfs: u16,
     /// An IKE SA rekey this router asked for.
     ike_new: Option<IkeRekey>,
     /// The AH child SA of a bundle this router asked for (a new one, or the renewal of the
@@ -271,6 +277,17 @@ fn esp_proposal(d: &Device, e: &CryptoMapEntry, spi: u32) -> Proposal {
     Proposal { number: 1, protocol: ikev2::PROTO_ESP, spi: spi.to_be_bytes().to_vec(), transforms }
 }
 
+/// The proposal of a CREATE_CHILD_SA that renews a child SA: the entry's own, with the
+/// Diffie-Hellman transform of its `set pfs` group (a first child SA in IKE_AUTH has none:
+/// RFC 7296 §1.2 gives it no key exchange).
+fn rekey_proposal(d: &Device, e: &CryptoMapEntry, spi: u32, group: Option<u16>) -> Proposal {
+    let mut p = esp_proposal(d, e, spi);
+    if let Some(g) = group {
+        p.transforms.push(Transform { kind: ikev2::TT_DH, id: g, key_len: None });
+    }
+    p
+}
+
 /// An AH child SA proposal (RFC 7296 §3.3.2): the integrity transform and ESN off. Also the
 /// second child SA of an AH-and-ESP bundle, which IKEv2 negotiates separately (§1.3: one
 /// protocol per Child SA).
@@ -317,11 +334,11 @@ fn iv_for(seed: &[u8]) -> [u8; 16] {
     filler(seed, 16).try_into().unwrap_or([7; 16])
 }
 
-/// ESP keys (RFC 7296 §2.17): KEYMAT = prf+(SK_d, Ni | Nr), as much as the ESP algorithms take
+/// ESP keys (RFC 7296 §2.17): KEYMAT = prf+(SK_d, [g^ir (new) |] Ni | Nr), with the secret of the fresh exchange when the child SA has PFS, as much as the ESP algorithms take
 /// for each direction (36 bytes for the stand-in cipher); the initiator's outbound key first.
-fn esp_keys(keys: &Keys, suite: Option<EspSuite>, ni: &[u8], nr: &[u8]) -> (Vec<u8>, Vec<u8>) {
+fn esp_keys(keys: &Keys, suite: Option<EspSuite>, gir: &[u8], ni: &[u8], nr: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let one = suite.map_or(36, EspSuite::keymat_len);
-    let m = keys.suite.prf.plus(&keys.sk_d, &[ni, nr].concat(), 2 * one);
+    let m = keys.suite.prf.plus(&keys.sk_d, &[gir, ni, nr].concat(), 2 * one);
     (m.get(..one).unwrap_or_default().to_vec(), m.get(one..).unwrap_or_default().to_vec())
 }
 
@@ -1132,7 +1149,7 @@ impl Sim {
             },
         };
         let suite = entry.as_ref().and_then(|e| esp_suite_for(d, e));
-        let (k_ir, k_ri) = esp_keys(&keys, suite, &v2.ni, &v2.nr);
+        let (k_ir, k_ri) = esp_keys(&keys, suite, &[], &v2.ni, &v2.nr);
         v2.esp_out = k_ri;
         v2.esp_in = k_ir;
         v2.profile = Some(profile.name.clone());
@@ -1215,7 +1232,7 @@ impl Sim {
             return Ok(());
         }
         let suite = entry.as_ref().and_then(|e| esp_suite_for(d, e));
-        let (k_ir, k_ri) = esp_keys(&keys, suite, &v2.ni, &v2.nr);
+        let (k_ir, k_ri) = esp_keys(&keys, suite, &[], &v2.ni, &v2.nr);
         v2.esp_out = k_ir;
         v2.esp_in = k_ri;
         v2.esp_suite = suite;
@@ -1282,18 +1299,26 @@ impl Sim {
         let new_in = spi_of(&ni, local, peer);
         let id = v2.next_req;
         let Some((tsi, tsr)) = selectors(d, entry) else { return };
-        let payloads = vec![
+        let mut payloads = vec![
             Payload::Notify {
                 protocol: child_protocol(v2.esp_suite),
                 spi: sa.spi_in.to_be_bytes().to_vec(),
                 kind: ikev2::REKEY_SA,
                 data: Vec::new(),
             },
-            Payload::Sa(vec![esp_proposal(d, entry, new_in)]),
+            Payload::Sa(vec![rekey_proposal(d, entry, new_in, entry.pfs)]),
             Payload::Nonce(ni.clone()),
-            Payload::TsI(vec![tsi]),
-            Payload::TsR(vec![tsr]),
         ];
+        // PFS: a fresh Diffie-Hellman value rides along (RFC 7296 §1.3.3).
+        v2.child_dh = entry.pfs.map(|g| {
+            let private = dh_private(&seed, g);
+            let public = ke_public(g, &private, &seed);
+            (g, private, public)
+        });
+        if let Some((group, _, data)) = &v2.child_dh {
+            payloads.push(Payload::Ke { group: *group, data: data.clone() });
+        }
+        payloads.extend([Payload::TsI(vec![tsi]), Payload::TsR(vec![tsr])]);
         v2.child = Some((ni, new_in, id));
         v2.next_req = id.wrapping_add(1);
         self.log(d.id, &format!("IKEv2 with {peer}: the child SA nears the end of its lifetime; CREATE_CHILD_SA renews its keys"));
@@ -1313,6 +1338,7 @@ impl Sim {
         (sa.spi_in, sa.spi_out) = spis;
         (v2.esp_out, v2.esp_in) = keys;
         v2.child = None;
+        v2.child_dh = None;
         sa.rekeyed(now, life, false);
         sa.v2 = Some(Box::new(v2));
     }
@@ -1356,38 +1382,93 @@ impl Sim {
                 return self.ike2_ah_child_response(t, d, local, peer, &inner, v2, keys);
             }
             (ikev2::CREATE_CHILD_SA, false) => {
-                let refuse = |kind: u16| vec![Payload::Notify { protocol: 0, spi: Vec::new(), kind, data: Vec::new() }];
+                let refuse = |kind: u16, data: Vec<u8>| vec![Payload::Notify { protocol: 0, spi: Vec::new(), kind, data }];
                 let rekeyed = inner.iter().find_map(|p| match p {
                     Payload::Notify { kind: ikev2::REKEY_SA, spi, .. } => Some(spi_u32(spi)),
                     _ => None,
                 });
                 let entry = entry_for(d, local, peer);
+                let my_pfs = entry.as_ref().and_then(|e| e.pfs);
+                let offered_group = esp.as_ref().and_then(|o| o.of(ikev2::TT_DH).next()).map(|t| t.id);
+                // The proposals are compared with the group the peer names, so that a
+                // difference in the group alone is reported as one.
                 let verdict = match (rekeyed, &entry, &esp, &nonce) {
                     (Some(s), _, _, _) if s != sa.spi_out => Err(ikev2::CHILD_SA_NOT_FOUND),
                     (None, _, _, _) => Err(ikev2::NO_PROPOSAL_CHOSEN),
                     (_, Some(e), Some(o), Some(_))
-                        if (esp_proposal(d, e, 0).protocol, esp_proposal(d, e, 0).transforms) == (o.protocol, o.transforms.clone()) =>
+                        if (rekey_proposal(d, e, 0, offered_group).protocol, rekey_proposal(d, e, 0, offered_group).transforms)
+                            == (o.protocol, o.transforms.clone())
+                            && offered_group == my_pfs =>
                     {
                         Ok(())
                     }
                     _ => Err(ikev2::NO_PROPOSAL_CHOSEN),
                 };
                 if let Err(kind) = verdict {
-                    self.log(d.id, &format!("IKEv2 with {peer}: refused to renew the child SA ({})", ikev2::notify_name(kind)));
-                    self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::CREATE_CHILD_SA, m.message_id, true, refuse(kind));
+                    let why = if offered_group == my_pfs {
+                        String::new()
+                    } else {
+                        format!(": PFS differs ({} here, {} at the peer)", crate::vpn::pfs_name(my_pfs), crate::vpn::pfs_name(offered_group))
+                    };
+                    self.log(d.id, &format!("IKEv2 with {peer}: refused to renew the child SA ({}{why})", ikev2::notify_name(kind)));
+                    self.debug_log(
+                        d.id,
+                        DebugKind::CryptoIpsec,
+                        &format!("child SA renewal from {peer} refused ({}{why})", ikev2::notify_name(kind)),
+                    );
+                    self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::CREATE_CHILD_SA, m.message_id, true, refuse(kind, Vec::new()));
                     return Ok(());
                 }
                 let (Some(e), Some(o), Some(ni)) = (entry, esp, nonce) else { return Ok(()) };
+                // PFS: the initiator's value must be for the group, and this router answers with its own.
+                let mut gir = Vec::new();
+                let mut ke_back = None;
+                if let Some(group) = my_pfs {
+                    let ke_i = inner.iter().find_map(|p| match p {
+                        Payload::Ke { group: g, data } if *g == group => Some(data.clone()),
+                        _ => None,
+                    });
+                    let seed = [&ni[..], &local.octets()[..], b"child-dh"].concat();
+                    let private = dh_private(&seed, group);
+                    let public = ke_public(group, &private, &seed);
+                    let shared = ke_i.and_then(|k| dh_shared(group, &private, &k, &public, false));
+                    let Some(shared) = shared else {
+                        self.log(
+                            d.id,
+                            &format!("IKEv2 with {peer}: refused to renew the child SA (INVALID_KE_PAYLOAD): no valid group {group} value"),
+                        );
+                        let data = group.to_be_bytes().to_vec();
+                        self.ike2_sa_send(
+                            t,
+                            d,
+                            local,
+                            peer,
+                            &v2,
+                            me_initiator,
+                            ikev2::CREATE_CHILD_SA,
+                            m.message_id,
+                            true,
+                            refuse(ikev2::INVALID_KE_PAYLOAD, data),
+                        );
+                        return Ok(());
+                    };
+                    gir = shared;
+                    ke_back = Some(Payload::Ke { group, data: public });
+                }
                 let nr = filler(&[&ni[..], &local.octets()[..], b"nr"].concat(), 32);
                 let new_in = spi_of(&nr, local, peer);
                 let ts_i = inner.iter().find_map(|p| if let Payload::TsI(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
                 let ts_r = inner.iter().find_map(|p| if let Payload::TsR(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
-                let mut mine = esp_proposal(d, &e, new_in);
+                let mut mine = rekey_proposal(d, &e, new_in, my_pfs);
                 mine.number = o.number;
                 // The requester's direction first (§2.17).
-                let (k_req, k_resp) = esp_keys(&keys, v2.esp_suite, &ni, &nr);
-                let reply = vec![Payload::Sa(vec![mine]), Payload::Nonce(nr), Payload::TsI(ts_i), Payload::TsR(ts_r)];
+                let (k_req, k_resp) = esp_keys(&keys, v2.esp_suite, &gir, &ni, &nr);
+                let mut reply = vec![Payload::Sa(vec![mine]), Payload::Nonce(nr)];
+                reply.extend(ke_back);
+                reply.extend([Payload::TsI(ts_i), Payload::TsR(ts_r)]);
                 self.ike2_sa_send(t, d, local, peer, &v2, me_initiator, ikev2::CREATE_CHILD_SA, m.message_id, true, reply);
+                let mut v2 = v2;
+                v2.pfs = my_pfs.unwrap_or(0);
                 self.ike2_install(d, local, peer, v2, (new_in, spi_u32(&o.spi)), (k_resp, k_req));
                 self.log(d.id, &format!("IKEv2 with {peer}: CREATE_CHILD_SA complete, the child SA has new keys"));
             }
@@ -1395,17 +1476,44 @@ impl Sim {
                 let Some((ni, new_in, id)) = v2.child.clone().filter(|c| c.2 == m.message_id) else {
                     return Err(format!("CREATE_CHILD_SA response from {peer} to no request"));
                 };
+                let my_pfs = v2.child_dh.as_ref().map(|c| c.0);
                 if let Some(kind) = Message::notify(&inner) {
-                    self.log(d.id, &format!("IKEv2 with {peer}: renewing the child SA failed: the peer answered {}", ikev2::notify_name(kind)));
+                    let theirs = crate::vpn::pfs_difference(t, d, local, peer).map(|w| format!(": {w}")).unwrap_or_default();
+                    self.log(
+                        d.id,
+                        &format!("IKEv2 with {peer}: renewing the child SA failed: the peer answered {}{theirs}", ikev2::notify_name(kind)),
+                    );
                     if let Some(s) = self.st(d.id).ipsec.get_mut(&peer) {
                         s.rekey_us = 0;
+                    }
+                    if let Some(s) = self.state.get_mut(&d.id).and_then(|s| s.ipsec.get_mut(&peer)).and_then(|s| s.v2.as_mut()) {
+                        s.child_dh = None;
                     }
                     return Ok(());
                 }
                 let (Some(nr), Some(o)) = (nonce, esp) else { return Err("CREATE_CHILD_SA response without SA or nonce".into()) };
-                let (k_req, k_resp) = esp_keys(&keys, v2.esp_suite, &ni, &nr);
+                // PFS: the secret of the fresh exchange goes into the keys.
+                let mut gir = Vec::new();
+                if let Some((group, private, public)) = v2.child_dh.clone() {
+                    let ke_r = inner.iter().find_map(|p| match p {
+                        Payload::Ke { group: g, data } if *g == group => Some(data.clone()),
+                        _ => None,
+                    });
+                    match ke_r.and_then(|k| dh_shared(group, &private, &public, &k, true)) {
+                        Some(g) => gir = g,
+                        None => {
+                            self.log(d.id, &format!("IKEv2 with {peer}: renewing the child SA failed: no valid group {group} value in the answer"));
+                            if let Some(s) = self.st(d.id).ipsec.get_mut(&peer) {
+                                s.rekey_us = 0;
+                            }
+                            return Ok(());
+                        }
+                    }
+                }
+                let (k_req, k_resp) = esp_keys(&keys, v2.esp_suite, &gir, &ni, &nr);
                 let old_in = sa.spi_in;
                 let mut v2 = v2;
+                v2.pfs = my_pfs.unwrap_or(0);
                 let del_id = v2.next_req;
                 v2.next_req = del_id.wrapping_add(1);
                 self.ike2_install(d, local, peer, v2.clone(), (new_in, spi_u32(&o.spi)), (k_req, k_resp));
@@ -1544,7 +1652,7 @@ impl Sim {
         let new_in = spi_of(&nr, local, peer);
         let suite = EspSuite { encr: netlabcraft_wire::vpn::EspEncr::Ah, integ };
         // The requester's direction first (§2.17).
-        let (k_req, k_resp) = esp_keys(&keys, Some(suite), &ni, &nr);
+        let (k_req, k_resp) = esp_keys(&keys, Some(suite), &[], &ni, &nr);
         let ts_i = inner.iter().find_map(|p| if let Payload::TsI(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
         let ts_r = inner.iter().find_map(|p| if let Payload::TsR(v) = p { Some(v.clone()) } else { None }).unwrap_or_default();
         let mut mine = ah_child_proposal(integ, new_in);
@@ -1588,7 +1696,7 @@ impl Sim {
             return Ok(());
         };
         let suite = EspSuite { encr: netlabcraft_wire::vpn::EspEncr::Ah, integ };
-        let (k_req, k_resp) = esp_keys(&keys, Some(suite), &ni, &nr);
+        let (k_req, k_resp) = esp_keys(&keys, Some(suite), &[], &ni, &nr);
         let old_in = sa.ah.as_ref().map(|a| a.spi_in);
         self.ah_install(d, peer, integ, (new_in, spi_u32(&o.spi)), (k_req, k_resp));
         if renewed && let Some(old_in) = old_in {

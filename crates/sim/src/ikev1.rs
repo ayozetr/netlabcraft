@@ -159,6 +159,33 @@ pub struct V1State {
     pub ah_spi_peer: u32,
     /// With RSA signatures: the subject of the certificate the peer proved itself with.
     pub peer_cert: String,
+    /// Perfect forward secrecy: the group of quick mode's own Diffie-Hellman exchange for the
+    /// IPsec keys now being negotiated or in use (0: none, the keys come from SKEYID_d alone).
+    pub pfs: u16,
+    qm_priv: Vec<u8>,
+    pub qm_ke_i: Vec<u8>,
+    pub qm_ke_r: Vec<u8>,
+    /// The shared secret g(qm)^xy of that exchange (empty without PFS).
+    qm_gxy: Vec<u8>,
+}
+
+/// The public value of a group's exchange for a private value: g^x mod p for a MODP group, the
+/// curve point for groups 19 and 20; `None` for a group that is not computed.
+fn dh_public(group: u16, private: &[u8]) -> Option<Vec<u8>> {
+    match (dh::modp(group), ec::curve(group)) {
+        (Some(g), _) => Some(g.public(private)),
+        (None, Some(c)) => Some(c.public(private)),
+        (None, None) => None,
+    }
+}
+
+/// The shared secret with the peer's public value; `None` when it is not valid for the group.
+fn dh_secret(group: u16, private: &[u8], peer: &[u8]) -> Option<Vec<u8>> {
+    match (dh::modp(group), ec::curve(group)) {
+        (Some(g), _) => g.shared(private, peer),
+        (None, Some(c)) => c.shared(private, peer),
+        (None, None) => None,
+    }
 }
 
 /// Why opening a message failed.
@@ -180,6 +207,35 @@ impl V1State {
             (Some(g), _) => g.public(&self.dh_priv),
             (None, Some(c)) => c.public(&self.dh_priv),
             (None, None) => ike::filler(&[seed, b"ke"].concat(), 128),
+        }
+    }
+
+    /// Starts quick mode's own exchange for perfect forward secrecy (RFC 2409 §5.5): picks a
+    /// private value for `group` and returns the public one for the KE payload. Without a
+    /// group the exchange has none, and an earlier one's values are dropped.
+    pub fn make_qm_ke(&mut self, group: Option<u16>, seed: &[u8]) -> Option<Vec<u8>> {
+        self.pfs = 0;
+        self.qm_priv.clear();
+        self.qm_ke_i.clear();
+        self.qm_ke_r.clear();
+        self.qm_gxy.clear();
+        let group = group?;
+        let private = ike::filler(&[seed, b"qm-dh-x"].concat(), ec::curve(group).map_or(32, |c| c.len()));
+        let public = dh_public(group, &private)?;
+        self.pfs = group;
+        self.qm_priv = private;
+        Some(public)
+    }
+
+    /// Completes quick mode's exchange from the peer's public value; `false` when it is not
+    /// valid for the group (or there is no exchange).
+    pub fn derive_qm(&mut self, peer_ke: &[u8]) -> bool {
+        match dh_secret(self.pfs, &self.qm_priv, peer_ke) {
+            Some(g) => {
+                self.qm_gxy = g;
+                true
+            }
+            None => false,
         }
     }
 
@@ -267,7 +323,8 @@ impl V1State {
     /// [`V1State::keymat`] for an SA of a given protocol (an AH-and-ESP bundle has one of each,
     /// with their own SPIs).
     pub fn keymat_for(&self, protocol: u8, spi: u32, len: usize) -> Vec<u8> {
-        let seed = [&[protocol][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
+        // With PFS the secret of quick mode's own exchange comes first (§5.5).
+        let seed = [&self.qm_gxy[..], &[protocol][..], &spi.to_be_bytes()[..], &self.qm_ni[..], &self.qm_nr[..]].concat();
         let prf = self.prf();
         let mut k = prf.prf(&self.skeyid_d, &seed);
         let mut out = k.clone();
@@ -326,6 +383,11 @@ impl V1State {
         self.qm_iv =
             self.prf().hash(&[&last[..], &message_id.to_be_bytes()[..]].concat()).get(..self.cipher_kind().block_len()).unwrap_or_default().to_vec();
     }
+}
+
+/// The key exchange value of a quick-mode message, if it has one.
+pub fn ke_of(list: &[Payload]) -> Option<&[u8]> {
+    list.iter().find_map(|p| if let Payload::Ke(k) = p { Some(k.as_slice()) } else { None })
 }
 
 /// The HASH payload of a list, if any.
@@ -421,6 +483,37 @@ mod tests {
             bad.ke_r = vec![1; bad.ke_i.len()];
             assert!(!bad.derive(b"psk", &[1; 8], &[2; 8], true));
         }
+    }
+
+    #[test]
+    fn quick_mode_pfs_gives_keys_a_secret_the_ike_keys_do_not_hold() {
+        for group in [2, 5, 14, 15, 16, 19, 20, 24] {
+            let (mut i, mut r) = pair((7, 128), 2, 14);
+            let (ci, cr) = ([1; 8], [2; 8]);
+            assert!(i.derive(b"psk", &ci, &cr, true) && r.derive(b"psk", &ci, &cr, false));
+            (i.qm_ni, r.qm_ni, i.qm_nr, r.qm_nr) = (vec![1; 16], vec![1; 16], vec![2; 16], vec![2; 16]);
+            let plain = i.keymat(0x1234, 40);
+            assert_eq!(plain, r.keymat(0x1234, 40));
+            let ke_i = i.make_qm_ke(Some(group), b"qm-i").unwrap();
+            let ke_r = r.make_qm_ke(Some(group), b"qm-r").unwrap();
+            assert_eq!((i.pfs, r.pfs), (group, group));
+            assert!(i.derive_qm(&ke_r) && r.derive_qm(&ke_i));
+            let with = i.keymat(0x1234, 40);
+            assert_eq!(with, r.keymat(0x1234, 40));
+            assert_ne!(with, plain);
+            // One end without the exchange gets other keys.
+            r.make_qm_ke(None, b"x");
+            assert_eq!(r.pfs, 0);
+            assert_ne!(with, r.keymat(0x1234, 40));
+            // A value that is not valid for the group is refused.
+            let bad = vec![u8::from(group == 19 || group == 20); ke_r.len()];
+            assert!(!i.derive_qm(&bad));
+            assert!(!i.derive_qm(&[]));
+        }
+        // No group, no exchange.
+        let (mut i, _) = pair((7, 128), 2, 14);
+        assert_eq!(i.make_qm_ke(None, b"q"), None);
+        assert!(!i.derive_qm(&[1, 2, 3]));
     }
 
     #[test]

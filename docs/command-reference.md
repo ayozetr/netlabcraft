@@ -471,6 +471,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no crypto ipsec security-association lifetime {seconds\|kilobytes}` | config | router | Back to the default IPsec key lifetime |
 | `set security-association lifetime {seconds\|kilobytes} <N>` |  | router | This entry's key lifetime |
 | `no set security-association lifetime {seconds\|kilobytes}` |  | router | Use the global key lifetime |
+| `set pfs {group2\|group5\|group14\|group15\|group16\|group19\|group20\|group24}` |  | router | Run a fresh Diffie-Hellman exchange for every new set of IPsec keys |
+| `no set pfs` |  | router | Derive IPsec keys from the IKE keys alone |
 | `match address ACL` |  | router | The access list choosing what to protect |
 | `no match address` |  | router | Protect nothing |
 | `crypto map WORD` | interface, subinterface | router | Protect traffic leaving this interface |
