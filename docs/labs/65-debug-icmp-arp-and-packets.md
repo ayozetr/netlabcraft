@@ -6,8 +6,8 @@
 
 - Turn on `debug ip icmp`, `debug ip packet` and `debug arp` on one router, read what they
   print into `show logging`, and turn them off again (`undebug all`).
-- Find a missing return route from what is *absent* in the output: the request is routed on,
-  the reply never is.
+- Find a missing return route from the output: the request is routed on, the reply is
+  dropped with "no route".
 - Find a wrong default gateway on a host from an ARP question nobody answers.
 - Narrow `debug ip packet` to one access list so a busy router prints only what matters.
 
@@ -100,14 +100,14 @@ Send a ping from PC1, then read the log of R2.
 ping PC1 192.168.2.10 => failure
 R2# show logging
   expect: IP debug: 192.168.1.10 → 192.168.2.10, in GigabitEthernet0/0, routed out GigabitEthernet0/1
-  reject: IP debug: 192.168.2.10 → 192.168.1.10
+  expect: IP debug: 192.168.2.10 → 192.168.1.10, in GigabitEthernet0/1, no route: dropped
 ```
 
 The first line is the echo request being routed on towards PC2. PC2 answers; the answer arrives
-at R2 on its way back, and **no line says it was routed**: R2 has no route to
-192.168.1.0/24, so the reply stops there. A debug that prints what works shows a fault as
-a line that is missing. `debug ip icmp` agrees from the other side: pinging the router itself
-shows the request arriving and no way back.
+at R2 on its way back, and the second line says what became of it: R2 has no route to
+192.168.1.0/24, so the reply is dropped there. Each packet has one line, and the line says where
+it came in and what the router did with it. `debug ip icmp` agrees from the other side: pinging
+the router itself shows the request arriving and no way back.
 
 ```verify
 ping PC1 192.168.2.1 => failure
@@ -129,8 +129,9 @@ Now both directions are routed:
 ```verify
 ping PC1 192.168.2.10 => success
 R2# show logging
-  expect: IP debug: 192.168.1.10 → 192.168.2.10
-  expect: IP debug: 192.168.2.10 → 192.168.1.10
+  expect: IP debug: 192.168.1.10 → 192.168.2.10, in GigabitEthernet0/0, routed out GigabitEthernet0/1
+  expect: IP debug: 192.168.2.10 → 192.168.1.10, in GigabitEthernet0/1, routed out GigabitEthernet0/0 via 10.65.0.1
+  reject: no route: dropped
 ```
 
 ## Part 2 — Limit what is printed with an access list
@@ -211,7 +212,8 @@ R2# show debugging
 
 ## Reflection
 
-1. Why does the router that has the fault print *less* than it should, not an error message?
+1. Why does the router print a line for the dropped reply, and which other line would you look for
+   if it printed none?
 2. `debug ip packet` prints a line for each packet. What would limit it on a busy router, other
    than an access list?
 3. The ARP question for 192.168.2.254 is sent every time PC2 wants to leave its network. Where
