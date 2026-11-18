@@ -150,7 +150,7 @@ pub(super) fn command(c: &mut Ctx, spec: &Spec, args: &[String]) -> R {
             None => d.knobs.clear(s, &key),
         }
     }
-    Ok(if keep.is_some() && !key.starts_with("alias ") { KEPT.to_string() } else { String::new() })
+    Ok(if keep.is_some() && !key.starts_with("alias ") && key != "ip unreachables" { KEPT.to_string() } else { String::new() })
 }
 
 /// `show aliases`: what each alias stands for, by mode.
