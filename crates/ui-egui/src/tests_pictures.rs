@@ -182,7 +182,7 @@ mod t {
         assert!(has(&h, "Workspace background"));
         assert!(h.query_by_label_contains("Background of").is_some() && h.query_by_label_contains("Icon of").is_some());
         assert_eq!(h.query_all_by_role_and_label(Role::Button, "Remove").count(), 3);
-        assert!(!h.query_by_label_contains("The lab holds no images").is_some());
+        assert!(h.query_by_label_contains("The lab holds no images").is_none());
         let before = h.state().session.topology.clone();
         h.query_all_by_role_and_label(Role::Button, "Remove").next().unwrap().click();
         h.run_steps(3);
