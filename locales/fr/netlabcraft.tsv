@@ -2397,3 +2397,8 @@ furniture	Table	Table
 	no clock rate on the DCE end	pas de débit d'horloge côté DCE
 	the two ends use different encapsulations	les deux extrémités utilisent des encapsulations différentes
 	PPP authentication failed (check the usernames and passwords)	échec de l'authentification PPP (vérifiez les noms d'utilisateur et les mots de passe)
+	Resize…	Redimensionner…
+	Resize	Redimensionner
+	Units ({} to {}):	Unités ({} à {}) :
+	Levels ({} to {}):	Niveaux ({} à {}) :
+	Enter a whole number	Saisissez un nombre entier

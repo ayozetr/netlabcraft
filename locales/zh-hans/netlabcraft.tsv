@@ -2397,3 +2397,8 @@ furniture	Table	桌子
 	no clock rate on the DCE end	DCE 端没有时钟速率
 	the two ends use different encapsulations	两端使用不同的封装
 	PPP authentication failed (check the usernames and passwords)	PPP 认证失败（请检查用户名和密码）
+	Resize…	调整大小…
+	Resize	调整大小
+	Units ({} to {}):	机架单元（{} 至 {}）：
+	Levels ({} to {}):	层数（{} 至 {}）：
+	Enter a whole number	请输入整数

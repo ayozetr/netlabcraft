@@ -120,6 +120,22 @@ fn wall_mounts_and_fiber_panels_keep_to_their_medium() {
 }
 
 #[test]
+fn furniture_is_resized_by_command_and_one_undo_takes_it_back() {
+    let (mut s, a, _, _) = lab();
+    let rack = id(&s.execute("furniture.add", json!({"kind": "rack", "size": 8})).unwrap());
+    s.execute("furniture.mount", json!({"device": a, "furniture": rack, "slot": 6, "units": 2})).unwrap();
+    assert!(s.execute("furniture.resize", json!({"furniture": rack})).is_err(), "`size` is required");
+    assert!(s.execute("furniture.resize", json!({"furniture": rack, "size": 3})).is_err());
+    assert!(s.execute("furniture.resize", json!({"furniture": rack, "size": 7})).is_err(), "the device ends on unit 8");
+    s.execute("furniture.resize", json!({"furniture": rack, "size": 20})).unwrap();
+    assert_eq!(s.topology.furniture_piece(rack as u32).unwrap().size, 20);
+    s.execute("edit.undo", json!({})).unwrap();
+    assert_eq!(s.topology.furniture_piece(rack as u32).unwrap().size, 8);
+    let table = id(&s.execute("furniture.add", json!({"kind": "table"})).unwrap());
+    assert!(s.execute("furniture.resize", json!({"furniture": table, "size": 2})).is_err());
+}
+
+#[test]
 fn a_power_strip_switches_what_is_plugged_into_it() {
     let (mut s, a, b, c) = lab();
     let strip = id(&s.execute("passive.add", json!({"kind": "power-strip", "ports": 3})).unwrap());

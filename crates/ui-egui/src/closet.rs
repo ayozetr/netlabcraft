@@ -63,6 +63,8 @@ pub struct State {
     pub(crate) seen_ports: Vec<(Pole, Rect)>,
     /// The Rename dialog: what and the name being typed.
     pub rename: Option<(Thing, String)>,
+    /// The Resize dialog: the rack or shelf and the size being typed.
+    pub resize: Option<(u32, String)>,
 }
 
 /// A kind of furniture by name (`Table` has its own row: the word also names a data table).
@@ -1338,6 +1340,10 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
                 app.ui.physical.closet.rename = Some((Thing::Furniture(id), f.name.clone()));
                 ui.close();
             }
+            if f.kind != FurnitureKind::Table && ui.button(tl("Resize…")).clicked() {
+                app.ui.physical.closet.resize = Some((id, f.size.to_string()));
+                ui.close();
+            }
             if ui.button(tl("Remove")).clicked() {
                 app.run("furniture.remove", json!({"furniture": id}));
                 ui.close();
@@ -1456,8 +1462,45 @@ fn context_menu(app: &mut PacketApp, ui: &mut Ui, target: Target, place: u32) {
     }
 }
 
-/// The Rename dialog.
+/// The Resize dialog of a rack (units) or a shelf (levels).
+fn resize_window(app: &mut PacketApp, ctx: &egui::Context) {
+    let Some((id, mut text)) = app.ui.physical.closet.resize.clone() else { return };
+    let Some(f) = app.session.topology.furniture_piece(id) else {
+        app.ui.physical.closet.resize = None;
+        return;
+    };
+    let (rack, name) = (f.kind == FurnitureKind::Rack, f.name.clone());
+    let (lo, hi) = f.kind.size_range();
+    let (mut open, mut ok) = (true, false);
+    egui::Window::new(tl("Resize")).id(egui::Id::unique("closet_resize")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+        ui.label(egui::RichText::new(&name).strong());
+        let l = ui.label(if rack { trf("Units ({} to {}):", &[&lo, &hi]) } else { trf("Levels ({} to {}):", &[&lo, &hi]) });
+        let r = ui.add(egui::TextEdit::singleline(&mut text)).labelled_by(l.id);
+        if r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            ok = true;
+        }
+        if ui.button(tl("OK")).clicked() {
+            ok = true;
+        }
+    });
+    app.ui.physical.closet.resize = if ok {
+        match text.trim().parse::<u32>() {
+            Ok(size) => {
+                app.run("furniture.resize", json!({"furniture": id, "size": size}));
+            }
+            Err(_) => app.ui.status = Some((tl("Enter a whole number").to_string(), true)),
+        }
+        None
+    } else if open {
+        Some((id, text))
+    } else {
+        None
+    };
+}
+
+/// The Rename and Resize dialogs.
 pub fn windows(app: &mut PacketApp, ctx: &egui::Context) {
+    resize_window(app, ctx);
     let Some((thing, mut name)) = app.ui.physical.closet.rename.clone() else { return };
     let (mut open, mut ok) = (true, false);
     egui::Window::new(tl("Rename")).id(egui::Id::unique("closet_rename")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {

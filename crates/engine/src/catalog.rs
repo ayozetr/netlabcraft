@@ -874,6 +874,14 @@ pub static CATALOG: &[CommandInfo] = &[
         true
     ),
     c!("furniture.rename", "Rename furniture", "", None, r#"{"furniture": name or number, "name"}"#, true),
+    c!(
+        "furniture.resize",
+        "Resize furniture",
+        "",
+        None,
+        r#"{"furniture", "size": rack units 4-48 or shelf levels 1-8} → null: refused when something stands past the new size; a table has one size"#,
+        true
+    ),
     c!("furniture.move", "Move furniture", "", None, r#"{"furniture", "x", "y", "transient"?: false}: where it stands in the closet"#, true),
     c!("furniture.remove", "Remove furniture", "", None, r#"{"furniture"}: what stood on it stays in the closet, loose"#, true),
     c!(
