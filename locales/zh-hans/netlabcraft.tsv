@@ -1908,6 +1908,21 @@ event	write request for	写请求
 	{} (rear)	{}（背面）
 	{}, {} levels	{}，{} 层
 	{}, on {}	{}，位于 {}
+	Plugged into {} (USB {}): {}	已接到 {}（USB {}）：{}
+	Not plugged in: join it to a host with a USB cable.	未连接：请用 USB 线缆把它接到主机上。
+	mounted	已挂载
+	ejected	已弹出
+	Eject	弹出
+	Mount	挂载
+	{} of {} bytes used	已用 {} / {} 字节
+	No files on the stick.	U 盘上没有文件。
+	Save to stick	保存到 U 盘
+	Delete file	删除文件
+	USB {}	USB {}
+	Print test page	打印测试页
+	This device has no USB port.	此设备没有 USB 端口。
+	Test page from {}	来自 {} 的测试页
+	Sent a test page over USB.	已通过 USB 发送测试页。
 	to {}	至 {}
 	Backbone	主干线缆
 	Backbone to	主干线缆连到
