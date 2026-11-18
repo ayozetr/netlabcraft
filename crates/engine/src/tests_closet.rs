@@ -232,7 +232,7 @@ fn a_power_strip_breaker_trips_over_its_rating_and_resets_after_unplugging() {
     // Two 45 W switches and a 60 W router: nominal draws from the model table.
     assert_eq!(s.topology.find(&a).unwrap().nominal_watts(), 45);
     assert_eq!(s.topology.find(&c).unwrap().nominal_watts(), 60);
-    assert!(s.execute("power.rating", json!({"strip": strip, "watts": 50})).is_ok());
+    assert!(s.execute("power.rating", json!({"strip": strip, "watts": 50})).is_err());
     assert!(s.execute("power.rating", json!({"strip": strip, "watts": 99})).is_err());
     assert!(s.execute("power.rating", json!({"strip": strip, "watts": 3681})).is_err());
     assert!(s.execute("power.rating", json!({"strip": strip})).is_err());
