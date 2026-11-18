@@ -548,6 +548,9 @@ pub fn running_config(d: &Device) -> String {
         if let Some(n) = o.maximum_paths {
             let _ = writeln!(s, " maximum-paths {n}");
         }
+        if let Some((a, b, c)) = o.spf_throttle {
+            let _ = writeln!(s, " timers throttle spf {a} {b} {c}");
+        }
         for (n, a) in &o.areas {
             if a.stub {
                 let _ = writeln!(s, " area {n} stub{}", if a.no_summary { " no-summary" } else { "" });
@@ -635,6 +638,7 @@ pub fn running_config(d: &Device) -> String {
             let _ = writeln!(s, " maximum-paths {n}");
         }
         let _ = writeln!(s, "{}", if e.auto_summary { " auto-summary" } else { " no auto-summary" });
+        crate::exec::knobs::proto_lines(&mut s, d, "eigrp");
         let _ = writeln!(s, "!");
     }
     crate::exec::bgp::running_config(&mut s, d);
@@ -660,6 +664,7 @@ pub fn running_config(d: &Device) -> String {
         if let Some([u, i, h, f]) = r.timers {
             let _ = writeln!(s, " timers basic {u} {i} {h} {f}");
         }
+        crate::exec::knobs::proto_lines(&mut s, d, "rip");
         let _ = writeln!(s, "!");
     }
     if d.kind == DeviceKind::Switch
@@ -2965,7 +2970,7 @@ pub fn ipv6_access_lists(sim: &Sim, d: &Device) -> String {
 }
 
 /// `show ip ospf`.
-pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String {
+pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState, spf: Option<&netlabcraft_sim::DevState>, now_us: u64) -> String {
     let Some(o) = &d.ospf else { return "OSPF is not running here.".into() };
     let mut areas: std::collections::BTreeSet<u32> = o.networks.iter().map(|n| n.area).collect();
     areas.extend(st.segments.iter().filter(|((dev, _), _)| *dev == d.id).map(|(_, seg)| seg.area));
@@ -3017,7 +3022,23 @@ pub fn ospf_summary(d: &Device, st: &netlabcraft_sim::ospf::OspfState) -> String
         let up = st.virtual_links.get(&d.id).map_or(0, |l| l.iter().filter(|v| v.up).count());
         let _ = writeln!(s, "  {links} virtual link{} configured, {up} up (show ip ospf virtual-links)", if links == 1 { "" } else { "s" });
     }
-    let _ = write!(s, "  Routes are computed at once (no SPF timers)");
+    let (start, hold, max) = o.spf_throttle.unwrap_or((
+        netlabcraft_sim::ospf_lsdb::SPF_START_MS,
+        netlabcraft_sim::ospf_lsdb::SPF_HOLD_MS,
+        netlabcraft_sim::ospf_lsdb::SPF_MAX_MS,
+    ));
+    let _ = writeln!(s, "  SPF throttle: wait {start} ms after a change, hold {hold} ms between runs, at most {max} ms");
+    let runs = spf.map_or(0, |x| x.spf_runs);
+    match spf.and_then(|x| x.spf_last_us) {
+        Some(last) => {
+            let ago = now_us.saturating_sub(last) / 1_000_000;
+            let hold_now = spf.map_or(hold, |x| x.spf_hold_ms.max(hold));
+            let _ = write!(s, "  SPF ran {runs} time{}, the last {ago} s ago (hold interval now {hold_now} ms)", if runs == 1 { "" } else { "s" });
+        }
+        None => {
+            let _ = write!(s, "  SPF has not run yet");
+        }
+    }
     s
 }
 

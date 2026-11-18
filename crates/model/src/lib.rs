@@ -1300,6 +1300,10 @@ pub struct Ospf {
     /// `auto-cost reference-bandwidth N` (Mbit/s; 100 when not set).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reference_bw: Option<u32>,
+    /// `timers throttle spf START HOLD MAX` (milliseconds): how long SPF waits after a change
+    /// of the database, the least between two runs and the most the hold interval grows to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spf_throttle: Option<(u32, u32, u32)>,
     /// Area settings (`area N stub`, `area N range`), by area number.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub areas: BTreeMap<u32, OspfArea>,
