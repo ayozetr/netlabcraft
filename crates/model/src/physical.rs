@@ -580,7 +580,16 @@ impl Topology {
         if let Some(c) = self.physical.lengths.iter().find(|c| same_cable(l, c)) {
             return Length { meters: c.meters, manual: true };
         }
-        let (Some(ha), Some(hb)) = (self.home_of(l.a.device), self.home_of(l.b.device)) else {
+        self.run_length(l.a.device, l.b.device)
+    }
+
+    /// The length of a run between two devices that has no hand-set length, from where they
+    /// stand: what a console, USB or octal cable measures.
+    pub fn run_length(&self, a: DeviceId, b: DeviceId) -> Length {
+        if self.physical.is_default() {
+            return Length { meters: SAME_PLACE_M, manual: false };
+        }
+        let (Some(ha), Some(hb)) = (self.home_of(a), self.home_of(b)) else {
             return Length { meters: SAME_PLACE_M, manual: false };
         };
         // Two devices in one place whose map has a scale of its own (its size was set, perhaps
@@ -590,6 +599,17 @@ impl Topology {
             return Length { meters: to_meters(d).max(1), manual: false };
         }
         Length { meters: self.distance(ha.place, hb.place), manual: false }
+    }
+
+    /// Why a console, USB or octal cable between two devices carries nothing because it is longer
+    /// than its standard allows (`None`: it reaches, or the lab ignores lengths).
+    pub fn run_problem(&self, kind: crate::cable::Cable, a: DeviceId, b: DeviceId) -> Option<String> {
+        if self.physical.ignore_lengths {
+            return None;
+        }
+        let reach = kind.reach()?;
+        let len = self.run_length(a, b);
+        (len.meters > reach.meters).then(|| format!("cable too long: {} m {}, max {} m", len.meters, reach.what, reach.meters))
     }
 
     /// The cable run between two places, in metres.
