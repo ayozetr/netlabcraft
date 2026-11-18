@@ -249,6 +249,11 @@ pub enum Id {
     NoKnob,
     // ---- small commands found missing by the sweep (exec/sweep.rs) ----
     More,
+    ReloadIn,
+    ReloadAt,
+    ReloadCancel,
+    ShowReload,
+    ShowAliases,
     Pwd,
     ShowCdpInterface,
     ShowLine,
@@ -480,6 +485,10 @@ pub enum Id {
     NoIpOspfHello,
     IpOspfDead,
     NoIpOspfDead,
+    IpOspfRetransmit,
+    NoIpOspfRetransmit,
+    IpOspfTransmitDelay,
+    NoIpOspfTransmitDelay,
     IpOspfNetwork,
     NoIpOspfNetwork,
     IpOspfAuth,
@@ -1497,6 +1506,27 @@ pub static SPECS: &[Spec] = &[
     spec!(WriteMemory, Modes::EXEC, BOTH_FW, [K("write")], "Save the configuration"),
     spec!(EraseStartup, Modes::EXEC, BOTH_FW, [K("erase"), K("startup-config")], "Delete the saved configuration"),
     spec!(Reload, Modes::EXEC, BOTH_FW, [K("reload")], "Restart with the saved configuration"),
+    spec!(ReloadIn, Modes::EXEC, Modes::BOTH, [K("reload"), K("in"), Arg("<minutes|hh:mm>")], "Restart after a delay of simulated time"),
+    spec!(
+        ReloadIn,
+        Modes::EXEC,
+        Modes::BOTH,
+        [K("reload"), K("in"), Arg("<minutes|hh:mm>"), Rest("<reason>")],
+        "Restart after a delay, with a reason"
+    ),
+    spec!(ReloadAt, Modes::EXEC, Modes::BOTH, [K("reload"), K("at"), Arg("<hh:mm>")], "Restart at the next time the device clock shows this"),
+    spec!(ReloadAt, Modes::EXEC, Modes::BOTH, [K("reload"), K("at"), Arg("<hh:mm>"), Rest("<reason>")], "Restart at a time of day, with a reason"),
+    spec!(ReloadCancel, Modes::EXEC, Modes::BOTH, [K("reload"), K("cancel")], "Cancel a scheduled restart"),
+    spec!(ShowReload, EXECS, Modes::BOTH, [K("show"), K("reload")], "When the device restarts, if a restart is scheduled"),
+    spec!(ShowAliases, EXECS, Modes::BOTH, [K("show"), K("aliases")], "The command aliases"),
+    spec!(
+        Knob,
+        Modes::CONFIG,
+        Modes::BOTH,
+        [K("alias"), Arg("{exec|configure|interface}"), Arg("NAME"), Rest("<command text>")],
+        "Give a command another name in one mode"
+    ),
+    spec!(NoKnob, Modes::CONFIG, Modes::BOTH, [K("no"), K("alias"), Arg("{exec|configure|interface}"), Arg("NAME")], "Remove a command alias"),
     spec!(ClearMac, Modes::EXEC, Modes::SWITCH.or(Modes::CARD), [K("clear"), K("mac"), K("address-table")], "Forget learned MAC addresses"),
     spec!(ClearArp, Modes::EXEC, Modes::ROUTER, [K("clear"), K("arp-cache")], "Forget ARP entries"),
     spec!(ShowMac, EXECS, Modes::SWITCH.or(Modes::CARD), [K("show"), K("mac-address-table")], "Learned MAC addresses"),
@@ -1749,6 +1779,22 @@ pub static SPECS: &[Spec] = &[
     spec!(IpOspfDead, OSPF_IFS, Modes::BOTH, [K("ip"), K("ospf"), K("dead-interval"), Arg("<1-65535>")], "Silence before a neighbour is dropped"),
     spec!(NoIpOspfDead, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("dead-interval")], "Four hello intervals again"),
     spec!(
+        IpOspfRetransmit,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("retransmit-interval"), Arg("<1-65535>")],
+        "Seconds before an unacknowledged update is sent again (5)"
+    ),
+    spec!(NoIpOspfRetransmit, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("retransmit-interval")], "Five seconds again"),
+    spec!(
+        IpOspfTransmitDelay,
+        OSPF_IFS,
+        Modes::BOTH,
+        [K("ip"), K("ospf"), K("transmit-delay"), Arg("<1-65535>")],
+        "Seconds added to the age of every LSA sent (1)"
+    ),
+    spec!(NoIpOspfTransmitDelay, OSPF_IFS, Modes::BOTH, [K("no"), K("ip"), K("ospf"), K("transmit-delay")], "One second again"),
+    spec!(
         IpOspfNetwork,
         OSPF_IFS,
         Modes::BOTH,
@@ -1866,7 +1912,7 @@ pub static SPECS: &[Spec] = &[
         [
             K("redistribute"),
             Rest(
-                "{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [tag <0-4294967295>] [subnets] [route-map NAME]"
+                "{connected|static|rip|eigrp <1-65535>|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1|2}] [tag <0-4294967295>] [subnets] [nssa-only] [route-map NAME]"
             )
         ],
         "Advertise the routes another source gave as external routes"
@@ -2534,14 +2580,14 @@ pub static SPECS: &[Spec] = &[
         DebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
-        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, or every packet"
+        [K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet|retransmission")],
+        "Report OSPF: hellos heard, adjacency states, events, LSAs originated, LSAs flooded, every packet, or packets sent again"
     ),
     spec!(
         NoDebugIpOspf,
         Modes::EXEC,
         Modes::ROUTER,
-        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet")],
+        [K("no"), K("debug"), K("ip"), K("ospf"), Rest("adj|events|hello|lsa-generation|flood|packet|retransmission")],
         "Stop one kind of OSPF report"
     ),
     spec!(NoDebugIpOspf, Modes::EXEC, Modes::ROUTER, [K("no"), K("debug"), K("ip"), K("ospf")], "Stop every OSPF report"),
@@ -2697,7 +2743,7 @@ pub static SPECS: &[Spec] = &[
             K("area"),
             Arg("<1-4294967295>"),
             K("nssa"),
-            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+            Rest("[no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]")
         ],
         "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
@@ -2711,7 +2757,7 @@ pub static SPECS: &[Spec] = &[
             K("area"),
             Arg("<1-4294967295>"),
             K("nssa"),
-            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+            Rest("[no-summary] [no-redistribution] [default-information-originate [nssa-only]] [translate type7 always]")
         ],
         "Undo only those options of the NSSA"
     ),

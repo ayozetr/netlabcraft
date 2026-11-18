@@ -1082,8 +1082,24 @@ pub static CATALOG: &[CommandInfo] = &[
         "Power strip switch",
         "",
         None,
-        r#"{"strip": power distribution device, "on": true|false or "on"|"off"} → {"on", "devices"}: the devices plugged into it switch off or boot from their saved configuration as with device.power; one plugged into a strip that is off cannot be switched on"#,
+        r#"{"strip": power distribution device, "on": true|false or "on"|"off"} → {"on", "tripped", "devices"}: the devices plugged into it switch off or boot from their saved configuration as with device.power; one plugged into a strip that is off cannot be switched on; switching on more than the breaker rating carries trips it again, and a tripped strip stays off while what is plugged in is over its rating"#,
         true
+    ),
+    c!(
+        "power.rating",
+        "Power strip breaker rating",
+        "",
+        None,
+        r#"{"strip": power distribution device, "watts": 100-3680} → {"rating_w", "load_w", "tripped"}: the breaker carries the nominal draws of the devices that are on (Device::nominal_watts, a table per model); a rating below the load trips it at once"#,
+        true
+    ),
+    c!(
+        "power.load",
+        "Power strip load",
+        "",
+        None,
+        r#"{"strip": power distribution device} → {"strip", "on", "tripped", "rating_w", "load_w" (devices that are on), "demand_w" (everything plugged in), "outlets": [{"outlet", "device", "watts", "on"}]}; over the rating the breaker trips: the strip switches off and its devices lose power, and power.strip on resets it once what is plugged in fits"#,
+        false
     ),
     c!("view.enter_cluster", "Open cluster", "", None, r#"{"id"} → {"cluster", "path": [{"id", "name"}]}"#, false),
     c!("view.up", "Back to the parent cluster", "", None, r#"{} → {"cluster", "path"}"#, false),

@@ -17,7 +17,7 @@ to end is in [`labs/`](labs/README.md).
 | Console grammar entries | **1823** across 47 modes | measured: `spec!(` rows in `crates/ios/src/grammar.rs`; modes are its `Modes` constants less `ANY_MODE`, `BOTH` and the device flags `ROUTER`, `SWITCH`, `FIREWALL`, `CARD` |
 | Device models | **146** | measured: `MODELS` in `crates/model/src/models.rs` (the fallback model not counted; the 8 router cards are in `MODULES`) |
 | Sample labs | **33** | measured: `SAMPLES` in `crates/engine/src/sample.rs` |
-| Lab-book labs | **48** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 17 CCNA 2, 26 CCNA 3 with the BGP, redistribution, PPPoE and OSPF-area labs, and one wireless-security follow-up; labs 21 to 29, 34 and 35 are troubleshooting labs, 30 and 31 inspection labs), all run by `crates/engine/tests/lab_book.rs`, 16 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
+| Lab-book labs | **63** (+1 unnumbered: the cellular lab) | measured: numbered labs in `docs/labs/` (4 CCNA 1, 24 CCNA 2, 32 CCNA 3 with the BGP, redistribution, PPPoE, OSPF-area, VPN and debug labs, one wireless-security follow-up and two board-programming labs; labs 21 to 29, 34, 35, 61 to 64 and 68 to 71 are troubleshooting labs, 30, 31, 65 to 67 and 72 labs on reading output), all run by `crates/engine/tests/lab_book.rs`, 19 also over MCP by `apps/netlabcraft-cli/tests/mcp_lab_book.rs` |
 | Tests | **770** | measured: sum of "passed" from the CI run on `main` after the last of the nine M9 merges (`cargo test --workspace --lib --bins --tests`, 22 result lines); not re-measured since |
 | **Ready for real work** (weighted) | **~92%** | estimated; written weights below (92.5 computed, re-scored 2026-11-13) |
 | **CCNA 1 student** (Introduction to Networks) | **~93%** | estimated; [method](#audiences) |
@@ -85,7 +85,7 @@ Packet Tracer activities (estimated from the public course outlines). Each topic
 how much of what its labs do works here, depth included: a command that is accepted but not
 simulated scores low. The weighted sum then loses points for labs nobody has run: **5 points**
 while no lab book had been run end to end (beta gate 1), and **2 points** now that the
-[lab book](labs/README.md) runs. The 2 points stay because the book is our own (48 labs, not
+[lab book](labs/README.md) runs. The 2 points stay because the book is our own (63 labs, not
 the course's own activities, which can't be copied), so the topics it doesn't exercise can
 still hide surprises. Topics the book exercises are scored from what its labs showed; the
 others from the features and tests alone. The earlier figures (CCNA 2 ~92%, CCNA 3 ~91% in the
@@ -158,7 +158,7 @@ first estimate) counted topics as present without weighing their depth or the un
 ## Stage
 
 **Pre-alpha:** every core workflow works end to end (build a lab, configure by typing, ping,
-watch frames, grade an activity, save), and the 48-lab book (and the cellular lab) runs as written, by the engine and
+watch frames, grade an activity, save), and the 63-lab book (and the cellular lab) runs as written, by the engine and
 over MCP. Every alpha gate and every beta gate is met; packages are built by `release.yml`.
 Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 
@@ -181,6 +181,7 @@ Gates are in [`roadmap.md`](roadmap.md#alpha-gates).
 | 2026-11-18 | minor | OSPF NSSA: P bit, Nt bit, forwarding address and `translate type7 always` (see [protocol-parity.md](protocol-parity.md)); percentages not re-scored. |
 | 2026-11-18 | minor | OSPF LSA copies per router, MaxAge flush, SPF counters and throttle timers, `debug ip ospf lsa-generation\|flood\|packet` (see [protocol-parity.md](protocol-parity.md)): 1343 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | Cables are objects, fiber loss budgets and resizable racks and shelves (see [ui-parity.md](ui-parity.md) and [hardware-parity.md](hardware-parity.md)): `link.info`, `link.splices`, `furniture.resize`, `transceiver type` and `show interfaces transceiver`. The Summary is counted again from the code: 220 `c!(` entries in the engine catalog and 1772 `spec!(` rows in the grammar (other changes had added commands since the last count). |
+| 2026-11-18 | minor | Labs 61 to 72 join the lab book (63 numbered labs: 4 CCNA 1, 24 CCNA 2, 32 CCNA 3, 1 wireless and 2 board-programming; 19 over MCP): site-to-site and remote-access VPN faults, wireless clients, IP phones, IPv6, HSRP, DHCP snooping, ACL order, and five labs on reading `debug` output; the console has a `debug` framework (per-device topics, `terminal monitor`, `logging monitor`). Percentages not re-scored. |
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1695 grammar entries across 45 modes; percentages not re-scored. |
 | 2026-11-18 | minor | OSPF LSA copies per router, MaxAge flush, SPF counters and throttle timers, `debug ip ospf lsa-generation\|flood\|packet` (see [protocol-parity.md](protocol-parity.md)): 1698 grammar entries across 47 modes; percentages not re-scored. |
 | 2026-11-18 | minor | OSPFv3 authentication with a real AH header on IPv6 (see [protocol-parity.md](protocol-parity.md)): 1347 grammar entries across 45 modes; percentages not re-scored. |
