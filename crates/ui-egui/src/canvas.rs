@@ -1362,7 +1362,7 @@ fn cable_nodes(app: &mut PacketApp, ui: &mut Ui, canvas: Rect) {
             open = Some((*end, label.clone()));
         }
         if r.has_focus() {
-            focused = Some(*end);
+            focused = Some(CableRef::Link(*end));
             // The arrows step between cables (in port order), not egui's spatial focus move.
             ui.memory_mut(|m| {
                 m.set_focus_lock_filter(r.id, egui::EventFilter { horizontal_arrows: true, vertical_arrows: true, ..Default::default() })
