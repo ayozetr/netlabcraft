@@ -150,7 +150,7 @@ pub fn window(app: &mut PacketApp, ctx: &egui::Context) {
     let (mut open, mut delete_it, mut set_length) = (true, false, false);
     let mut open_device = None;
     let mut transceivers = None;
-    egui::Window::new(tl("Cable Properties")).id(egui::Id::new("cable_window")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
+    egui::Window::new(tl("Cable Properties")).id(egui::Id::unique("cable_window")).open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
         egui::Grid::new("cable_grid").num_columns(2).spacing([12.0, 6.0]).show(ui, |ui| {
             ui.label(tl("Kind"));
             ui.label(&f.kind);
