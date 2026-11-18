@@ -128,6 +128,7 @@ fn new_entry(map: &str, seq: u32, template: bool, dynamic_ref: Option<String>) -
         template,
         dynamic_ref,
         reverse_route: false,
+        pfs: None,
     }
 }
 
@@ -536,6 +537,20 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             } else {
                 life.kilobytes = value;
             }
+            Ok(String::new())
+        }
+        Id::CryptoSetPfs => {
+            let group = arg(0)
+                .to_ascii_lowercase()
+                .strip_prefix("group")
+                .and_then(|n| n.parse::<u16>().ok())
+                .filter(|g| netlabcraft_model::vpn::PFS_GROUPS.contains(g))
+                .ok_or("% The groups are group2, group5, group14, group15, group16, group19, group20 and group24")?;
+            map_entry(c)?.pfs = Some(group);
+            Ok(String::new())
+        }
+        Id::NoCryptoSetPfs => {
+            map_entry(c)?.pfs = None;
             Ok(String::new())
         }
         Id::CryptoMatchAddress => {

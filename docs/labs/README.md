@@ -93,6 +93,7 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 52 | [OSPF NSSA: keeping a type 7 route inside the area](52-ospf-nssa-only-type-7-lsas.md) | CCNA 3 follow-up | the P bit, the translating border router, `redistribute … nssa-only`, `show ip ospf database nssa-external` |
 | 53 | [IKE with certificates, and a certificate that has expired](53-ike-with-certificates-and-expiry.md) | CCNA 3 follow-up | `crypto pki server` with `lifetime certificate`, `crypto pki trustpoint`, `authenticate` and `enroll`, `authentication rsa-sig`, certificate requests and chains in main mode, an expired certificate, enrolling again |
 | 54 | [Enrolling by hand: a certificate authority that waits for the administrator](54-pki-enrolment-by-hand-and-ca-grant.md) | CCNA 3 follow-up | an authority without `grant auto`, a request that waits, `crypto pki server NAME grant`, `fqdn` and `ip-address` in the certificate, `enrollment terminal` |
+| 56 | [PEAP with a server certificate the client does not trust](56-peap-with-a-server-certificate-the-client-does-not-trust.md) | CCNA 3 follow-up | `aaa.certificate`, PEAP over TLS with the server's certificate, `dot1x.trust` with Validate server certificate, the trusted CA and the server name, `dot1x.status` |
 | 57 | [BGP prefix limits and timers](57-bgp-prefix-limits-and-timers.md) | CCNA 3 follow-up | `maximum-prefix` ending a session, `warning-only`, `timers bgp`, `advertised-routes` and `routes` |
 | 58 | [Aliases, a scheduled reload, the extended ping and telnet by name](58-aliases-reload-extended-ping-and-telnet-by-name.md) | CCNA 2 follow-up | `alias exec`, `reload in`, `show reload`, interactive `ping`, `ip host`, `telnet NAME` |
 | 61 | [Troubleshooting: a site-to-site IPsec VPN that will not come up](61-troubleshoot-site-to-site-vpn.md) | CCNA 3 | a pre-shared key that differs, transform sets that differ, a crypto ACL that matches nothing, `show crypto isakmp sa` and `ipsec sa`, `clear crypto sa` |
@@ -112,6 +113,7 @@ One more lab has no number because it belongs to no CCNA course: [Mobile data ov
 | 81 | [Multiple spanning tree: regions and one tree per group of VLANs](81-mst-regions.md) | CCNA 2 follow-up | `spanning-tree mode mst`, `spanning-tree mst configuration` with `name`, `revision` and `instance N vlan`, `spanning-tree mst N root primary`, `show spanning-tree mst`, a region boundary |
 | 75 | [Reverse Telnet through an octal card](75-reverse-telnet-through-an-octal-card.md) | CCNA 3 follow-up | `Card-8A`, the octal cable, `line 1 8`, `transport input telnet`, `modem inout`, `telnet <address> 2001`, `show line`, `show users`, the escape sequence, `clear line`, the console password |
 | 77 | [IP SLA and a tracked default route that fails over](77-ip-sla-tracked-default-route.md) | CCNA 3 | `ip sla`, `icmp-echo`, `ip sla schedule`, `track N ip sla`, `ip route … track`, a floating static route |
+| 78 | [Policy-based routing: choosing the exit by who sends the packet](78-policy-based-routing.md) | CCNA 3 | `route-map` with `match ip address` and `set ip next-hop`, `ip policy route-map`, `show ip policy`, `debug ip policy` |
 
 ## Running the scripts
 
