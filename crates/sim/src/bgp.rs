@@ -2018,6 +2018,7 @@ mod tests {
             ebgp: true,
             confed: false,
             ttl: 1,
+            local_as: None,
         };
         let rt = msg::ext_as2(msg::ExtKind::RouteTarget, 65_001, 100);
         let transient = 0x4002_0000_0000_0001u64;
