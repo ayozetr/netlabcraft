@@ -14,7 +14,7 @@ pub enum Tok {
 
 /// Where a command is available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Modes(pub u64);
+pub struct Modes(pub u128);
 
 impl Modes {
     pub const USER: Modes = Modes(1);
@@ -67,7 +67,7 @@ impl Modes {
     pub const FIREWALL: Modes = Modes(1 << 29);
     /// `object network NAME` on the firewall.
     pub const OBJECT: Modes = Modes(1 << 30);
-    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u64).
+    /// `zone security NAME` (bits 31-39 are left for others; `Modes` is a u128).
     pub const ZONE: Modes = Modes(1 << 40);
     /// `class-map type inspect NAME`.
     pub const INSPECT_CLASS: Modes = Modes(1 << 41);
