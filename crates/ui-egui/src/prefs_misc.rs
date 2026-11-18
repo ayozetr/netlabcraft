@@ -151,7 +151,7 @@ pub(crate) fn tab(app: &mut PacketApp, ui: &mut egui::Ui) {
     egui::Frame::group(ui.style()).show(ui, |ui| {
         let mut off = false;
         ui.add_enabled(false, egui::Checkbox::new(&mut off, tl("Reload local image files")));
-        ui.label(RichText::new(tl("Labs hold no images, so there is nothing to reload.")).small());
+        ui.label(RichText::new(tl("Pictures are stored inside the lab, so there is nothing to reload.")).small());
         ui.add_enabled(false, egui::Checkbox::new(&mut off, tl("External network access")));
         ui.add_enabled(false, egui::Checkbox::new(&mut off, tl("Use a proxy")));
         ui.label(RichText::new(tl("NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.")).small());

@@ -735,9 +735,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no area <0-4294967295> stub` |  | router, switch | A normal area again |
 | `no area <0-4294967295> stub no-summary` |  | router, switch | Let routes from other areas in again |
 | `area <1-4294967295> nssa` |  | router, switch | Not-so-stubby area: its routers' external routes travel as type 7 LSAs, and none come in |
-| `area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate]` |  | router, switch | Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area |
+| `area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate] [translate type7 always]` |  | router, switch | Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area |
 | `no area <1-4294967295> nssa` |  | router, switch | A normal area again |
-| `no area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate]` |  | router, switch | Undo only those options of the NSSA |
+| `no area <1-4294967295> nssa [no-summary] [no-redistribution] [default-information-originate] [translate type7 always]` |  | router, switch | Undo only those options of the NSSA |
 | `area <1-4294967295> default-cost <0-16777215>` |  | router, switch | Border router: the metric of the default route it sends into a stub area or NSSA |
 | `no area <1-4294967295> default-cost` |  | router, switch | Default route metric 1 again |
 | `area <1-4294967295> virtual-link A.B.C.D` |  | router, switch | Join the backbone through this area to the border router with that router ID |

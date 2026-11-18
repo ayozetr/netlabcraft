@@ -2679,7 +2679,12 @@ pub static SPECS: &[Spec] = &[
         AreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        [
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("nssa"),
+            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+        ],
         "Border router: no routes from other areas (a default instead), no type 7 for its own redistributed routes, and/or a type 7 default into the area"
     ),
     spec!(NoAreaNssa, Modes::OSPF, Modes::BOTH, [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa")], "A normal area again"),
@@ -2687,7 +2692,13 @@ pub static SPECS: &[Spec] = &[
         NoAreaNssa,
         Modes::OSPF,
         Modes::BOTH,
-        [K("no"), K("area"), Arg("<1-4294967295>"), K("nssa"), Rest("[no-summary] [no-redistribution] [default-information-originate]")],
+        [
+            K("no"),
+            K("area"),
+            Arg("<1-4294967295>"),
+            K("nssa"),
+            Rest("[no-summary] [no-redistribution] [default-information-originate] [translate type7 always]")
+        ],
         "Undo only those options of the NSSA"
     ),
     spec!(

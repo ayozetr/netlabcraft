@@ -1076,7 +1076,6 @@
 	Services	Serviços
 	services run on Server devices	os serviços são executados em dispositivos Servidor
 	Session {} is open: the next operations run on it	A sessão {} está aberta: as próximas operações são executadas nela
-	Set Background (not available yet)	Definir plano de fundo (ainda indisponível)
 	Set Gateway	Definir gateway
 	Set its Wi-Fi network in Config > Wireless0; move it near an access point to join.	Defina a rede Wi-Fi em Config > Wireless0; aproxime de um ponto de acesso para entrar.
 	set up the Email app first (mail.configure)	configure antes o app de e-mail (mail.configure)
@@ -2372,7 +2371,6 @@ furniture	Table	Mesa
 	A bar under the workspace lists the open device windows: click one to bring it to the front.	Uma barra sob a área de trabalho lista as janelas abertas: clique numa para trazê-la para a frente.
 	Not applicable	Não se aplica
 	Reload local image files	Recarregar arquivos de imagem locais
-	Labs hold no images, so there is nothing to reload.	Os laboratórios não têm imagens: não há o que recarregar.
 	External network access	Acesso à rede externa
 	Use a proxy	Usar um proxy
 	NetLabCraft makes no network connections of its own, so it has no network access or proxy to set.	O NetLabCraft não faz conexões de rede próprias, então não há acesso à rede nem proxy para ajustar.
@@ -2419,8 +2417,42 @@ furniture	Table	Mesa
 	Not available: NetLabCraft has no scripted device pages, so a device cannot be given a custom page.	Indisponível: o NetLabCraft não tem páginas de dispositivo com scripts, então um dispositivo não pode ter uma página própria.
 	Not applicable: there are no scripted modules to sign. Activity results carry their own signature, checked by the instructor's Verify Results.	Não se aplica: não há módulos com scripts para assinar. Os resultados da atividade têm assinatura própria, conferida por Verificar resultados do instrutor.
 	Images held by the lab	Imagens do laboratório
+	Set Background Image	Definir imagem de fundo
+	Set Background Image…	Definir imagem de fundo…
+	Background Image	Imagem de fundo
+	Place Icon	Ícone do local
+	Remove Picture	Remover imagem
+	Browse… picks a PNG or JPEG picture.	Procurar… escolhe uma imagem PNG ou JPEG.
+	Sizes	Tamanhos
+	Picture:	Imagem:
+	Map area:	Área do mapa:
+	Recommended picture:	Imagem recomendada:
+	{} × {} px	{} × {} px
+	No picture	Sem imagem
+	Preview of the background	Pré-visualização do fundo
+	Layout	Disposição
+	Original size	Tamanho original
+	Tiled	Em mosaico
+	Stretch to the map area	Ajustar à área do mapa
+	Custom width	Largura personalizada
+	Custom height	Altura personalizada
+	Size of the place	Tamanho do local
+	Width (m):	Largura (m):
+	Height (m):	Altura (m):
+	Volume:	Volume:
+	Scale:	Escala:
+	{} m³	{} m³
+	{} m per pixel	{} m por pixel
+	The picture this place wears on the map above it, instead of its drawn icon.	A imagem que este local mostra no mapa acima, no lugar do ícone desenhado.
+	Preview of the icon	Pré-visualização do ícone
+	Workspace background	Fundo da área de trabalho
+	Background of {}	Fundo de {}
+	Icon of {}	Ícone de {}
+	The lab holds no images yet: set one with the Set Background Image button.	O laboratório ainda não tem imagens: defina uma com o botão Definir imagem de fundo.
+	Scaled down from {} × {} to {} × {} to fit the limits of a lab	Reduzida de {} × {} para {} × {} para caber nos limites de um laboratório
+	Pictures are stored inside the lab, so there is nothing to reload.	As imagens ficam guardadas dentro do laboratório, então não há nada para recarregar.
+	{} × {} px, {}	{} × {} px, {}
 	Image	Imagem
-	The lab holds no images: a lab file is only its devices, cables, places and settings.	O laboratório não tem imagens: um arquivo de laboratório é só dispositivos, cabos, locais e configurações.
 	MAC address: {}	Endereço MAC: {}
 	IP address: {}	Endereço IP: {}
 	Default gateway: {}	Gateway padrão: {}

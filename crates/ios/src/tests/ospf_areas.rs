@@ -397,3 +397,16 @@ fn a_virtual_link_authenticates_with_its_own_password_or_message_digest_key() {
     let vl = lab.run(r2, "show ip ospf virtual-links");
     assert!(vl.contains("is up") && vl.contains("simple password authentication"), "{vl}");
 }
+
+#[test]
+fn a_virtual_link_that_is_up_is_a_row_of_show_ip_ospf_neighbor() {
+    let (mut lab, _r1, r2, r3, _r4) = four_routers();
+    lab.run(r2, "conf t\nrouter ospf 1\narea 1 virtual-link 3.3.3.3\nend");
+    lab.run(r3, "conf t\nrouter ospf 1\narea 1 virtual-link 2.2.2.2\nend");
+    assert!(lab.run(r2, "show ip ospf virtual-links").contains("is up"));
+    let n = lab.run(r2, "show ip ospf neighbor");
+    assert!(n.contains("OSPF_VL0 (area 1)") && n.contains("3.3.3.3") && n.contains("FULL/ -"), "{n}");
+    // One end without the line: the link is down and its row is gone.
+    lab.run(r3, "conf t\nrouter ospf 1\nno area 1 virtual-link 2.2.2.2\nend");
+    assert!(!lab.run(r2, "show ip ospf neighbor").contains("OSPF_VL"));
+}
