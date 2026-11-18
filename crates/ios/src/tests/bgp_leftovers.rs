@@ -116,7 +116,7 @@ fn process_and_neighbour_settings_are_kept_replaced_and_written_back() {
     assert!(!run.contains("fast-external-fallover") || run.contains("no bgp fast-external-fallover"));
     assert!(!run.contains("deterministic-med") && !run.contains("no bgp client-to-client") && !run.contains("allowas-in"), "{run}");
     // Everything survives a save and a reload.
-    lab.run(r1, "end\ncopy running-config startup-config\nreload");
+    lab.run(r1, "copy running-config startup-config\nreload");
     lab.run(r1, "en");
     let again = lab.run(r1, "show running-config");
     assert!(again.contains(" neighbor 10.0.12.2 ttl-security hops 2\n") && again.contains(" bgp bestpath as-path multipath-relax\n"), "{again}");
