@@ -89,8 +89,8 @@ Every front end (UI, `netlabcraft-cli run`, MCP `netlabcraft_run`) runs these.
 | `device.module.remove` | Remove a card |  |  | `{"device", "slot": "0/1"} → {"slots", "removed": [port names]}: switched off; cables on the card's ports are unplugged` |
 | `port.transceiver` | Fiber transceiver |  |  | `{"device", "port": "fiber or combo port", "mode": "multi-mode" (850 nm, the default) \| "single-mode" (1310 nm)} → {"device", "port", "mode"}: the transceiver in the port; both ends of a fiber link need the same one, and a single mode fiber cable needs single-mode transceivers` |
 | `iot.configure` | Smart thing settings |  |  | `{"device": smart sensor or device, "server"?: "IoT server address (empty: none)", "value"?: sensor reading -1000..1000 (0 or 1 for the switches, the metal sensor, the trip wire and the water detector; 0-100 for the flex sensor and the membrane potentiometer), "press"?: true (flips a push button toggle switch or a toggle push button), "humidity"?: 0-100 (a humiture sensor's second reading), "variable"?: environment variable id or name (the generic environment sensor reads it), "level"?: 0-100 (dimmable LED) \| 0-180 (servo) \| 0-16777215 (RGB LED, 0xRRGGBB), "red"?\|"green"?\|"blue"?: 0-255 (RGB LED), "brightness"?: smart LED 0..100, "colour"?: smart LED colour as hex rrggbb or #rrggbb, "frequency"?: signal generator 0..20000 Hz} → {"kind", "server", "value", "second", "value2" (a second reading), "variable", "level", "brightness", "colour", "frequency", "registered", "on", "active", "paired", "message"} (reports at once)` |
-| `board.program` | Board program |  |  | `{"device": programmable board, "source"?: "BoardScript program", "run"?: true\|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile is refused with its line` |
-| `board.status` | Board status |  |  | `{"device": programmable board} → {"program", "run", "state": "not started"\|"running"\|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}` |
+| `board.program` | Board program |  |  | `{"device": programmable board, "source"?: "program text", "language"?: "boardscript"\|"python" (Board SBC)\|"javascript" (Board MCU), "run"?: true\|false, "server"?: "IoT server address for get() and report (empty: none)"} → the board's status: run starts it from the top, false stops it; a program that doesn't compile in its language is refused with its line` |
+| `board.status` | Board status |  |  | `{"device": programmable board} → {"program", "language", "languages", "run", "state": "not started"\|"running"\|"stopped", "line", "message", "log": [...], "vars": {...}, "pins": [{"pin", "analog", "wired", "what", "level"}], "server"}` |
 | `board.wire` | Wire a board pin |  |  | `{"device": programmable board, "pin": "D0"\|"A0"…, "thing"?: smart thing (none: unplug the pin)} → the board's status. Also link.add with "cable": "iot-custom"` |
 | `iot.environment` | IoT environment |  |  | `{"enabled"?: true\|false, "temperature"?: -50..100, "humidity"?: 0..100, "soil"?: 0..100, "smoke"?: 0..100, "co"?: 0..1000, "motion"?: 0\|1, "fire"?: 0..100, "co2"?: 0..10000, "outside_temperature"?, "outside_humidity"?, "outside_light"?: 0..100, "reset"?: true} → {"enabled", "outside", "start", "room"}: the smart things' shared room; while enabled, heaters, furnaces, air conditioners, fans, ceiling fans, humidifiers, sprinklers, fire sprinklers, running cars, windows, garages, lamps and anything playing sound change it over simulated time and the sensors read it (given values are set now and become the starting values)` |
 | `iot.sync` | IoT reports |  |  | `{} → {"things": [...]}: every smart thing reports to its server over HTTP (sensors first)` |
@@ -362,6 +362,20 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no ip ospf authentication-key` | interface, subinterface | router, switch | Forget the password |
 | `ip ospf message-digest-key <1-255> md5 KEY` | interface, subinterface | router, switch | A message-digest key, by id |
 | `no ip ospf message-digest-key <1-255>` | interface, subinterface | router, switch | Remove a message-digest key |
+| `ip ospf authentication key-chain NAME` | interface, subinterface | router, switch | Sign OSPF packets with the keys of a key chain |
+| `no ip ospf authentication key-chain` | interface, subinterface | router, switch | Stop reading the keys from a key chain |
+| `key chain NAME` | config | router, switch | Create or edit a chain of keys with lifetimes |
+| `no key chain NAME` | config | router, switch | Delete a key chain |
+| `key <0-2147483647>` |  | router, switch | Create or edit a key of the chain |
+| `no key <0-2147483647>` |  | router, switch | Delete a key of the chain |
+| `key-string TEXT` |  | router, switch | The secret the key signs with |
+| `no key-string` |  | router, switch | Forget the key's secret |
+| `accept-lifetime hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>\|infinite\|duration <seconds>}` |  | router, switch | When packets signed with this key are accepted |
+| `send-lifetime hh:mm:ss <month> <day> <year> {hh:mm:ss <month> <day> <year>\|infinite\|duration <seconds>}` |  | router, switch | When this key signs packets |
+| `no accept-lifetime` |  | router, switch | Accept the key at any time again |
+| `no send-lifetime` |  | router, switch | Sign with the key at any time again |
+| `show key chain` | user, privileged | router, switch | Every key chain, its keys and when they are valid |
+| `show key chain NAME` | user, privileged | router, switch | One key chain |
 | `redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>} [metric <0-16777214>] [metric-type {1\|2}] [tag <0-4294967295>] [subnets] [route-map NAME]` |  | router, switch | Advertise the routes another source gave as external routes |
 | `no redistribute {connected\|static\|rip\|eigrp <1-65535>\|bgp <1-4294967295>}` |  | router, switch | Stop advertising the routes of a source |
 | `clear ip ospf process` | privileged | router, switch | Restart OSPF: neighbours and DR elections anew |

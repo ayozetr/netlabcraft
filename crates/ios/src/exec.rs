@@ -22,6 +22,7 @@ pub(crate) mod families;
 pub(crate) mod fhrp;
 pub(crate) mod firewall;
 pub(crate) mod ikev2;
+pub(crate) mod keychain;
 pub(crate) mod l2sec;
 pub(crate) mod mgmt;
 pub(crate) mod netflow;
@@ -157,6 +158,10 @@ pub enum Mode {
     PkiTrustpoint(String),
     /// `R1(cs-server)#`: the certificate authority's name.
     PkiServer(String),
+    /// `R1(config-keychain)#`: the key chain's name.
+    KeyChain(String),
+    /// `R1(config-keychain-key)#`: the key chain's name and the key's number.
+    KeyChainKey(String, u32),
 }
 
 impl Mode {
@@ -207,6 +212,8 @@ impl Mode {
             Mode::Ikev2Profile(_) => Modes::IKEV2_PROFILE,
             Mode::PkiTrustpoint(_) => Modes::PKI_TRUSTPOINT,
             Mode::PkiServer(_) => Modes::PKI_SERVER,
+            Mode::KeyChain(_) => Modes::KEYCHAIN,
+            Mode::KeyChainKey(..) => Modes::KEYCHAIN_KEY,
         }
     }
 }
@@ -298,6 +305,10 @@ pub fn connect(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, pr
         (false, _) => LoginStage::Password(None),
     };
     let remote_cli = Cli { vty: true, logged_in: true, ..Cli::default() };
+    if proto == RemoteProto::Ssh {
+        let from = t.device(dev).map_or_else(String::new, |d| d.name.clone());
+        sim.debug_log(target, DebugKind::Ssh, &format!("a session is opened from {from}; the key exchange is done and the login follows"));
+    }
     cli.remote = Some(Box::new(Remote { target, proto, stage, cli: remote_cli, tries: 0 }));
     let banner = t.device(target).map(|d| d.access.banner_motd.clone()).unwrap_or_default();
     let mut out = format!("Trying {dst} ... Open");
@@ -386,6 +397,11 @@ fn remote_line(t: &mut Topology, sim: &mut Sim, cli: &mut Cli, line: &str) -> Ou
                     (_, _) => target.access.vty.password.as_deref() == Some(line),
                 }
             };
+            if r.proto == RemoteProto::Ssh {
+                let who = user.as_deref().unwrap_or("(no name)");
+                let line = if ok { format!("user {who} is logged in") } else { format!("login of {who} is refused: wrong password or unknown user") };
+                sim.debug_log(target.id, DebugKind::Ssh, &line);
+            }
             if ok {
                 r.stage = LoginStage::Ready;
                 r.cli.user.clone_from(&user);
@@ -576,6 +592,8 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Ikev2Profile(_) => format!("{n}(config-ikev2-profile)#"),
         Mode::PkiTrustpoint(_) => format!("{n}(ca-trustpoint)#"),
         Mode::PkiServer(_) => format!("{n}(cs-server)#"),
+        Mode::KeyChain(_) => format!("{n}(config-keychain)#"),
+        Mode::KeyChainKey(..) => format!("{n}(config-keychain-key)#"),
         Mode::VoiceRegGlobal => format!("{n}(config-register-global)#"),
         Mode::VoiceRegDn(_) => format!("{n}(config-register-dn)#"),
         Mode::VoiceRegPool(_) => format!("{n}(config-register-pool)#"),
@@ -895,6 +913,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Profile(_)
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
+                | Mode::KeyChain(_)
+                | Mode::KeyChainKey(..)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_)
@@ -974,10 +994,12 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
                 | Mode::Ikev2Profile(_)
                 | Mode::PkiTrustpoint(_)
                 | Mode::PkiServer(_)
+                | Mode::KeyChain(_)
                 | Mode::VoiceRegGlobal
                 | Mode::VoiceRegDn(_)
                 | Mode::VoiceRegPool(_) => Mode::Config,
                 Mode::Ikev2Peer(ref k, _) => Mode::Ikev2Keyring(k.clone()),
+                Mode::KeyChainKey(ref k, _) => Mode::KeyChain(k.clone()),
                 // A class inside a policy map goes back to the policy map.
                 Mode::PolicyClass(ref p, _) => Mode::PolicyMap(p.clone()),
                 Mode::InspectPolicyClass(ref p, _) => Mode::InspectPolicy(p.clone()),
@@ -1249,6 +1271,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         Id::ClockSet => {
             let t = crate::clock::parse_set(arg(0))?;
             c.sim.set_clock(c.dev, t);
+            // The OSPF state is worked out from the configuration alone, so key chains read this.
+            c.dm()?.clock_unix = Some(t);
             Ok(String::new())
         }
         Id::ShowFlash => Ok(render::flash(c.d()?)),
@@ -2018,6 +2042,8 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::IpOspfAuthKey
         | Id::NoIpOspfAuthKey
         | Id::IpOspfMd5Key
+        | Id::IpOspfKeyChain
+        | Id::NoIpOspfKeyChain
         | Id::NoIpOspfMd5Key => routing::ospf_if_command(&mut c, spec.id, &args),
         Id::AreaAuth | Id::NoAreaAuth => routing::ospf_area_auth(&mut c, spec.id == Id::AreaAuth, &args),
         Id::AreaNssa | Id::NoAreaNssa | Id::AreaDefaultCost | Id::NoAreaDefaultCost | Id::AreaVirtualLink | Id::NoAreaVirtualLink => {
@@ -2174,6 +2200,17 @@ fn dispatch(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line:
         | Id::ShowCryptoIkev2Sa
         | Id::ShowCryptoIkev2Proposal
         | Id::ShowCryptoIkev2Profile => ikev2::command(&mut c, spec.id, &args),
+        Id::KeyChain
+        | Id::NoKeyChain
+        | Id::KeyChainKey
+        | Id::NoKeyChainKey
+        | Id::KeyString
+        | Id::NoKeyString
+        | Id::AcceptLifetime
+        | Id::SendLifetime
+        | Id::NoAcceptLifetime
+        | Id::NoSendLifetime
+        | Id::ShowKeyChain => keychain::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
