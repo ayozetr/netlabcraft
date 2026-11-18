@@ -363,7 +363,7 @@ impl Sim {
         match http::Request::parse(raw) {
             Ok(Some((req, _))) if crate::pki::is_pki_request(&req) => {
                 let now = self.clock(d.id).0;
-                (crate::pki::serve(d, now, &req).encode(), true)
+                (crate::pki::serve(d, now, &mut self.st(d.id).pki_book, &req).encode(), true)
             }
             Ok(Some((req, _))) => {
                 let served = match self.auto.restconf {
