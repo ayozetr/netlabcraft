@@ -257,7 +257,11 @@ pub fn fit(app: &mut PacketApp) {
         return;
     }
     let view = View::new(app, Vec2::ZERO);
-    let pts: Vec<(f32, f32)> = view.places.iter().map(|p| (p.x, p.y)).chain(view.devices.iter().map(|d| (d.1, d.2))).collect();
+    let mut pts: Vec<(f32, f32)> = view.places.iter().map(|p| (p.x, p.y)).chain(view.devices.iter().map(|d| (d.1, d.2))).collect();
+    // A background picture is part of what the map shows.
+    if let Some((w, h)) = crate::pictures::extent(app, view.level) {
+        pts.extend([(0.0, 0.0), (w, h)]);
+    }
     if pts.is_empty() || app.ui.canvas.size.x < 1.0 {
         return;
     }

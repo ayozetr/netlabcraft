@@ -382,10 +382,11 @@ fn background_sheets(dir: &str, dark: bool) {
         app.enter_place(city as u32);
         app.open_pictures(false, city as u32);
     });
-    let (s, _) = background_lab();
+    let (s, city) = background_lab();
     app_sheet(dir, &format!("background-window-icon-{suffix}"), s, (1200.0, 900.0), dark, move |app| {
         app.set_physical(true);
         let library = app.session.topology.places().iter().find(|p| p.name == "Library").map(|p| p.id).unwrap_or(2);
+        app.enter_place(city as u32);
         app.open_pictures(false, library);
         app.ui.pictures.window.tab = netlabcraft_ui_egui::pictures::Tab::Icon;
     });

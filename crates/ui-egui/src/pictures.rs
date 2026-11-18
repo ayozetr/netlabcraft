@@ -110,6 +110,15 @@ pub fn draw_logical(app: &mut PacketApp, ctx: &Context, painter: &Painter, origi
     }
 }
 
+/// How far the background of a place's map reaches from the map's origin, in map units (none: no
+/// background, or a tiled one, which covers everything), so the fit can show it.
+pub fn extent(app: &PacketApp, place: Option<u32>) -> Option<(f32, f32)> {
+    let t = &app.session.topology;
+    let bg = t.scene(place.unwrap_or(INTERCITY))?.background.as_ref().filter(|b| b.mode != BgMode::Tiled)?;
+    let img = t.images.get(&bg.image)?;
+    Some(bg.shown_size(img.w, img.h))
+}
+
 /// The background of the map inside a place (`None`: the Intercity map).
 pub fn draw_place(app: &mut PacketApp, ctx: &Context, painter: &Painter, origin: Vec2, zoom: f32, place: Option<u32>) {
     let bg = app.session.topology.scene(place.unwrap_or(INTERCITY)).and_then(|s| s.background.clone());
