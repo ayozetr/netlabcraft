@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-18 · **Last updated:** 2026-11-18 · **Change:** minor (final consistency pass: the `Modes` width and conflicting pull requests)
+> **Last reviewed:** 2026-11-19 · **Last updated:** 2026-11-19 · **Change:** minor (the pcap test that reads captures with Wireshark's tools)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -30,6 +30,12 @@ new mistake worth not repeating, add it in the same change.
   the trace (`e.summary` and `e.dropped` of `Sim::trace`) in the failure message: it names the hop that dropped.
 - **`assert!(x.contains("…") || true)` asserts nothing.** It was written to "just run the command" and passed
   forever. If you only need the command to run, write `let _ = x;`; if the result matters, assert it.
+- **The pcap test needs Wireshark's tools, and skips without them.** `crates/engine/tests/pcap_wireshark.rs` reads each capture
+  with `capinfos` and `tshark` (link type, packet count, no malformed frame). On a machine without them it prints "skipped" and
+  passes, so a green local run proves nothing about it; CI installs `tshark` and sets `NETLABCRAFT_REQUIRE_WIRESHARK=1`, which
+  turns a missing tool into a failure. Run the tools as programs through `netlabcraft_core::process` only: never link, copy or
+  read Wireshark's sources (the clean-room rule). A frame `tshark` calls malformed is a bug in how we encode it, not a reason
+  to loosen the test.
 - **A new toolchain adds lints.** Clippy gates run with `-D warnings`, so a compiler bump can turn a green tree red
   (`nonminimal_bool` did, and CI on a rolling `stable` failed on `needless_range_loop`). The compiler is pinned in
   `rust-toolchain.toml`; bump it together with `rust-version`, and fix the code, not the gate.
@@ -215,4 +221,5 @@ new mistake worth not repeating, add it in the same change.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-19 | minor | The pcap test that reads every capture with `capinfos` and `tshark`: it skips without them, CI requires them. |
 | 2026-11-18 | minor | Final consistency pass: the pitfall about the width of `Modes` (it is a `u128` now) and the one about pull requests that conflict with `main` and get no CI; the review line names only the latest change. |
