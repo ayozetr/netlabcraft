@@ -64,7 +64,7 @@ struct Info {
 
 fn capinfos(path: &Path) -> Info {
     let file = path.to_str().unwrap();
-    // `-M` prints plain numbers, `-E` the link type, `-c` the packet count.
+    // `-M` prints plain numbers, `-E` the link type by its short name (`ether`, `ieee-802-11`), `-c` the packet count.
     let out = process::run("capinfos", &["-M", "-E", "-c", file], TIMEOUT).unwrap_or_else(|e| panic!("{file}: {e}"));
     let field = |name: &str| -> String {
         out.stdout
@@ -109,7 +109,7 @@ fn wired_captures_are_valid_pcap_without_malformed_frames() {
         let (path, frames) = export(&mut s, &format!("{sample}.pcap"), "ethernet");
         assert!(frames > 0, "{sample}: the capture is empty");
         let info = capinfos(&path);
-        assert_eq!(info.encapsulation, "Ethernet", "{sample}");
+        assert_eq!(info.encapsulation, "ether", "{sample}");
         assert_eq!(info.packets, frames, "{sample}: capinfos counts a different number of packets than the export reported");
         let bad = malformed(&path);
         assert!(bad.is_empty(), "{sample}: tshark calls {} frame(s) malformed (number, protocol):\n{}", bad.len(), bad.join("\n"));
@@ -125,7 +125,7 @@ fn a_ping_through_the_vlan_lab_is_valid_pcap() {
     s.execute("file.new", json!({"sample": "vlans"})).unwrap();
     let r = s.execute("cli.exec", json!({"device": "PC1", "line": "ping 192.168.20.10"})).unwrap();
     let text = r.get("output").and_then(Value::as_str).unwrap_or("");
-    assert!(text.contains("Reply from 192.168.20.10"), "the ping did not get through:\n{text}");
+    assert!(text.contains("reply from 192.168.20.10"), "the ping did not get through:\n{text}");
     let (path, frames) = export(&mut s, "vlans-ping.pcap", "ethernet");
     assert_eq!(capinfos(&path).packets, frames);
     let bad = malformed(&path);
@@ -147,7 +147,7 @@ fn the_wireless_capture_is_valid_80211_pcap() {
     let (path, frames) = export(&mut s, "wifi.pcap", "802.11");
     assert!(frames > 0, "the air capture is empty");
     let info = capinfos(&path);
-    assert!(info.encapsulation.contains("802.11"), "link type: {}", info.encapsulation);
+    assert_eq!(info.encapsulation, "ieee-802-11");
     assert_eq!(info.packets, frames);
     let bad = malformed(&path);
     assert!(bad.is_empty(), "tshark calls {} frame(s) malformed (number, protocol):\n{}", bad.len(), bad.join("\n"));
