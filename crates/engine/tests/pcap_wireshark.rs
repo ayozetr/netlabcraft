@@ -149,47 +149,6 @@ fn wired_captures_are_valid_pcap_without_malformed_frames() {
             continue;
         }
         failures.extend(problems(sample, &path, frames, "ether"));
-        if *sample == "wlc" {
-            // DIAG: the same CAPWAP data message with small changes, to see what tshark accepts.
-            let capwap = "0010030000000000";
-            let dot11 = "08020000020000070000020000050001020000050001d003aaaa03000000888e02000006010200061920";
-            let variants = [
-                ("asis", format!("{capwap}{dot11}")),
-                ("swapfc", format!("{capwap}0208{}", &dot11[4..])),
-                ("swapfc-seq", format!("{capwap}0208{}03d0{}", &dot11[4..44], &dot11[48..])),
-                ("beacon-swapfc", format!("{capwap}0080{}", "0000ffffffffffff020000050001020000050001d003")),
-                ("beacon-asis", format!("{capwap}8000{}", "0000ffffffffffff020000050001020000050001d003")),
-            ];
-            for (name, hex) in variants {
-                let bytes: Vec<String> = (0..hex.len() / 2).map(|i| hex[2 * i..2 * i + 2].to_string()).collect();
-                let txt = scratch(&format!("diag-{name}.txt"));
-                std::fs::write(&txt, format!("0000 {}\n", bytes.join(" "))).unwrap();
-                let pc = scratch(&format!("diag-{name}.pcap"));
-                let made = process::run("text2pcap", &["-u", "5247,5247", txt.to_str().unwrap(), pc.to_str().unwrap()], TIMEOUT);
-                let info = process::run(
-                    "tshark",
-                    &[
-                        "-r",
-                        pc.to_str().unwrap(),
-                        "-n",
-                        "-T",
-                        "fields",
-                        "-e",
-                        "_ws.col.protocol",
-                        "-e",
-                        "_ws.col.info",
-                        "-e",
-                        "_ws.malformed",
-                        "-e",
-                        "eapol.type",
-                        "-e",
-                        "wlan.sa",
-                    ],
-                    TIMEOUT,
-                );
-                eprintln!("DIAG {name}: made={:?} tshark={:?}", made.map(|o| o.stderr), info.map(|o| o.stdout));
-            }
-        }
     }
     eprintln!("{} labs checked, {} with an empty capture: {empty:?}", SAMPLES.len() - empty.len(), empty.len());
     // Every lab is read before the test fails, so one run shows all the damage.

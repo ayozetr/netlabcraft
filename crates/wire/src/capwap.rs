@@ -250,10 +250,21 @@ impl AddWlan {
     }
 }
 
+/// The two Frame Control bytes of a native 802.11 frame, swapped. Inside CAPWAP data the analysers read the Frame Control
+/// the other way round from the air (measured with `tshark`: on-air order gives "Unknown protocol version", swapped gives the
+/// right frame; RFC 5416 does not say), so the frame is swapped going into a message and back coming out.
+fn swap_frame_control(frame: &[u8]) -> Vec<u8> {
+    let mut out = frame.to_vec();
+    if out.len() >= 2 {
+        out.swap(0, 1);
+    }
+    out
+}
+
 /// A CAPWAP data message carrying one native IEEE 802.11 frame (T flag set).
 pub fn data_encode(frame: &[u8]) -> Vec<u8> {
     let mut out = header(true).to_vec();
-    out.extend_from_slice(frame);
+    out.extend_from_slice(&swap_frame_control(frame));
     out
 }
 
@@ -269,7 +280,7 @@ pub fn data_encode_8023(frame: &[u8]) -> Vec<u8> {
 /// The frame CAPWAP data carries, and whether it is a native IEEE 802.11 frame (else 802.3).
 pub fn data_frame(b: &[u8]) -> Result<(Vec<u8>, bool)> {
     let (rest, native) = strip(b)?;
-    Ok((rest.to_vec(), native))
+    Ok((if native { swap_frame_control(rest) } else { rest.to_vec() }, native))
 }
 
 pub fn data_decode(b: &[u8]) -> Result<Vec<u8>> {
@@ -277,7 +288,7 @@ pub fn data_decode(b: &[u8]) -> Result<Vec<u8>> {
     if !native {
         return Err(WireError::Unsupported("capwap", "data that is not a native 802.11 frame".into()));
     }
-    Ok(rest.to_vec())
+    Ok(swap_frame_control(rest))
 }
 
 /// One line for the event list: control or data.
@@ -338,6 +349,8 @@ mod tests {
         assert_eq!(samples()[1].describe(), "CAPWAP join response from controller \"WLC1\": success");
         let d = data_encode(&[0x08, 0x01, 0, 0]);
         assert_eq!(data_decode(&d), Ok(vec![0x08, 0x01, 0, 0]));
+        // On the wire the Frame Control bytes are swapped, the way the analysers read them.
+        assert_eq!(&d[8..12], &[0x01, 0x08, 0, 0]);
         assert!(data_decode(&samples()[0].encode()).is_err());
         // Central switching: an 802.3 frame, the T bit clear.
         let eth = crate::Frame {
