@@ -36,6 +36,15 @@ const SAMPLES: &[&str] = &[
     "services",
     "dhcp",
     "firewall",
+    "activity-first-router",
+    "home-internet",
+    "modular",
+    "switch-card",
+    "ip-phones",
+    "sip-phones",
+    "smart-home",
+    "iot",
+    "wlc",
 ];
 
 fn tools_present() -> bool {
@@ -97,34 +106,117 @@ fn export(s: &mut Session, name: &str, link: &str) -> (PathBuf, u64) {
     (path, r["frames"].as_u64().unwrap())
 }
 
+/// Reads one capture with the tools and returns what is wrong with it, if anything.
+fn problems(label: &str, path: &Path, frames: u64, encapsulation: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let info = capinfos(path);
+    if info.encapsulation != encapsulation {
+        out.push(format!("{label}: link type {} instead of {encapsulation}", info.encapsulation));
+    }
+    if info.packets != frames {
+        out.push(format!("{label}: capinfos counts {} packets, the export reported {frames}", info.packets));
+    }
+    let bad = malformed(path);
+    if !bad.is_empty() {
+        out.push(format!("{label}: tshark calls {} frame(s) malformed (number, protocol): {}", bad.len(), bad.join("; ")));
+    }
+    out
+}
+
+/// How many frames of the capture match a Wireshark display filter.
+fn matching(path: &Path, filter: &str) -> usize {
+    let file = path.to_str().unwrap();
+    let out = process::run("tshark", &["-r", file, "-n", "-Y", filter, "-T", "fields", "-e", "frame.number"], TIMEOUT)
+        .unwrap_or_else(|e| panic!("{file}: {e}"));
+    out.stdout.lines().filter(|l| !l.trim().is_empty()).count()
+}
+
 #[test]
 fn wired_captures_are_valid_pcap_without_malformed_frames() {
     if !tools_present() {
         return;
     }
-    // A lab with no routing protocol or spanning tree sends nothing by itself, so its capture is empty and has nothing to check.
     let mut empty = Vec::new();
+    let mut failures = Vec::new();
     for sample in SAMPLES {
         let mut s = Session::new();
         s.execute("file.new", json!({"sample": sample})).unwrap();
         s.execute("sim.advance", json!({"seconds": 40})).unwrap();
         let (path, frames) = export(&mut s, &format!("{sample}.pcap"), "ethernet");
+        // A lab with no routing protocol or spanning tree sends nothing by itself, so its capture is empty and has nothing to check.
         if frames == 0 {
             empty.push(*sample);
             continue;
         }
-        let info = capinfos(&path);
-        assert_eq!(info.encapsulation, "ether", "{sample}");
-        assert_eq!(info.packets, frames, "{sample}: capinfos counts a different number of packets than the export reported");
-        let bad = malformed(&path);
-        assert!(bad.is_empty(), "{sample}: tshark calls {} frame(s) malformed (number, protocol):\n{}", bad.len(), bad.join("\n"));
+        failures.extend(problems(sample, &path, frames, "ether"));
     }
+    eprintln!("{} labs checked, {} with an empty capture: {empty:?}", SAMPLES.len() - empty.len(), empty.len());
+    // Every lab is read before the test fails, so one run shows all the damage.
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
     // Most labs must have been checked, or the test is not looking at anything.
     assert!(SAMPLES.len() - empty.len() >= 10, "too many labs with an empty capture: {empty:?}");
 }
 
+/// A lab, what a user types in it, and the protocols the capture must then hold (Wireshark display filters).
+struct Traffic {
+    sample: &'static str,
+    typed: &'static [(&'static str, &'static str)],
+    expect: &'static [&'static str],
+}
+
+const TRAFFIC: &[Traffic] = &[
+    Traffic { sample: "vlans", typed: &[("PC1", "ping 192.168.20.10")], expect: &["arp", "icmp.type == 8", "icmp.type == 0"] },
+    Traffic {
+        sample: "two-subnets",
+        typed: &[("PC1", "ping 10.0.2.10"), ("PC1", "tracert 10.0.2.10")],
+        expect: &["arp", "icmp.type == 8", "icmp.type == 0"],
+    },
+    Traffic {
+        sample: "nat-acl",
+        // PC1 gets out through NAT; PC2 is refused by the access list.
+        typed: &[("PC1", "ping 93.184.216.34"), ("PC2", "ping 93.184.216.34")],
+        expect: &["icmp.type == 8", "icmp.type == 0"],
+    },
+    Traffic {
+        sample: "services",
+        typed: &[("PC1", "ipconfig /renew"), ("PC1", "nslookup www.netlabcraft.lab"), ("PC1", "ping www.netlabcraft.lab")],
+        expect: &["dhcp", "dns", "icmp.type == 8"],
+    },
+    Traffic {
+        sample: "dhcp",
+        typed: &[("PC1", "ipconfig /renew"), ("PC1", "ping 192.168.50.1")],
+        expect: &["dhcp", "icmp.type == 8", "icmp.type == 0"],
+    },
+];
+
 #[test]
-fn a_ping_through_the_vlan_lab_is_valid_pcap() {
+fn traffic_typed_by_a_user_is_valid_pcap() {
+    if !tools_present() {
+        return;
+    }
+    let mut failures = Vec::new();
+    for t in TRAFFIC {
+        let mut s = Session::new();
+        s.execute("file.new", json!({"sample": t.sample})).unwrap();
+        // Let DHCP and the first protocol exchanges settle before the user types.
+        s.execute("sim.advance", json!({"seconds": 10})).unwrap();
+        for (device, line) in t.typed {
+            s.execute("cli.exec", json!({"device": device, "line": line})).unwrap();
+        }
+        s.execute("sim.advance", json!({"seconds": 5})).unwrap();
+        let (path, frames) = export(&mut s, &format!("{}-traffic.pcap", t.sample), "ethernet");
+        failures.extend(problems(t.sample, &path, frames, "ether"));
+        for filter in t.expect {
+            if matching(&path, filter) == 0 {
+                failures.push(format!("{}: no frame matches `{filter}` in {frames} frames", t.sample));
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn a_ping_gets_its_reply_before_the_capture_is_read() {
     if !tools_present() {
         return;
     }
@@ -133,14 +225,6 @@ fn a_ping_through_the_vlan_lab_is_valid_pcap() {
     let r = s.execute("cli.exec", json!({"device": "PC1", "line": "ping 192.168.20.10"})).unwrap();
     let text = r.get("output").and_then(Value::as_str).unwrap_or("");
     assert!(text.contains("reply from 192.168.20.10"), "the ping did not get through:\n{text}");
-    let (path, frames) = export(&mut s, "vlans-ping.pcap", "ethernet");
-    assert_eq!(capinfos(&path).packets, frames);
-    let bad = malformed(&path);
-    assert!(bad.is_empty(), "tshark calls {} frame(s) malformed (number, protocol):\n{}", bad.len(), bad.join("\n"));
-    // The echo request and its reply are there for an analyser to find.
-    let icmp = process::run("tshark", &["-r", path.to_str().unwrap(), "-n", "-Y", "icmp", "-T", "fields", "-e", "icmp.type"], TIMEOUT).unwrap();
-    assert!(icmp.stdout.lines().any(|l| l.trim() == "8"), "no echo request in the capture");
-    assert!(icmp.stdout.lines().any(|l| l.trim() == "0"), "no echo reply in the capture");
 }
 
 #[test]
@@ -153,9 +237,6 @@ fn the_wireless_capture_is_valid_80211_pcap() {
     s.execute("sim.advance", json!({"seconds": 40})).unwrap();
     let (path, frames) = export(&mut s, "wifi.pcap", "802.11");
     assert!(frames > 0, "the air capture is empty");
-    let info = capinfos(&path);
-    assert_eq!(info.encapsulation, "ieee-802-11");
-    assert_eq!(info.packets, frames);
-    let bad = malformed(&path);
-    assert!(bad.is_empty(), "tshark calls {} frame(s) malformed (number, protocol):\n{}", bad.len(), bad.join("\n"));
+    let failures = problems("wifi", &path, frames, "ieee-802-11");
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
 }
