@@ -214,7 +214,28 @@ fn traffic_typed_by_a_user_is_valid_pcap() {
         let f = path.to_str().unwrap();
         let phs = process::run("tshark", &["-r", f, "-n", "-q", "-z", "io,phs"], TIMEOUT).unwrap();
         eprintln!("DIAG {} phs:\n{}", t.sample, phs.stdout);
-        let ports = process::run("tshark", &["-r", f, "-n", "-Y", "udp.port == 67 || udp.port == 68 || bootp", "-T", "fields", "-e", "frame.number", "-e", "udp.srcport", "-e", "udp.dstport", "-e", "_ws.col.info"], TIMEOUT).unwrap();
+        let ports = process::run(
+            "tshark",
+            &[
+                "-r",
+                f,
+                "-n",
+                "-Y",
+                "udp.port == 67 || udp.port == 68 || bootp",
+                "-T",
+                "fields",
+                "-e",
+                "frame.number",
+                "-e",
+                "udp.srcport",
+                "-e",
+                "udp.dstport",
+                "-e",
+                "_ws.col.info",
+            ],
+            TIMEOUT,
+        )
+        .unwrap();
         eprintln!("DIAG {} dhcp-ish:\n{}", t.sample, ports.stdout);
         for filter in t.expect {
             if matching(&path, filter) == 0 {
