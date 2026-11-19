@@ -155,11 +155,10 @@ fn wired_captures_are_valid_pcap_without_malformed_frames() {
             let dot11 = "08020000020000070000020000050001020000050001d003aaaa03000000888e02000006010200061920";
             let variants = [
                 ("asis", format!("{capwap}{dot11}")),
-                ("fcs", format!("{capwap}{dot11}00000000")),
-                ("tods", format!("{capwap}0801{}", &dot11[4..])),
-                ("qos", format!("{capwap}8802{}0000{}", &dot11[4..48], &dot11[48..])),
-                ("mgmt", format!("{capwap}80000000ffffffffffff020000050001020000050001d003")),
-                ("wireless-info", format!("00100310000000000000000000{dot11}")),
+                ("swapfc", format!("{capwap}0208{}", &dot11[4..])),
+                ("swapfc-seq", format!("{capwap}0208{}03d0{}", &dot11[4..44], &dot11[48..])),
+                ("beacon-swapfc", format!("{capwap}0080{}", "0000ffffffffffff020000050001020000050001d003")),
+                ("beacon-asis", format!("{capwap}8000{}", "0000ffffffffffff020000050001020000050001d003")),
             ];
             for (name, hex) in variants {
                 let bytes: Vec<String> = (0..hex.len() / 2).map(|i| hex[2 * i..2 * i + 2].to_string()).collect();
@@ -169,7 +168,23 @@ fn wired_captures_are_valid_pcap_without_malformed_frames() {
                 let made = process::run("text2pcap", &["-u", "5247,5247", txt.to_str().unwrap(), pc.to_str().unwrap()], TIMEOUT);
                 let info = process::run(
                     "tshark",
-                    &["-r", pc.to_str().unwrap(), "-n", "-T", "fields", "-e", "_ws.col.protocol", "-e", "_ws.col.info", "-e", "_ws.malformed"],
+                    &[
+                        "-r",
+                        pc.to_str().unwrap(),
+                        "-n",
+                        "-T",
+                        "fields",
+                        "-e",
+                        "_ws.col.protocol",
+                        "-e",
+                        "_ws.col.info",
+                        "-e",
+                        "_ws.malformed",
+                        "-e",
+                        "eapol.type",
+                        "-e",
+                        "wlan.sa",
+                    ],
                     TIMEOUT,
                 );
                 eprintln!("DIAG {name}: made={:?} tshark={:?}", made.map(|o| o.stderr), info.map(|o| o.stdout));
