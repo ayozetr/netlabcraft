@@ -30,9 +30,18 @@ jobs:
       - name: Software Vulkan driver
         # The runner has no GPU; a few UI tests render with wgpu, which falls back to this.
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers libvulkan1
+      - name: Wireshark command-line tools
+        # The pcap test reads every capture with tshark and capinfos. They run as separate programs; nothing of
+        # Wireshark is linked or copied.
+        run: |
+          echo "wireshark-common wireshark-common/install-setuid boolean false" | sudo debconf-set-selections
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tshark
       - name: Rust toolchain
         # The version, components and wasm target come from rust-toolchain.toml.
         run: rustup show active-toolchain || rustup toolchain install
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: cargo xtask ci
+        env:
+          # Without the Wireshark tools the pcap test skips itself; here a missing tool is a failure.
+          NETLABCRAFT_REQUIRE_WIRESHARK: "1"
         run: cargo xtask ci
