@@ -149,6 +149,14 @@ fn wired_captures_are_valid_pcap_without_malformed_frames() {
             continue;
         }
         failures.extend(problems(sample, &path, frames, "ether"));
+        if *sample == "wlc" {
+            // DIAG
+            let f = path.to_str().unwrap();
+            let v = process::run("tshark", &["-r", f, "-n", "-V", "-Y", "_ws.malformed", "-c", "2"], TIMEOUT).unwrap();
+            eprintln!("DIAG wlc malformed:\n{}", v.stdout);
+            let x = process::run("tshark", &["-r", f, "-n", "-x", "-Y", "_ws.malformed", "-c", "1"], TIMEOUT).unwrap();
+            eprintln!("DIAG wlc hex:\n{}", x.stdout);
+        }
     }
     eprintln!("{} labs checked, {} with an empty capture: {empty:?}", SAMPLES.len() - empty.len(), empty.len());
     // Every lab is read before the test fails, so one run shows all the damage.
@@ -202,6 +210,12 @@ fn traffic_typed_by_a_user_is_valid_pcap() {
         s.execute("sim.advance", json!({"seconds": 5})).unwrap();
         let (path, frames) = export(&mut s, &format!("{}-traffic.pcap", t.sample), "ethernet");
         failures.extend(problems(t.sample, &path, frames, "ether"));
+        // DIAG
+        let f = path.to_str().unwrap();
+        let phs = process::run("tshark", &["-r", f, "-n", "-q", "-z", "io,phs"], TIMEOUT).unwrap();
+        eprintln!("DIAG {} phs:\n{}", t.sample, phs.stdout);
+        let ports = process::run("tshark", &["-r", f, "-n", "-Y", "udp.port == 67 || udp.port == 68 || bootp", "-T", "fields", "-e", "frame.number", "-e", "udp.srcport", "-e", "udp.dstport", "-e", "_ws.col.info"], TIMEOUT).unwrap();
+        eprintln!("DIAG {} dhcp-ish:\n{}", t.sample, ports.stdout);
         for filter in t.expect {
             if matching(&path, filter) == 0 {
                 failures.push(format!("{}: no frame matches `{filter}` in {frames} frames", t.sample));
