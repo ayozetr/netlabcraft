@@ -150,12 +150,30 @@ fn wired_captures_are_valid_pcap_without_malformed_frames() {
         }
         failures.extend(problems(sample, &path, frames, "ether"));
         if *sample == "wlc" {
-            // DIAG
-            let f = path.to_str().unwrap();
-            let v = process::run("tshark", &["-r", f, "-n", "-V", "-Y", "_ws.malformed && frame.number == 66"], TIMEOUT).unwrap();
-            eprintln!("DIAG wlc malformed:\n{}", v.stdout);
-            let x = process::run("tshark", &["-r", f, "-n", "-x", "-Y", "frame.number >= 64 && frame.number <= 67"], TIMEOUT).unwrap();
-            eprintln!("DIAG wlc hex:\n{}", x.stdout);
+            // DIAG: the same CAPWAP data message with small changes, to see what tshark accepts.
+            let capwap = "0010030000000000";
+            let dot11 = "08020000020000070000020000050001020000050001d003aaaa03000000888e02000006010200061920";
+            let variants = [
+                ("asis", format!("{capwap}{dot11}")),
+                ("fcs", format!("{capwap}{dot11}00000000")),
+                ("tods", format!("{capwap}0801{}", &dot11[4..])),
+                ("qos", format!("{capwap}8802{}0000{}", &dot11[4..48], &dot11[48..])),
+                ("mgmt", format!("{capwap}80000000ffffffffffff020000050001020000050001d003")),
+                ("wireless-info", format!("00100310000000000000000000{dot11}")),
+            ];
+            for (name, hex) in variants {
+                let bytes: Vec<String> = (0..hex.len() / 2).map(|i| hex[2 * i..2 * i + 2].to_string()).collect();
+                let txt = scratch(&format!("diag-{name}.txt"));
+                std::fs::write(&txt, format!("0000 {}\n", bytes.join(" "))).unwrap();
+                let pc = scratch(&format!("diag-{name}.pcap"));
+                let made = process::run("text2pcap", &["-u", "5247,5247", txt.to_str().unwrap(), pc.to_str().unwrap()], TIMEOUT);
+                let info = process::run(
+                    "tshark",
+                    &["-r", pc.to_str().unwrap(), "-n", "-T", "fields", "-e", "_ws.col.protocol", "-e", "_ws.col.info", "-e", "_ws.malformed"],
+                    TIMEOUT,
+                );
+                eprintln!("DIAG {name}: made={:?} tshark={:?}", made.map(|o| o.stderr), info.map(|o| o.stdout));
+            }
         }
     }
     eprintln!("{} labs checked, {} with an empty capture: {empty:?}", SAMPLES.len() - empty.len(), empty.len());
