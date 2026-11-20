@@ -841,7 +841,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Line(_) => format!("{n}(config-line)#"),
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
-        Mode::Bgp if cli.vrf_ctx.is_some() => format!("{n}(config-router-af)#"),
+        Mode::Bgp | Mode::Rip | Mode::Eigrp if cli.vrf_ctx.is_some() => format!("{n}(config-router-af)#"),
         Mode::Ospf | Mode::Rip | Mode::Eigrp | Mode::Bgp => format!("{n}(config-router)#"),
         Mode::BgpAf6 => format!("{n}(config-router-af)#"),
         Mode::Vrf(_) => format!("{n}(config-vrf)#"),
@@ -2984,7 +2984,12 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::ShowIpBgpVrf
         | Id::ShowIpBgpVrfSummary
         | Id::ShowOspfNeighborVrf
-        | Id::BgpAddressFamilyVrf => vrf::command(&mut c, spec.id, &args),
+        | Id::BgpAddressFamilyVrf
+        | Id::RipAddressFamilyVrf
+        | Id::EigrpAddressFamilyVrf
+        | Id::EigrpAddressFamilyVrfAs
+        | Id::DhcpVrf
+        | Id::NoDhcpVrf => vrf::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
@@ -4477,7 +4482,17 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                 Some("list") => {
                     let acl = words.get(1).ok_or("% list <access list> ...")?.to_string();
                     let overload = lower.last().is_some_and(|w| w == "overload");
-                    let end = if overload { words.len() - 1 } else { words.len() };
+                    let mut end = if overload { words.len() - 1 } else { words.len() };
+                    // `... vrf NAME` ends the rule: it translates that VRF's traffic only.
+                    let mut vrf = None;
+                    if end >= 5 && lower.get(end - 2).is_some_and(|w| w == "vrf") {
+                        let name = words.get(end - 1).map(|w| w.to_string()).unwrap_or_default();
+                        if c.d()?.vrf(&name).is_none() {
+                            return Err(format!("% VRF {name} does not exist"));
+                        }
+                        vrf = Some(name);
+                        end -= 2;
+                    }
                     let target = match lower.get(2).map(String::as_str) {
                         Some("interface") => {
                             let name = words.get(3..end).map(|w| w.join(" ")).unwrap_or_default();
@@ -4488,9 +4503,9 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                         Some("pool") => NatTarget::Pool(words.get(3).ok_or("% pool <name>")?.to_string()),
                         _ => return Err("% list <acl> interface <name> overload | list <acl> pool <name> [overload]".into()),
                     };
-                    let rule = NatRule { acl, target, overload };
+                    let rule = NatRule { acl, target, overload, vrf };
                     let n = &mut c.dm()?.nat;
-                    n.rules.retain(|r| r.acl != rule.acl);
+                    n.rules.retain(|r| !(r.acl == rule.acl && r.vrf == rule.vrf));
                     if add {
                         n.rules.push(rule);
                     }
@@ -4643,6 +4658,9 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
             if d.rip.take().is_none() {
                 return Err("% RIP is not running".into());
             }
+            for v in &mut d.vrfs {
+                v.rip = None;
+            }
             Ok(String::new())
         }
         Id::RipVersion => {
@@ -4763,6 +4781,9 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                 return Err(format!("% No EIGRP process for AS {}", arg(0)));
             }
             d.eigrp = None;
+            for v in &mut d.vrfs {
+                v.eigrp = None;
+            }
             Ok(String::new())
         }
         Id::EigrpNetwork | Id::NoEigrpNetwork => {

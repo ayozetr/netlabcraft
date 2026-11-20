@@ -194,3 +194,174 @@ fn deleting_a_vrf_returns_its_interfaces() {
     assert!(lab.t.device(r1).unwrap().ports[2].ip.is_none());
     assert!(lab.try_run(r1, "show ip route vrf BLUE").starts_with("% VRF BLUE"));
 }
+
+/// Each router gets a loopback in BLUE (10.1.1.1/24 and 10.2.2.1/24) next to the BLUE wire 10.0.12.0/30.
+fn blue_loopbacks(lab: &mut Lab, r1: DeviceId, r2: DeviceId) {
+    for (r, lo) in [(r1, "10.1.1.1"), (r2, "10.2.2.1")] {
+        lab.run(r, &format!("conf t\ninterface Loopback1\nip vrf forwarding BLUE\nip address {lo} 255.255.255.0\nend"));
+    }
+}
+
+#[test]
+fn rip_runs_in_a_vrf_address_family() {
+    let (mut lab, r1, r2, ..) = pair();
+    blue_loopbacks(&mut lab, r1, r2);
+    for r in [r1, r2] {
+        lab.run(r, "conf t\nrouter rip\naddress-family ipv4 vrf BLUE\nnetwork 10.0.0.0\nexit-address-family\nend");
+    }
+    // The process of the device itself has no network: the address family is the VRF's.
+    assert!(lab.t.device(r1).unwrap().rip.as_ref().unwrap().networks.is_empty());
+    lab.run(r1, "conf t\nrouter rip\naddress-family ipv4 vrf BLUE");
+    assert_eq!(lab.prompt(r1), "R1(config-router-af)#");
+    lab.run(r1, "exit-address-family");
+    assert_eq!(lab.prompt(r1), "R1(config-router)#");
+    lab.run(r1, "end");
+    lab.sim.run_for(&lab.t, 90_000_000);
+    let blue = lab.run(r1, "show ip route vrf BLUE");
+    assert!(blue.lines().any(|l| l.starts_with("R ") && l.contains("10.2.2.0/24")), "{blue}");
+    // Not in the global table, not in the other VRF.
+    assert!(!lab.run(r1, "show ip route").contains("10.2.2.0"));
+    assert!(!lab.run(r1, "show ip route vrf RED").contains("10.2.2.0"));
+    let ping = lab.run(r1, "ping vrf BLUE 10.2.2.1");
+    assert!(ping.contains("!!!!"), "{ping}");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" address-family ipv4 vrf BLUE\n") && run.contains("network 10.0.0.0"), "{run}");
+    assert!(run.contains(" exit-address-family\n"), "{run}");
+    // Replaying the configuration on a fresh router gives the address family back.
+    let mut other = Lab::new();
+    let r = other.add(DeviceKind::Router);
+    let _ = crate::exec::apply_config(&mut other.t, &mut other.sim, r, &run);
+    let replayed = other.t.device(r).unwrap().vrf("BLUE").and_then(|v| v.rip.as_ref()).map(|p| p.networks.len());
+    assert_eq!(replayed, Some(1));
+    // Removing RIP removes its address families too.
+    lab.run(r1, "conf t\nno router rip\nend");
+    assert!(lab.t.device(r1).unwrap().vrf("BLUE").unwrap().rip.is_none());
+}
+
+#[test]
+fn eigrp_runs_in_a_vrf_address_family() {
+    let (mut lab, r1, r2, ..) = pair();
+    blue_loopbacks(&mut lab, r1, r2);
+    for r in [r1, r2] {
+        lab.run(
+            r,
+            "conf t\nrouter eigrp 100\naddress-family ipv4 vrf BLUE autonomous-system 100\nnetwork 10.0.0.0 0.255.255.255\nexit-address-family\nend",
+        );
+    }
+    assert!(lab.t.device(r1).unwrap().eigrp.as_ref().unwrap().networks.is_empty());
+    lab.run(r1, "conf t\nrouter eigrp 100\naddress-family ipv4 vrf BLUE");
+    assert_eq!(lab.prompt(r1), "R1(config-router-af)#");
+    lab.run(r1, "exit-address-family");
+    assert_eq!(lab.prompt(r1), "R1(config-router)#");
+    lab.run(r1, "end");
+    lab.sim.run_for(&lab.t, 90_000_000);
+    let blue = lab.run(r1, "show ip route vrf BLUE");
+    assert!(blue.lines().any(|l| l.starts_with("D ") && l.contains("10.2.2.0/24")), "{blue}");
+    assert!(!lab.run(r1, "show ip route").contains("10.2.2.0"));
+    assert!(!lab.run(r1, "show ip route vrf RED").contains("10.2.2.0"));
+    let ping = lab.run(r1, "ping vrf BLUE 10.2.2.1");
+    assert!(ping.contains("!!!!"), "{ping}");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" address-family ipv4 vrf BLUE autonomous-system 100\n"), "{run}");
+    assert!(run.contains("network 10.0.0.0 0.255.255.255"), "{run}");
+    // A VRF runs one EIGRP process.
+    lab.run(r1, "conf t\nrouter eigrp 100");
+    assert!(lab.try_run(r1, "address-family ipv4 vrf BLUE autonomous-system 200").starts_with("% "));
+    assert!(lab.try_run(r1, "address-family ipv4 vrf NOPE").starts_with("% VRF NOPE"));
+}
+
+#[test]
+fn a_dhcp_pool_serves_the_interfaces_of_its_vrf() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let pc = lab.add(DeviceKind::Pc);
+    lab.cable(pc, "fa0", r, "g0/0");
+    lab.run(
+        r,
+        "en\nconf t\nip vrf RED\nexit\ninterface g0/0\nip vrf forwarding RED\nip address 192.168.1.1 255.255.255.0\nno shut\nexit\n\
+         ip dhcp excluded-address 192.168.1.1 192.168.1.9\nip dhcp pool LAN\nnetwork 192.168.1.0 255.255.255.0\ndefault-router 192.168.1.1\nend",
+    );
+    // A pool of the global table does not answer on a VRF interface.
+    let out = lab.try_run(pc, "ipconfig /renew");
+    assert!(!out.contains("192.168.1.10"), "{out}");
+    // Put the pool in the VRF and the same request is answered.
+    lab.run(r, "conf t\nip dhcp pool LAN\nvrf RED");
+    assert!(lab.try_run(r, "vrf NOPE").starts_with("% VRF NOPE"));
+    lab.run(r, "end");
+    let out = lab.run(pc, "ipconfig /renew");
+    assert!(out.contains("192.168.1.10/24"), "{out}");
+    let pools = lab.run(r, "show ip dhcp pool");
+    assert!(pools.contains("VRF              RED"), "{pools}");
+    let run = lab.run(r, "show running-config");
+    assert!(run.contains("ip dhcp pool LAN\n network 192.168.1.0 255.255.255.0\n default-router 192.168.1.1\n vrf RED\n"), "{run}");
+    // `no vrf` puts the pool back in the global table.
+    lab.run(r, "conf t\nip dhcp pool LAN\nno vrf\nend");
+    assert!(lab.t.device(r).unwrap().dhcp_pools.iter().all(|p| p.vrf.is_none()));
+}
+
+#[test]
+fn a_nat_rule_with_a_vrf_translates_that_vrfs_traffic() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.cable(srv, "g0", r, "g0/1");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(srv, "ipconfig 203.0.113.10 255.255.255.0 203.0.113.1");
+    lab.run(
+        r,
+        "en\nconf t\nip vrf RED\nexit\ninterface g0/0\nip vrf forwarding RED\nip address 192.168.1.1 255.255.255.0\nip nat inside\nno shut\n\
+         interface g0/1\nip vrf forwarding RED\nip address 203.0.113.1 255.255.255.0\nip nat outside\nno shut\nexit\n\
+         access-list 1 permit 192.168.1.0 0.0.0.255\nip nat inside source list 1 interface g0/1 overload\nend",
+    );
+    // A rule of the global table leaves the VRF's traffic alone.
+    assert!(lab.run(a, "ping 203.0.113.10").contains("answered"));
+    assert!(!lab.run(r, "show ip nat translations").contains("icmp"));
+    // The rule of the VRF translates it, and the answer comes back through the same translation.
+    lab.run(r, "conf t");
+    assert!(lab.try_run(r, "ip nat inside source list 1 interface g0/1 vrf NOPE overload").starts_with("% VRF NOPE"));
+    lab.run(r, "ip nat inside source list 1 interface g0/1 vrf RED overload\nend");
+    assert!(lab.run(a, "ping 203.0.113.10").contains("answered"));
+    let table = lab.run(r, "show ip nat translations");
+    assert!(table.contains("icmp") && table.contains("203.0.113.1"), "{table}");
+    let run = lab.run(r, "show running-config");
+    assert!(run.contains("ip nat inside source list 1 interface GigabitEthernet0/1 vrf RED overload"), "{run}");
+    assert!(lab.run(r, "show ip nat statistics").contains("in VRF RED"));
+}
+
+#[test]
+fn policy_based_routing_steers_the_traffic_of_a_vrf_interface() {
+    let mut lab = Lab::new();
+    let pc = lab.add(DeviceKind::Pc);
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    lab.cable(pc, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r1, "g0/2", r3, "g0/0");
+    lab.run(pc, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1");
+    // R1 keeps everything in the RED VRF and routes by default through R2; R3 is the other way out.
+    lab.run(
+        r1,
+        "en\nconf t\nip vrf RED\nexit\n\
+         int g0/0\nip vrf forwarding RED\nip add 10.0.0.1 255.255.255.0\nno shut\n\
+         int g0/1\nip vrf forwarding RED\nip add 192.168.1.1 255.255.255.0\nno shut\n\
+         int g0/2\nip vrf forwarding RED\nip add 192.168.2.1 255.255.255.0\nno shut\nexit\n\
+         ip route vrf RED 0.0.0.0 0.0.0.0 192.168.1.2\n\
+         access-list 101 permit icmp host 10.0.0.10 any\nroute-map PBR permit 10\nmatch ip address 101\nset ip next-hop 192.168.2.2\nexit\n\
+         int g0/0\nip policy route-map PBR\nend",
+    );
+    lab.run(r2, "en\nconf t\nint g0/0\nip add 192.168.1.2 255.255.255.0\nno shut\nend");
+    lab.run(r3, "en\nconf t\nint g0/0\nip add 192.168.2.2 255.255.255.0\nno shut\nend");
+    let frames_to = |lab: &Lab, to: DeviceId| lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.to.device == to).count();
+    let _ = lab.try_run(pc, "ping 8.8.8.8");
+    assert!(frames_to(&lab, r3) > 0, "the echo went to R3");
+    assert!(lab.sim.pbr_hits(r1, "PBR", 10).0 >= 1, "the echo requests matched the clause");
+    // Without the policy the same ping follows the VRF's default route to R2.
+    lab.sim.clear_trace();
+    lab.run(r1, "conf t\nint g0/0\nno ip policy route-map\nend");
+    let _ = lab.try_run(pc, "ping 8.8.4.4");
+    assert!(frames_to(&lab, r2) > 0);
+    assert_eq!(frames_to(&lab, r3), 0);
+}

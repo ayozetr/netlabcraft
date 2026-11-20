@@ -4,7 +4,8 @@
 //! (`ip vrf forwarding NAME`) are not in the global table, and a packet that comes in on one of
 //! them is routed only with what the VRF knows, so two VRFs of one router can use the same
 //! addresses and never reach each other. Each VRF carries its own static routes, an OSPF process
-//! (`router ospf N vrf NAME`) and a BGP address family (`address-family ipv4 vrf NAME`).
+//! (`router ospf N vrf NAME`), a BGP address family, a RIP address family and an EIGRP address family
+//! (`address-family ipv4 vrf NAME`).
 //!
 //! The route distinguisher and the route targets are kept and shown (they are what a provider
 //! edge exports and imports); VRF-lite itself does not use them to move routes between VRFs.
@@ -12,7 +13,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::bgp::Bgp;
-use crate::{Device, Ospf, StaticRoute};
+use crate::{Device, Eigrp, Ospf, Rip, StaticRoute};
 
 /// Most VRFs on one device.
 pub const MAX_VRFS: usize = 16;
@@ -50,6 +51,12 @@ pub struct Vrf {
     /// `address-family ipv4 vrf NAME` under `router bgp N`.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bgp: Option<Bgp>,
+    /// `address-family ipv4 vrf NAME` under `router rip`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rip: Option<Rip>,
+    /// `address-family ipv4 vrf NAME autonomous-system N` under `router eigrp N`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eigrp: Option<Eigrp>,
 }
 
 impl Vrf {

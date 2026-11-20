@@ -193,6 +193,9 @@ pub fn running_config(d: &Device) -> String {
         if let Some(dn) = &p.domain {
             let _ = writeln!(s, " domain-name {dn}");
         }
+        if let Some(v) = &p.vrf {
+            let _ = writeln!(s, " vrf {v}");
+        }
         match p.lease_secs {
             Some(u32::MAX) => {
                 let _ = writeln!(s, " lease infinite");
@@ -523,7 +526,8 @@ pub fn running_config(d: &Device) -> String {
             netlabcraft_model::NatTarget::Interface(i) => format!("interface {i}"),
             netlabcraft_model::NatTarget::Pool(p) => format!("pool {p}"),
         };
-        let _ = writeln!(s, "ip nat inside source list {} {target}{}", r.acl, if r.overload { " overload" } else { "" });
+        let vrf = r.vrf.as_ref().map_or(String::new(), |v| format!(" vrf {v}"));
+        let _ = writeln!(s, "ip nat inside source list {} {target}{vrf}{}", r.acl, if r.overload { " overload" } else { "" });
     }
     for (l, g) in &d.nat.statics {
         let _ = writeln!(s, "ip nat inside source static {l} {g}");
@@ -630,6 +634,7 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    let eigrp_at = s.len();
     if let Some(e) = &d.eigrp {
         let _ = writeln!(s, "router eigrp {}", e.asn);
         if let Some(id) = e.router_id {
@@ -659,11 +664,14 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::knobs::proto_lines(&mut s, d, "eigrp");
         let _ = writeln!(s, "!");
     }
+    let tail = s.split_off(eigrp_at);
+    s.push_str(&crate::exec::vrf::with_families(d, tail, crate::exec::vrf::Family::Eigrp));
     crate::exec::vrf::ospf_sections(&mut s, d);
     let mut bgp = String::new();
     crate::exec::bgp::running_config(&mut bgp, d);
     s.push_str(&crate::exec::vrf::with_bgp_families(d, bgp));
     crate::exec::policy::running_config(&mut s, d);
+    let rip_at = s.len();
     if let Some(r) = &d.rip {
         let _ = writeln!(s, "router rip");
         if r.version != 1 {
@@ -688,6 +696,8 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::knobs::proto_lines(&mut s, d, "rip");
         let _ = writeln!(s, "!");
     }
+    let tail = s.split_off(rip_at);
+    s.push_str(&crate::exec::vrf::with_families(d, tail, crate::exec::vrf::Family::Rip));
     if d.kind == DeviceKind::Switch
         && let Some(g) = d.gateway
     {
@@ -1360,6 +1370,9 @@ pub fn dhcp_pools(sim: &Sim, d: &Device, only: Option<&str>) -> Result<String, S
         let _ = writeln!(s, "  Default router   {}", p.default_router.map_or("-".to_string(), |r| r.to_string()));
         let _ = writeln!(s, "  DNS server       {}", p.dns.map_or("-".to_string(), |r| r.to_string()));
         let _ = writeln!(s, "  Domain name      {}", p.domain.as_deref().unwrap_or("-"));
+        if let Some(v) = &p.vrf {
+            let _ = writeln!(s, "  VRF              {v}");
+        }
         let _ = writeln!(s, "  Lease time       {}", netlabcraft_model::mgmt::lease_text(p.lease_secs.unwrap_or(86_400)));
         let _ = writeln!(s, "  Leased addresses {leased}");
         if let Some(n) = p.network {

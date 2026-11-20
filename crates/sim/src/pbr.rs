@@ -13,7 +13,7 @@ use netlabcraft_model::policy::Clause;
 use netlabcraft_model::{Device, Topology};
 use netlabcraft_wire::Ipv4;
 
-use crate::{DebugKind, L3If, Sim, acl_key, up_ifaces};
+use crate::{DebugKind, L3If, Sim, acl_key, l3_ifaces_all, phys_up_ifaces_of, up_ifaces};
 
 /// What a route map decided for one packet.
 #[derive(Debug, Clone, Default)]
@@ -62,7 +62,12 @@ impl Sim {
         hit.0 = hit.0.saturating_add(1);
         hit.1 = hit.1.saturating_add(u64::from(total));
         let mut decision = Decision { route: None, dscp: clause.sets.dscp.or(clause.sets.precedence.map(|p| p << 3)) };
-        let ifs = up_ifaces(t, d);
+        // A packet of a VRF is steered among that VRF's interfaces, and its table decides what "specific route" means.
+        let vrf = self.cur_vrf.clone().filter(|v| d.vrf(v).is_some());
+        let ifs = match &vrf {
+            Some(v) => phys_up_ifaces_of(t, d, l3_ifaces_all(d).into_iter().filter(|i| i.vrf.as_deref() == Some(v.as_str())).collect()),
+            None => up_ifaces(t, d),
+        };
         let on_link = |a: Ipv4Addr| ifs.iter().filter(|i| i.net.contains(a)).max_by_key(|i| i.net.prefix).cloned();
         if let Some(nh) = clause.sets.next_hop
             && clause.sets.next_hop_track.is_none_or(|n| crate::track::is_up(t, d, n))
@@ -80,7 +85,11 @@ impl Sim {
             && let Some(nh) = clause.sets.default_next_hop
         {
             // Only for destinations the table has no specific route to: a default route does not count.
-            let explicit = self.routing_table(t, d).iter().any(|r| r.net.prefix > 0 && r.code != 'L' && r.net.contains(ip.dst));
+            let table = match &vrf {
+                Some(v) => self.vrf_routing_table(t, d, v).unwrap_or_default(),
+                None => self.routing_table(t, d),
+            };
+            let explicit = table.iter().any(|r| r.net.prefix > 0 && r.code != 'L' && r.net.contains(ip.dst));
             if !explicit && let Some(i) = on_link(nh) {
                 decision.route = Some((i, nh));
             }
