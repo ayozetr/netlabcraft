@@ -329,3 +329,39 @@ fn a_nat_rule_with_a_vrf_translates_that_vrfs_traffic() {
     assert!(run.contains("ip nat inside source list 1 interface GigabitEthernet0/1 vrf RED overload"), "{run}");
     assert!(lab.run(r, "show ip nat statistics").contains("in VRF RED"));
 }
+
+#[test]
+fn policy_based_routing_steers_the_traffic_of_a_vrf_interface() {
+    let mut lab = Lab::new();
+    let pc = lab.add(DeviceKind::Pc);
+    let r1 = lab.add(DeviceKind::Router);
+    let r2 = lab.add(DeviceKind::Router);
+    let r3 = lab.add(DeviceKind::Router);
+    lab.cable(pc, "fa0", r1, "g0/0");
+    lab.cable(r1, "g0/1", r2, "g0/0");
+    lab.cable(r1, "g0/2", r3, "g0/0");
+    lab.run(pc, "ipconfig 10.0.0.10 255.255.255.0 10.0.0.1");
+    // R1 keeps everything in the RED VRF and routes by default through R2; R3 is the other way out.
+    lab.run(
+        r1,
+        "en\nconf t\nip vrf RED\nexit\n\
+         int g0/0\nip vrf forwarding RED\nip add 10.0.0.1 255.255.255.0\nno shut\n\
+         int g0/1\nip vrf forwarding RED\nip add 192.168.1.1 255.255.255.0\nno shut\n\
+         int g0/2\nip vrf forwarding RED\nip add 192.168.2.1 255.255.255.0\nno shut\nexit\n\
+         ip route vrf RED 0.0.0.0 0.0.0.0 192.168.1.2\n\
+         access-list 101 permit icmp host 10.0.0.10 any\nroute-map PBR permit 10\nmatch ip address 101\nset ip next-hop 192.168.2.2\nexit\n\
+         int g0/0\nip policy route-map PBR\nend",
+    );
+    lab.run(r2, "en\nconf t\nint g0/0\nip add 192.168.1.2 255.255.255.0\nno shut\nend");
+    lab.run(r3, "en\nconf t\nint g0/0\nip add 192.168.2.2 255.255.255.0\nno shut\nend");
+    let frames_to = |lab: &Lab, to: DeviceId| lab.sim.trace().iter().filter(|e| e.from.device == r1 && e.to.device == to).count();
+    let _ = lab.try_run(pc, "ping 8.8.8.8");
+    assert!(frames_to(&lab, r3) > 0, "the echo went to R3");
+    assert!(lab.sim.pbr_hits(r1, "PBR", 10).0 >= 1, "the echo requests matched the clause");
+    // Without the policy the same ping follows the VRF's default route to R2.
+    lab.sim.clear_trace();
+    lab.run(r1, "conf t\nint g0/0\nno ip policy route-map\nend");
+    let _ = lab.try_run(pc, "ping 8.8.4.4");
+    assert!(frames_to(&lab, r2) > 0);
+    assert_eq!(frames_to(&lab, r3), 0);
+}

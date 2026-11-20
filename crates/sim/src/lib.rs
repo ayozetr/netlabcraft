@@ -451,8 +451,12 @@ pub fn up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
 
 /// [`up_ifaces`] without tunnels: ports, subinterfaces and VLAN interfaces.
 pub(crate) fn phys_up_ifaces(t: &Topology, d: &Device) -> Vec<L3If> {
-    l3_ifaces(d)
-        .into_iter()
+    phys_up_ifaces_of(t, d, l3_ifaces(d))
+}
+
+/// The ones of `list` (interfaces of this device) that are up, tunnels left out.
+pub(crate) fn phys_up_ifaces_of(t: &Topology, d: &Device, list: Vec<L3If>) -> Vec<L3If> {
+    list.into_iter()
         .filter(|i| !vpn::is_tunnel(i.port))
         .filter(|i| {
             if loopback::is_loopback(i.port) {
