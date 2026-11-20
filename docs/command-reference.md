@@ -529,6 +529,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no crypto isakmp client configuration group WORD` | config | router | Delete a client group |
 | `key KEY` |  | router | The group's pre-shared key |
 | `pool WORD` |  | router | The local pool the clients' addresses come from |
+| `acl WORD` |  | router | The split-tunnel access list: only these networks use the tunnel |
+| `dns A.B.C.D` |  | router | The name server pushed to the clients |
+| `domain WORD` |  | router | The DNS domain pushed to the clients |
+| `no acl` |  | router | Send everything through the tunnel again |
+| `no dns` |  | router | Push no name server |
+| `no domain` |  | router | Push no DNS domain |
 | `crypto dynamic-map WORD <1-65535>` | config | router | Define or edit a dynamic map entry |
 | `no crypto dynamic-map WORD [<1-65535>]` | config | router | Delete a dynamic map (or one entry) |
 | `no crypto dynamic-map WORD` | config | router | Delete a whole dynamic map |

@@ -220,6 +220,23 @@ pub struct ClientGroup {
     /// `pool NAME`: the local pool the client's address comes from.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pool: Option<String>,
+    /// `acl N`: the split-tunnel access list. Its permitted source networks are the only ones the
+    /// client sends through the tunnel (none named: everything beyond its own subnets goes).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub acl: Option<String>,
+    /// `dns A.B.C.D`: the name server pushed to the client.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dns: Option<Ipv4Addr>,
+    /// `domain NAME`: the DNS domain pushed to the client.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub domain: String,
+}
+
+impl ClientGroup {
+    /// A group with a name and nothing else set.
+    pub fn new(name: &str) -> ClientGroup {
+        ClientGroup { name: name.to_string(), key: String::new(), pool: None, acl: None, dns: None, domain: String::new() }
+    }
 }
 
 /// The server side of remote-access VPN clients.

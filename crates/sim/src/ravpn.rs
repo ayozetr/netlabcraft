@@ -29,6 +29,7 @@
 use std::net::Ipv4Addr;
 
 use netlabcraft_core::DeviceId;
+use netlabcraft_model::acl::AclAddr;
 use netlabcraft_model::vpn::TransformSet;
 use netlabcraft_model::{Device, DeviceKind, Topology};
 use netlabcraft_wire::sha256::{hmac_sha256, sha256};
@@ -47,6 +48,8 @@ const MAGIC: &[u8; 4] = b"NLRA";
 const T_REQUEST: u8 = 1;
 const T_REPLY: u8 = 2;
 const T_DELETE: u8 = 3;
+/// Most split-tunnel networks the concentrator pushes to a client.
+pub const MAX_SPLIT: usize = 32;
 /// How long the client waits for an answer, simulated µs.
 const WAIT_US: u64 = 2_000_000;
 
@@ -70,6 +73,13 @@ pub struct RaSa {
     pub transforms: String,
     pub spi_in: u32,
     pub spi_out: u32,
+    /// The split-tunnel networks the concentrator pushed: only these go through the tunnel
+    /// (`None`: a full tunnel). Empty on a router.
+    pub split: Option<Vec<AclAddr>>,
+    /// The name server pushed to the client.
+    pub dns: Option<Ipv4Addr>,
+    /// The DNS domain pushed to the client (empty: none).
+    pub domain: String,
     key_in: Vec<u8>,
     key_out: Vec<u8>,
     /// When the session came up, simulated µs.
@@ -236,6 +246,7 @@ fn tunnels(d: &Device, sa: &RaSa, dst: Ipv4Addr) -> bool {
         && !dst.is_broadcast()
         && !dst.is_unspecified()
         && !crate::l3_ifaces(d).iter().any(|i| i.net.contains(dst))
+        && sa.split.as_ref().is_none_or(|nets| nets.iter().any(|n| n.matches(dst)))
 }
 
 /// What a router decided for a request: the session to keep and the answer to send.
@@ -469,6 +480,11 @@ impl Sim {
         let spi_s = spi_from(b"nlra-spi-s", &req.ni);
         let (c2s, s2c) = session_keys(group.key.as_bytes(), &req.ni, &nr, suite);
         let transforms = ts.transforms.join(",");
+        let split = group
+            .acl
+            .as_deref()
+            .and_then(|name| d.acls.iter().find(|a| a.name == name))
+            .map(|acl| acl.entries.iter().filter(|e| e.permit).map(|e| e.src).take(MAX_SPLIT).collect::<Vec<AclAddr>>());
         let mut reply = MAGIC.to_vec();
         reply.push(T_REPLY);
         reply.push(0);
@@ -477,6 +493,19 @@ impl Sim {
         reply.extend_from_slice(&spi_s.to_be_bytes());
         reply.extend_from_slice(&assigned.octets());
         put_text(&mut reply, &transforms);
+        reply.extend_from_slice(&group.dns.unwrap_or(Ipv4Addr::UNSPECIFIED).octets());
+        put_text(&mut reply, &group.domain);
+        match &split {
+            Some(nets) => {
+                reply.push(1);
+                reply.push(u8::try_from(nets.len()).unwrap_or(u8::MAX));
+                for n in nets {
+                    reply.extend_from_slice(&n.addr.octets());
+                    reply.extend_from_slice(&n.wildcard.octets());
+                }
+            }
+            None => reply.push(0),
+        }
         let proof = sign(group.key.as_bytes(), b"nlra-rsp", &reply);
         reply.extend_from_slice(&proof);
         let session = RaSa {
@@ -490,6 +519,9 @@ impl Sim {
             transforms,
             spi_in: spi_s,
             spi_out: req.spi_c,
+            split: None,
+            dns: None,
+            domain: String::new(),
             key_in: c2s,
             key_out: s2c,
             since_us: now,
@@ -559,6 +591,25 @@ impl Sim {
         let a: [u8; 4] = r.take(4).ok_or_else(damaged)?.try_into().map_err(|_| damaged())?;
         let assigned = Ipv4Addr::from(a);
         let transforms = r.text().ok_or_else(damaged)?;
+        let dns_octets: [u8; 4] = r.take(4).ok_or_else(damaged)?.try_into().map_err(|_| damaged())?;
+        let dns = Some(Ipv4Addr::from(dns_octets)).filter(|a| !a.is_unspecified());
+        let domain = r.text().ok_or_else(damaged)?;
+        let split = match r.u8().ok_or_else(damaged)? {
+            0 => None,
+            _ => {
+                let count = usize::from(r.u8().ok_or_else(damaged)?);
+                if count > MAX_SPLIT {
+                    return Err(fail("the VPN concentrator sent too many split-tunnel networks".into()));
+                }
+                let mut nets = Vec::with_capacity(count);
+                for _ in 0..count {
+                    let a: [u8; 4] = r.take(4).ok_or_else(damaged)?.try_into().map_err(|_| damaged())?;
+                    let w: [u8; 4] = r.take(4).ok_or_else(damaged)?.try_into().map_err(|_| damaged())?;
+                    nets.push(AclAddr { addr: Ipv4Addr::from(a), wildcard: Ipv4Addr::from(w) });
+                }
+                Some(nets)
+            }
+        };
         let signed = reply.get(..r.at).ok_or_else(damaged)?;
         let their_proof = r.take(32).ok_or_else(damaged)?;
         if r.at != reply.len() || sign(key, b"nlra-rsp", signed).as_slice() != their_proof {
@@ -589,6 +640,9 @@ impl Sim {
             transforms,
             spi_in: spi_c,
             spi_out: spi_s,
+            split,
+            dns,
+            domain,
             key_in: s2c,
             key_out: c2s,
             since_us: now,

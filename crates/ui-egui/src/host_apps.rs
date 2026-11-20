@@ -694,6 +694,22 @@ pub(crate) fn vpn_client(app: &mut PacketApp, ui: &mut egui::Ui, dev: &Device) {
                 ui.label(tl("Encryption"));
                 ui.label(x.suite.map_or_else(|| x.transforms.clone(), |su| su.describe()));
                 ui.end_row();
+                if let Some(dns) = x.dns {
+                    ui.label(tl("DNS server"));
+                    ui.label(dns.to_string());
+                    ui.end_row();
+                }
+                if !x.domain.is_empty() {
+                    ui.label(tl("DNS domain"));
+                    ui.label(x.domain.clone());
+                    ui.end_row();
+                }
+                ui.label(tl("Secured routes"));
+                ui.label(match &x.split {
+                    None => tl("Everything beyond the local subnets").to_string(),
+                    Some(nets) => nets.iter().map(ToString::to_string).collect::<Vec<String>>().join(", "),
+                });
+                ui.end_row();
             });
             ui.label(RichText::new(trf("Tunnel packets: {} sent, {} received", &[&x.encaps, &x.decaps])).color(tk.muted));
         }

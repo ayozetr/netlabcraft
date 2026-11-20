@@ -2791,6 +2791,12 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::NoClientGroup
         | Id::ClientGroupKey
         | Id::ClientGroupPool
+        | Id::ClientGroupAcl
+        | Id::ClientGroupDns
+        | Id::ClientGroupDomain
+        | Id::NoClientGroupAcl
+        | Id::NoClientGroupDns
+        | Id::NoClientGroupDomain
         | Id::CryptoDynamicMap
         | Id::NoCryptoDynamicMap
         | Id::CryptoReverseRoute

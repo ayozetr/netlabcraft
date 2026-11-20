@@ -258,3 +258,71 @@ fn the_running_configuration_shows_the_server_and_hostile_input_is_refused() {
         .unwrap();
     assert_eq!(r["errors"].as_array().map(Vec::len), Some(2), "{r}");
 }
+
+/// Group lines added to the server of `lab`: `lines` are typed inside the group.
+fn group_lines(s: &mut Session, lines: &[&str]) {
+    let mut all = vec!["crypto isakmp client configuration group team"];
+    all.extend(lines.iter().copied());
+    all.push("exit");
+    configure(s, "R1", &all);
+}
+
+fn encapsulated(s: &mut Session) -> u64 {
+    status(s)["encapsulated"].as_u64().unwrap_or(0)
+}
+
+#[test]
+fn a_split_tunnel_sends_only_the_listed_networks_through_the_tunnel() {
+    let mut s = lab(&[]);
+    configure(&mut s, "R1", &["access-list 10 permit 192.168.77.0 0.0.0.255"]);
+    group_lines(&mut s, &["acl 10"]);
+    let st = connect(&mut s, "team", "key-test", "ann", "pw-test").unwrap();
+    assert_eq!(st["split_tunnel"], json!(["192.168.77.0 0.0.0.255"]), "{st}");
+    // 10.0.0.10 is not in the list: the PC uses its normal route and nothing is sealed.
+    let _ = ping_ok(&mut s, "10.0.0.10");
+    assert_eq!(encapsulated(&mut s), 0);
+    let ipconfig = cli(&mut s, "PC1", "ipconfig");
+    assert!(ipconfig.contains("VPN address 10.9.9.1") && ipconfig.contains("192.168.77.0 0.0.0.255 (split tunnel)"), "{ipconfig}");
+    // The list now names the inside network too: the same ping is sealed.
+    s.execute("vpnclient.disconnect", json!({"device": "PC1"})).unwrap();
+    configure(&mut s, "R1", &["access-list 10 permit 10.0.0.0 0.0.0.255"]);
+    let st = connect(&mut s, "team", "key-test", "ann", "pw-test").unwrap();
+    assert_eq!(st["split_tunnel"].as_array().map(Vec::len), Some(2), "{st}");
+    assert!(ping_ok(&mut s, "10.0.0.10"));
+    assert!(encapsulated(&mut s) >= 3);
+    // The console writes the line back; `no acl` makes it a full tunnel again.
+    cli(&mut s, "R1", "enable");
+    assert!(cli(&mut s, "R1", "show running-config").contains(" acl 10"));
+    s.execute("vpnclient.disconnect", json!({"device": "PC1"})).unwrap();
+    group_lines(&mut s, &["no acl"]);
+    assert!(!cli(&mut s, "R1", "show running-config").contains(" acl 10"));
+    let st = connect(&mut s, "team", "key-test", "ann", "pw-test").unwrap();
+    assert!(st["split_tunnel"].is_null(), "{st}");
+    let ipconfig = cli(&mut s, "PC1", "ipconfig");
+    assert!(ipconfig.contains("full tunnel"), "{ipconfig}");
+}
+
+#[test]
+fn the_dns_server_and_domain_of_the_group_reach_the_client() {
+    let mut s = lab(&[]);
+    group_lines(&mut s, &["dns 10.0.0.53", "domain lab.test"]);
+    let st = connect(&mut s, "team", "key-test", "ann", "pw-test").unwrap();
+    assert_eq!(st["dns"], json!("10.0.0.53"));
+    assert_eq!(st["domain"], json!("lab.test"));
+    let ipconfig = cli(&mut s, "PC1", "ipconfig");
+    assert!(ipconfig.contains("VPN DNS     10.0.0.53") && ipconfig.contains("VPN domain  lab.test"), "{ipconfig}");
+    // Names are asked of the pushed server (nobody answers at that address in this lab).
+    let lookup = cli(&mut s, "PC1", "nslookup www.lab.test");
+    assert!(lookup.contains("Server:  10.0.0.53"), "{lookup}");
+    // The running configuration writes the lines back; `no` removes them; bad input is refused.
+    cli(&mut s, "R1", "enable");
+    let run = cli(&mut s, "R1", "show running-config");
+    assert!(run.contains(" dns 10.0.0.53") && run.contains(" domain lab.test"), "{run}");
+    s.execute("vpnclient.disconnect", json!({"device": "PC1"})).unwrap();
+    group_lines(&mut s, &["no dns", "no domain"]);
+    let st = connect(&mut s, "team", "key-test", "ann", "pw-test").unwrap();
+    assert!(st["dns"].is_null() && st["domain"].is_null(), "{st}");
+    let lines = ["crypto isakmp client configuration group team", "dns 0.0.0.0", "dns nope"];
+    let r = s.execute("device.configure", json!({"device": "R1", "lines": lines})).unwrap();
+    assert_eq!(r["errors"].as_array().map(Vec::len), Some(2), "{r}");
+}

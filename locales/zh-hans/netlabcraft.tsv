@@ -1678,6 +1678,10 @@ event	write request for	写请求
 	Enter the host address, the group name and the group key.	请输入主机地址、组名和组密钥。
 	VPN address	VPN 地址
 	Encryption	加密
+	DNS server	DNS 服务器
+	DNS domain	DNS 域
+	Secured routes	受保护的路由
+	Everything beyond the local subnets	本地子网之外的所有内容
 	Tunnel packets: {} sent, {} received	隧道数据包：已发送 {}，已接收 {}
 	Fill in the form and press Connect.	填写表单并点击连接。
 	Netflow Collector	Netflow 收集器

@@ -1681,6 +1681,10 @@ event	no APN	sin APN
 	Enter the host address, the group name and the group key.	Escribe la dirección del host, el nombre del grupo y la clave del grupo.
 	VPN address	Dirección VPN
 	Encryption	Cifrado
+	DNS server	Servidor DNS
+	DNS domain	Dominio DNS
+	Secured routes	Rutas protegidas
+	Everything beyond the local subnets	Todo lo que está más allá de las subredes locales
 	Tunnel packets: {} sent, {} received	Paquetes del túnel: {} enviados, {} recibidos
 	Fill in the form and press Connect.	Rellena el formulario y pulsa Conectar.
 	Netflow Collector	Colector Netflow

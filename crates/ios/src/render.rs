@@ -3371,6 +3371,15 @@ fn remote_access_config(s: &mut String, d: &Device) {
         if let Some(p) = &g.pool {
             let _ = writeln!(s, " pool {p}");
         }
+        if let Some(a) = &g.acl {
+            let _ = writeln!(s, " acl {a}");
+        }
+        if let Some(a) = g.dns {
+            let _ = writeln!(s, " dns {a}");
+        }
+        if !g.domain.is_empty() {
+            let _ = writeln!(s, " domain {}", g.domain);
+        }
         let _ = writeln!(s, "!");
     }
     for (m, l) in &ra.client_auth {
