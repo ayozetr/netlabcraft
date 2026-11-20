@@ -465,7 +465,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 if ra.groups.len() >= MAX_CRYPTO {
                     return Err(format!("% At most {MAX_CRYPTO} groups"));
                 }
-                ra.groups.push(ClientGroup { name: name.clone(), key: String::new(), pool: None });
+                ra.groups.push(ClientGroup::new(&name));
             }
             c.cli.mode = Mode::ClientGroup(name);
             Ok(String::new())
@@ -491,6 +491,41 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             };
             group(c)?.pool = Some(pool);
             Ok(note)
+        }
+        Id::ClientGroupAcl => {
+            let acl = name_ok(arg(0))?;
+            let note = if c.d()?.acls.iter().any(|a| a.name == acl) {
+                String::new()
+            } else {
+                format!("Note: access list {acl} does not exist yet; until it does, every network goes through the tunnel")
+            };
+            group(c)?.acl = Some(acl);
+            Ok(note)
+        }
+        Id::ClientGroupDns => {
+            let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
+            if a.is_unspecified() || a.is_multicast() || a.is_broadcast() || a.is_loopback() {
+                return Err(format!("% {a} cannot be a name server"));
+            }
+            group(c)?.dns = Some(a);
+            Ok(String::new())
+        }
+        Id::ClientGroupDomain => {
+            let domain = name_ok(arg(0))?;
+            group(c)?.domain = domain;
+            Ok(String::new())
+        }
+        Id::NoClientGroupAcl => {
+            group(c)?.acl = None;
+            Ok(String::new())
+        }
+        Id::NoClientGroupDns => {
+            group(c)?.dns = None;
+            Ok(String::new())
+        }
+        Id::NoClientGroupDomain => {
+            group(c)?.domain.clear();
+            Ok(String::new())
         }
         Id::CryptoSetPeer => {
             let a = parse_ip(arg(0)).map_err(|e| format!("% {e}"))?;
@@ -591,6 +626,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         Id::ShowCryptoIpsecSa => Ok(render::crypto_ipsec_sa(c.sim, c.d()?)),
         Id::ShowCryptoIsakmpPolicy => Ok(render::isakmp_policies(c.d()?)),
         Id::ShowCryptoMap => Ok(render::crypto_maps(c.d()?)),
+        Id::ShowCryptoSession => Ok(render::crypto_session(c.sim, c.d()?)),
         Id::ClearCryptoSa => {
             c.sim.clear_ipsec(c.dev);
             Ok(String::new())

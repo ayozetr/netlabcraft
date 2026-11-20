@@ -183,7 +183,7 @@ mod tests {
         t.device_mut(pc).unwrap().vpn_client.host = "203.0.113.1".into();
         let d = t.device_mut(r).unwrap();
         d.crypto.ra.pools.push(LocalPool { name: "P".into(), start: "10.9.9.1".parse().unwrap(), end: "10.9.9.9".parse().unwrap() });
-        d.crypto.ra.groups.push(ClientGroup { name: "team".into(), key: "key-test".into(), pool: Some("P".into()) });
+        d.crypto.ra.groups.push(ClientGroup { key: "key-test".into(), pool: Some("P".into()), ..ClientGroup::new("team") });
         let back = from_json(&to_json(&t).unwrap()).unwrap();
         assert_eq!(back, t);
         assert_eq!(back.device(pc).unwrap().vpn_client.group, "team");

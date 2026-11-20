@@ -1678,6 +1678,10 @@ event	write request for	richiesta di scrittura di
 	Enter the host address, the group name and the group key.	Inserisci l'indirizzo dell'host, il nome del gruppo e la chiave del gruppo.
 	VPN address	Indirizzo VPN
 	Encryption	Cifratura
+	DNS server	Server DNS
+	DNS domain	Dominio DNS
+	Secured routes	Percorsi protetti
+	Everything beyond the local subnets	Tutto ciò che è oltre le sottoreti locali
 	Tunnel packets: {} sent, {} received	Pacchetti del tunnel: {} inviati, {} ricevuti
 	Fill in the form and press Connect.	Compila il modulo e premi Connetti.
 	Netflow Collector	Collettore Netflow

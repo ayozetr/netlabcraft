@@ -529,6 +529,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `no crypto isakmp client configuration group WORD` | config | router | Delete a client group |
 | `key KEY` |  | router | The group's pre-shared key |
 | `pool WORD` |  | router | The local pool the clients' addresses come from |
+| `acl WORD` |  | router | The split-tunnel access list: only these networks use the tunnel |
+| `dns A.B.C.D` |  | router | The name server pushed to the clients |
+| `domain WORD` |  | router | The DNS domain pushed to the clients |
+| `no acl` |  | router | Send everything through the tunnel again |
+| `no dns` |  | router | Push no name server |
+| `no domain` |  | router | Push no DNS domain |
 | `crypto dynamic-map WORD <1-65535>` | config | router | Define or edit a dynamic map entry |
 | `no crypto dynamic-map WORD [<1-65535>]` | config | router | Delete a dynamic map (or one entry) |
 | `no crypto dynamic-map WORD` | config | router | Delete a whole dynamic map |
@@ -587,6 +593,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show policy-map interface` | user, privileged | router, switch | Service policies and their counters |
 | `show policy-map interface <interface>` | user, privileged | router, switch | One interface's service policies and counters |
 | `show crypto map` | user, privileged | router | Crypto maps and where they apply |
+| `show crypto session` | user, privileged | router | Every VPN session this router holds |
 | `wlan <1-16> SSID {open \| psk PASSPHRASE \| enterprise} [vlan V] [central]` | config | switch | A WLAN this controller offers through its access points |
 | `no wlan <1-16>` | config | switch | Stop offering a WLAN |
 | `capwap controller A.B.C.D` | config | switch | The wireless LAN controller this access point joins |

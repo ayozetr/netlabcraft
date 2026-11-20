@@ -201,7 +201,7 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
         }
         "nslookup" => {
             let Some(name) = words.get(1) else { return out("Usage: nslookup <name>".into()) };
-            let server = t.device(dev).and_then(|d| d.dns).map_or("none".to_string(), |s| s.to_string());
+            let server = sim.ra_client(dev).and_then(|x| x.dns).or(t.device(dev).and_then(|d| d.dns)).map_or("none".to_string(), |s| s.to_string());
             match sim.dns_resolve(t, dev, name) {
                 Ok(a) => out(format!("Server:  {server}\nName:    {name}\nAddress: {a}")),
                 Err(e) => out(format!("Server:  {server}\n{e}")),
@@ -258,6 +258,28 @@ pub fn execute(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut crate::
 }
 
 fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Outcome {
+    // What a connected VPN Client was given, appended to the listings below.
+    let vpn_text = match sim.ra_client(dev) {
+        None => String::new(),
+        Some(x) => {
+            let mut v = format!("\nVPN address {}\nVPN server  {}", x.assigned, x.peer);
+            if let Some(dns) = x.dns {
+                let _ = write!(v, "\nVPN DNS     {dns}");
+            }
+            if !x.domain.is_empty() {
+                let _ = write!(v, "\nVPN domain  {}", x.domain);
+            }
+            match &x.split {
+                None => v.push_str("\nVPN routes  everything beyond the local subnets (full tunnel)"),
+                Some(nets) if nets.is_empty() => v.push_str("\nVPN routes  none (split tunnel with no network)"),
+                Some(nets) => {
+                    let list: Vec<String> = nets.iter().map(|n| n.to_string()).collect();
+                    let _ = write!(v, "\nVPN routes  {} (split tunnel)", list.join(", "));
+                }
+            }
+            v
+        }
+    };
     let show_basic = |d: &Device| {
         let p = d.ports.first();
         format!(
@@ -292,9 +314,9 @@ fn ipconfig(t: &mut Topology, sim: &mut Sim, dev: DeviceId, args: &[&str]) -> Ou
                 l.server.map_or("unknown".to_string(), |a| a.to_string())
             );
         }
-        s + &ipv6_lines(d) + &crate::exec::cellular::ipconfig_lines(d)
+        s + &ipv6_lines(d) + &crate::exec::cellular::ipconfig_lines(d) + &vpn_text
     };
-    let show = |d: &Device| show_basic(d) + &ipv6_lines(d) + &crate::exec::cellular::ipconfig_lines(d);
+    let show = |d: &Device| show_basic(d) + &ipv6_lines(d) + &crate::exec::cellular::ipconfig_lines(d) + &vpn_text;
     let Some(d) = t.device(dev) else { return Outcome::default() };
     let result: Result<String, String> = match args {
         [] => return Outcome { output: show(d), ..Outcome::default() },

@@ -4540,7 +4540,12 @@ impl Sim {
             return Ok(a);
         }
         let d = t.device(dev).ok_or(SimError::NoDevice(dev))?;
-        let server = d.dns.ok_or_else(|| SimError::NoSource(format!("{name}: this host has no DNS server configured")))?;
+        // A connected VPN Client takes the name server the concentrator pushed.
+        let server = self
+            .ra_client(dev)
+            .and_then(|sa| sa.dns)
+            .or(d.dns)
+            .ok_or_else(|| SimError::NoSource(format!("{name}: this host has no DNS server configured")))?;
         let src = self.source_for(t, d, server)?;
         for _ in 0..2 {
             let port = self.next_port();

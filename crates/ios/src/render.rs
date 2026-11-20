@@ -3371,6 +3371,15 @@ fn remote_access_config(s: &mut String, d: &Device) {
         if let Some(p) = &g.pool {
             let _ = writeln!(s, " pool {p}");
         }
+        if let Some(a) = &g.acl {
+            let _ = writeln!(s, " acl {a}");
+        }
+        if let Some(a) = g.dns {
+            let _ = writeln!(s, " dns {a}");
+        }
+        if !g.domain.is_empty() {
+            let _ = writeln!(s, " domain {}", g.domain);
+        }
         let _ = writeln!(s, "!");
     }
     for (m, l) in &ra.client_auth {
@@ -3444,6 +3453,38 @@ fn tunnel_block(t: &Topology, d: &Device, tun: &netlabcraft_model::vpn::Tunnel) 
 pub fn tunnel_interface(t: &Topology, d: &Device, n: u32) -> Result<String, String> {
     let tun = d.tunnels.iter().find(|x| x.number == n).ok_or_else(|| format!("% There is no interface Tunnel{n}"))?;
     Ok(tunnel_block(t, d, tun).trim_end().to_string())
+}
+
+/// `show crypto session`: every VPN session of the router, remote-access clients first, then the
+/// site-to-site peers traffic has tried to reach.
+pub fn crypto_session(sim: &Sim, d: &Device) -> String {
+    let sas = sim.ipsec_sas(d.id);
+    let ra = sim.ra_sessions(d.id);
+    if sas.is_empty() && ra.is_empty() {
+        return "No VPN sessions".into();
+    }
+    let mut s = format!("VPN sessions: {} remote-access, {} site-to-site\n", ra.len(), sas.len());
+    for x in &ra {
+        let _ = writeln!(s, "\nPeer {} (local {}), interface {}", x.peer, x.local, x.iface);
+        let _ = writeln!(s, "  Type: remote-access client, group {}, user {}, VPN address {}", x.group, x.user, x.assigned);
+        let _ = writeln!(s, "  Status: up; ESP packets encapsulated {}, decapsulated {}, dropped {}", x.encaps, x.decaps, x.drops);
+    }
+    for sa in &sas {
+        let iface = if sa.iface.is_empty() { String::new() } else { format!(", interface {}", sa.iface) };
+        let _ = writeln!(s, "\nPeer {} (local {}){iface}", sa.peer, sa.local);
+        let _ = writeln!(s, "  Type: site-to-site, crypto map {} entry {}", sa.map, sa.seq);
+        let status = match (&sa.failed, sa.phase) {
+            (Some(why), _) => format!("down: {why}"),
+            (None, netlabcraft_sim::vpn::IkePhase::Established) if sa.spi_out != 0 => format!(
+                "up; ESP SPIs out 0x{:08x} in 0x{:08x}, packets encapsulated {}, decapsulated {}, dropped {}",
+                sa.spi_out, sa.spi_in, sa.encaps, sa.decaps, sa.drops
+            ),
+            (None, netlabcraft_sim::vpn::IkePhase::Established) => "IKE established, no IPsec association yet".to_string(),
+            (None, phase) => format!("negotiating: {}", phase.describe()),
+        };
+        let _ = writeln!(s, "  Status: {status}");
+    }
+    s.trim_end().to_string()
 }
 
 /// `show crypto isakmp sa`: one row per IPsec peer traffic has tried to reach.

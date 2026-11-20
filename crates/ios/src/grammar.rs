@@ -694,6 +694,7 @@ pub enum Id {
     ShowCryptoIpsecSa,
     ShowCryptoIsakmpPolicy,
     ShowCryptoMap,
+    ShowCryptoSession,
     ClearCryptoSa,
     // ---- remote-access VPN server ----
     IpLocalPool,
@@ -702,6 +703,12 @@ pub enum Id {
     NoClientGroup,
     ClientGroupKey,
     ClientGroupPool,
+    ClientGroupAcl,
+    ClientGroupDns,
+    ClientGroupDomain,
+    NoClientGroupAcl,
+    NoClientGroupDns,
+    NoClientGroupDomain,
     BbaGroup,
     NoBbaGroup,
     BbaTemplate,
@@ -2434,6 +2441,18 @@ pub static SPECS: &[Spec] = &[
     spec!(ClientGroupKey, Modes::CLIENT_GROUP, Modes::ROUTER, [K("key"), Arg("KEY")], "The group's pre-shared key"),
     spec!(ClientGroupPool, Modes::CLIENT_GROUP, Modes::ROUTER, [K("pool"), Arg("WORD")], "The local pool the clients' addresses come from"),
     spec!(
+        ClientGroupAcl,
+        Modes::CLIENT_GROUP,
+        Modes::ROUTER,
+        [K("acl"), Arg("WORD")],
+        "The split-tunnel access list: only these networks use the tunnel"
+    ),
+    spec!(ClientGroupDns, Modes::CLIENT_GROUP, Modes::ROUTER, [K("dns"), Arg("A.B.C.D")], "The name server pushed to the clients"),
+    spec!(ClientGroupDomain, Modes::CLIENT_GROUP, Modes::ROUTER, [K("domain"), Arg("WORD")], "The DNS domain pushed to the clients"),
+    spec!(NoClientGroupAcl, Modes::CLIENT_GROUP, Modes::ROUTER, [K("no"), K("acl")], "Send everything through the tunnel again"),
+    spec!(NoClientGroupDns, Modes::CLIENT_GROUP, Modes::ROUTER, [K("no"), K("dns")], "Push no name server"),
+    spec!(NoClientGroupDomain, Modes::CLIENT_GROUP, Modes::ROUTER, [K("no"), K("domain")], "Push no DNS domain"),
+    spec!(
         CryptoDynamicMap,
         Modes::CONFIG,
         Modes::ROUTER,
@@ -2618,6 +2637,7 @@ pub static SPECS: &[Spec] = &[
         "One interface's service policies and counters"
     ),
     spec!(ShowCryptoMap, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("map")], "Crypto maps and where they apply"),
+    spec!(ShowCryptoSession, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("session")], "Every VPN session this router holds"),
     spec!(
         WlanAdd,
         Modes::CONFIG,
