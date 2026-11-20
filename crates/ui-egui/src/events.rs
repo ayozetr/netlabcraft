@@ -339,7 +339,9 @@ pub fn panel(app: &mut PacketApp, ui: &mut Ui) {
         // Slow on the left, fast on the right, as a speed slider reads.
         let mut speed = 2.1 - app.ui.events.step_seconds;
         ui.spacing_mut().slider_width = ui.available_width() - 10.0;
-        if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).hint(tl("Play speed")).changed() {
+        // The slider shows no value, so a visible label names it for a screen reader too.
+        let label = ui.label(tl("Play speed"));
+        if ui.add(egui::Slider::new(&mut speed, 0.1..=2.0).show_value(false)).labelled_by(label.id).hint(tl("Play speed")).changed() {
             app.ui.events.step_seconds = 2.1 - speed;
         }
         // Constant delay: every hop takes the same simulated time (the engine keeps the option).
