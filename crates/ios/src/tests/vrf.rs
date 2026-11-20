@@ -194,3 +194,78 @@ fn deleting_a_vrf_returns_its_interfaces() {
     assert!(lab.t.device(r1).unwrap().ports[2].ip.is_none());
     assert!(lab.try_run(r1, "show ip route vrf BLUE").starts_with("% VRF BLUE"));
 }
+
+/// Each router gets a loopback in BLUE (10.1.1.1/24 and 10.2.2.1/24) next to the BLUE wire 10.0.12.0/30.
+fn blue_loopbacks(lab: &mut Lab, r1: DeviceId, r2: DeviceId) {
+    for (r, lo) in [(r1, "10.1.1.1"), (r2, "10.2.2.1")] {
+        lab.run(r, &format!("conf t\ninterface Loopback1\nip vrf forwarding BLUE\nip address {lo} 255.255.255.0\nend"));
+    }
+}
+
+#[test]
+fn rip_runs_in_a_vrf_address_family() {
+    let (mut lab, r1, r2, ..) = pair();
+    blue_loopbacks(&mut lab, r1, r2);
+    for r in [r1, r2] {
+        lab.run(r, "conf t\nrouter rip\naddress-family ipv4 vrf BLUE\nnetwork 10.0.0.0\nexit-address-family\nend");
+    }
+    // The process of the device itself has no network: the address family is the VRF's.
+    assert!(lab.t.device(r1).unwrap().rip.as_ref().unwrap().networks.is_empty());
+    lab.run(r1, "conf t\nrouter rip\naddress-family ipv4 vrf BLUE");
+    assert_eq!(lab.prompt(r1), "R1(config-router-af)#");
+    lab.run(r1, "exit-address-family");
+    assert_eq!(lab.prompt(r1), "R1(config-router)#");
+    lab.run(r1, "end");
+    lab.sim.run_for(&lab.t, 90_000_000);
+    let blue = lab.run(r1, "show ip route vrf BLUE");
+    assert!(blue.lines().any(|l| l.starts_with("R ") && l.contains("10.2.2.0/24")), "{blue}");
+    // Not in the global table, not in the other VRF.
+    assert!(!lab.run(r1, "show ip route").contains("10.2.2.0"));
+    assert!(!lab.run(r1, "show ip route vrf RED").contains("10.2.2.0"));
+    let ping = lab.run(r1, "ping vrf BLUE 10.2.2.1");
+    assert!(ping.contains("!!!!"), "{ping}");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" address-family ipv4 vrf BLUE\n") && run.contains("network 10.0.0.0"), "{run}");
+    assert!(run.contains(" exit-address-family\n"), "{run}");
+    // Replaying the configuration on a fresh router gives the address family back.
+    let mut other = Lab::new();
+    let r = other.add(DeviceKind::Router);
+    let _ = crate::exec::apply_config(&mut other.t, &mut other.sim, r, &run);
+    let replayed = other.t.device(r).unwrap().vrf("BLUE").and_then(|v| v.rip.as_ref()).map(|p| p.networks.len());
+    assert_eq!(replayed, Some(1));
+    // Removing RIP removes its address families too.
+    lab.run(r1, "conf t\nno router rip\nend");
+    assert!(lab.t.device(r1).unwrap().vrf("BLUE").unwrap().rip.is_none());
+}
+
+#[test]
+fn eigrp_runs_in_a_vrf_address_family() {
+    let (mut lab, r1, r2, ..) = pair();
+    blue_loopbacks(&mut lab, r1, r2);
+    for r in [r1, r2] {
+        lab.run(
+            r,
+            "conf t\nrouter eigrp 100\naddress-family ipv4 vrf BLUE autonomous-system 100\nnetwork 10.0.0.0 0.255.255.255\nexit-address-family\nend",
+        );
+    }
+    assert!(lab.t.device(r1).unwrap().eigrp.as_ref().unwrap().networks.is_empty());
+    lab.run(r1, "conf t\nrouter eigrp 100\naddress-family ipv4 vrf BLUE");
+    assert_eq!(lab.prompt(r1), "R1(config-router-af)#");
+    lab.run(r1, "exit-address-family");
+    assert_eq!(lab.prompt(r1), "R1(config-router)#");
+    lab.run(r1, "end");
+    lab.sim.run_for(&lab.t, 90_000_000);
+    let blue = lab.run(r1, "show ip route vrf BLUE");
+    assert!(blue.lines().any(|l| l.starts_with("D ") && l.contains("10.2.2.0/24")), "{blue}");
+    assert!(!lab.run(r1, "show ip route").contains("10.2.2.0"));
+    assert!(!lab.run(r1, "show ip route vrf RED").contains("10.2.2.0"));
+    let ping = lab.run(r1, "ping vrf BLUE 10.2.2.1");
+    assert!(ping.contains("!!!!"), "{ping}");
+    let run = lab.run(r1, "show running-config");
+    assert!(run.contains(" address-family ipv4 vrf BLUE autonomous-system 100\n"), "{run}");
+    assert!(run.contains("network 10.0.0.0 0.255.255.255"), "{run}");
+    // A VRF runs one EIGRP process.
+    lab.run(r1, "conf t\nrouter eigrp 100");
+    assert!(lab.try_run(r1, "address-family ipv4 vrf BLUE autonomous-system 200").starts_with("% "));
+    assert!(lab.try_run(r1, "address-family ipv4 vrf NOPE").starts_with("% VRF NOPE"));
+}

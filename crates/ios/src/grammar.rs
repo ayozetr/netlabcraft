@@ -1389,6 +1389,9 @@ pub enum Id {
     RouterOspfVrf,
     NoRouterOspfVrf,
     BgpAddressFamilyVrf,
+    RipAddressFamilyVrf,
+    EigrpAddressFamilyVrf,
+    EigrpAddressFamilyVrfAs,
     ShowIpBgpVrf,
     ShowIpBgpVrfSummary,
     ShowOspfNeighborVrf,
@@ -6428,6 +6431,21 @@ pub static SPECS: &[Spec] = &[
         "The OSPF neighbours of a VRF"
     ),
     spec!(BgpAddressFamilyVrf, Modes::BGP, Modes::BOTH, [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")], "Configure BGP inside a VRF"),
+    spec!(RipAddressFamilyVrf, Modes::RIP, Modes::BOTH, [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")], "Configure RIP inside a VRF"),
+    spec!(
+        EigrpAddressFamilyVrf,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")],
+        "Configure EIGRP inside a VRF (same AS as the process)"
+    ),
+    spec!(
+        EigrpAddressFamilyVrfAs,
+        Modes::EIGRP,
+        Modes::BOTH,
+        [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME"), K("autonomous-system"), Arg("<1-65535>")],
+        "Configure EIGRP inside a VRF, in its own autonomous system"
+    ),
     spec!(
         MstConfiguration,
         Modes::CONFIG,

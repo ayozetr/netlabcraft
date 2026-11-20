@@ -14,7 +14,7 @@ use netlabcraft_core::{Ipv4Net, VlanId, parse_ip};
 use netlabcraft_model::bgp::Bgp;
 use netlabcraft_model::routing::loopback_number;
 use netlabcraft_model::vrf::{MAX_NAME, MAX_TARGETS, MAX_VRFS, Vrf, valid_rd};
-use netlabcraft_model::{Device, DeviceKind, MAX_ROUTES, NextHop, Ospf, StaticRoute, Topology, ifname};
+use netlabcraft_model::{Device, DeviceKind, Eigrp, MAX_ROUTES, NextHop, Ospf, Rip, StaticRoute, Topology, ifname};
 use netlabcraft_sim::{PingOptions, Sim};
 
 use super::{Cli, Ctx, Mode, R, routing};
@@ -22,13 +22,13 @@ use crate::grammar::{self, Id, Modes};
 use crate::render;
 use netlabcraft_core::DeviceId;
 
-/// Runs a line with the VRF's copy of OSPF or BGP in the device's place when the mode is one of
+/// Runs a line with the VRF's copy of OSPF, BGP, RIP or EIGRP in the device's place when the mode is one of
 /// a VRF's, and plainly otherwise.
 pub(super) fn dispatch_in_vrf(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, line: &str) -> R {
     let mode = cli.mode.clone();
     let ctx = cli.vrf_ctx.clone();
     let vrf = match (ctx, &mode) {
-        (Some(v), Mode::Ospf | Mode::Bgp) => v,
+        (Some(v), Mode::Ospf | Mode::Bgp | Mode::Rip | Mode::Eigrp) => v,
         _ => return super::dispatch_line(t, sim, dev, cli, line),
     };
     let words: Vec<&str> = line.split_whitespace().collect();
@@ -37,7 +37,7 @@ pub(super) fn dispatch_in_vrf(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cl
         return super::dispatch_line(t, sim, dev, cli, line);
     }
     // `exit` and `exit-address-family` leave a VRF's address family for the BGP process itself.
-    if mode == Mode::Bgp
+    if matches!(mode, Mode::Bgp | Mode::Rip | Mode::Eigrp)
         && words.len() == 1
         && let Some(w) = words.first()
         && (w.eq_ignore_ascii_case("exit") || (w.len() >= 6 && "exit-address-family".starts_with(&w.to_ascii_lowercase())))
@@ -56,19 +56,21 @@ pub(super) fn dispatch_in_vrf(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cl
     swap_process(t, dev, &vrf, &mode);
     let r = super::dispatch_line(t, sim, dev, cli, line);
     swap_process(t, dev, &vrf, &mode);
-    if !matches!(cli.mode, Mode::Ospf | Mode::Bgp) {
+    if !matches!(cli.mode, Mode::Ospf | Mode::Bgp | Mode::Rip | Mode::Eigrp) {
         cli.vrf_ctx = None;
     }
     r
 }
 
-/// Exchanges the device's OSPF process (or BGP process) with the VRF's.
+/// Exchanges the device's OSPF, BGP, RIP or EIGRP process with the VRF's.
 fn swap_process(t: &mut Topology, dev: DeviceId, vrf: &str, mode: &Mode) {
     let Some(d) = t.device_mut(dev) else { return };
     let Some(v) = d.vrfs.iter_mut().find(|v| v.name == vrf) else { return };
     match mode {
         Mode::Ospf => std::mem::swap(&mut d.ospf, &mut v.ospf),
         Mode::Bgp => std::mem::swap(&mut d.bgp, &mut v.bgp),
+        Mode::Rip => std::mem::swap(&mut d.rip, &mut v.rip),
+        Mode::Eigrp => std::mem::swap(&mut d.eigrp, &mut v.eigrp),
         _ => {}
     }
 }
@@ -412,6 +414,47 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             c.cli.vrf_ctx = Some(name);
             Ok(String::new())
         }
+        Id::RipAddressFamilyVrf => {
+            if c.cli.mode != Mode::Rip {
+                return Err("% Only under `router rip` (IPv4 RIP)".into());
+            }
+            let name = arg(0).to_string();
+            existing(c.d()?, &name)?;
+            let d = c.dm()?;
+            if d.rip.is_none() {
+                return Err("% Start RIP first: router rip".into());
+            }
+            let Some(v) = d.vrfs.iter_mut().find(|v| v.name == name) else { return Err(format!("% VRF {name} does not exist")) };
+            if v.rip.is_none() {
+                v.rip = Some(Rip::default());
+            }
+            c.cli.vrf_ctx = Some(name);
+            Ok(String::new())
+        }
+        Id::EigrpAddressFamilyVrf | Id::EigrpAddressFamilyVrfAs => {
+            if c.cli.mode != Mode::Eigrp {
+                return Err("% Only under `router eigrp` (IPv4 EIGRP)".into());
+            }
+            let name = arg(0).to_string();
+            existing(c.d()?, &name)?;
+            let d = c.dm()?;
+            let Some(process) = d.eigrp.as_ref().map(|e| e.asn) else { return Err("% Start EIGRP first: router eigrp <AS>".into()) };
+            let asn = if id == Id::EigrpAddressFamilyVrfAs {
+                arg(1).parse::<u16>().ok().filter(|n| *n >= 1).ok_or("% The autonomous system number is 1-65535")?
+            } else {
+                process
+            };
+            let Some(v) = d.vrfs.iter_mut().find(|v| v.name == name) else { return Err(format!("% VRF {name} does not exist")) };
+            match &v.eigrp {
+                Some(e) if e.asn != asn => {
+                    return Err(format!("% VRF {name} already runs EIGRP in AS {}; each VRF runs one process", e.asn));
+                }
+                Some(_) => {}
+                None => v.eigrp = Some(Eigrp { asn, ..Eigrp::default() }),
+            }
+            c.cli.vrf_ctx = Some(name);
+            Ok(String::new())
+        }
         Id::ShowIpBgpVrf | Id::ShowIpBgpVrfSummary => {
             let name = arg(0).to_string();
             existing(c.d()?, &name)?;
@@ -598,6 +641,48 @@ pub(crate) fn with_bgp_families(d: &Device, text: String) -> String {
         super::bgp::running_config(&mut body, &alone);
         let _ = writeln!(out, " address-family ipv4 vrf {}", v.name);
         for line in section_of(&body, "router bgp ") {
+            let _ = writeln!(out, " {line}");
+        }
+        out.push_str(" exit-address-family\n");
+    }
+    out.push_str("!\n");
+    out
+}
+
+/// The routing process whose VRF address families [`with_families`] writes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Family {
+    Rip,
+    Eigrp,
+}
+
+/// The text of `router rip` or `router eigrp N` with each VRF's address family added at its end.
+pub(crate) fn with_families(d: &Device, text: String, family: Family) -> String {
+    let has = |v: &Vrf| match family {
+        Family::Rip => v.rip.is_some(),
+        Family::Eigrp => v.eigrp.is_some(),
+    };
+    if !d.vrfs.iter().any(has) || !text.ends_with("!\n") {
+        return text;
+    }
+    let mut out = text.trim_end_matches("!\n").to_string();
+    for v in d.vrfs.iter().filter(|v| has(v)) {
+        let mut alone = d.clone();
+        alone.vrfs.clear();
+        let (header, open) = match family {
+            Family::Rip => {
+                alone.rip = v.rip.clone();
+                ("router rip".to_string(), format!(" address-family ipv4 vrf {}", v.name))
+            }
+            Family::Eigrp => {
+                alone.eigrp = v.eigrp.clone();
+                let asn = v.eigrp.as_ref().map_or(0, |e| e.asn);
+                (format!("router eigrp {asn}"), format!(" address-family ipv4 vrf {} autonomous-system {asn}", v.name))
+            }
+        };
+        let body = render::running_config(&alone);
+        let _ = writeln!(out, "{open}");
+        for line in section_of(&body, &header) {
             let _ = writeln!(out, " {line}");
         }
         out.push_str(" exit-address-family\n");

@@ -841,7 +841,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Line(_) => format!("{n}(config-line)#"),
         Mode::DhcpPool(_) => format!("{n}(dhcp-config)#"),
         Mode::Svi(_) => format!("{n}(config-if)#"),
-        Mode::Bgp if cli.vrf_ctx.is_some() => format!("{n}(config-router-af)#"),
+        Mode::Bgp | Mode::Rip | Mode::Eigrp if cli.vrf_ctx.is_some() => format!("{n}(config-router-af)#"),
         Mode::Ospf | Mode::Rip | Mode::Eigrp | Mode::Bgp => format!("{n}(config-router)#"),
         Mode::BgpAf6 => format!("{n}(config-router-af)#"),
         Mode::Vrf(_) => format!("{n}(config-vrf)#"),
@@ -2984,7 +2984,10 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::ShowIpBgpVrf
         | Id::ShowIpBgpVrfSummary
         | Id::ShowOspfNeighborVrf
-        | Id::BgpAddressFamilyVrf => vrf::command(&mut c, spec.id, &args),
+        | Id::BgpAddressFamilyVrf
+        | Id::RipAddressFamilyVrf
+        | Id::EigrpAddressFamilyVrf
+        | Id::EigrpAddressFamilyVrfAs => vrf::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate
@@ -4643,6 +4646,9 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
             if d.rip.take().is_none() {
                 return Err("% RIP is not running".into());
             }
+            for v in &mut d.vrfs {
+                v.rip = None;
+            }
             Ok(String::new())
         }
         Id::RipVersion => {
@@ -4763,6 +4769,9 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                 return Err(format!("% No EIGRP process for AS {}", arg(0)));
             }
             d.eigrp = None;
+            for v in &mut d.vrfs {
+                v.eigrp = None;
+            }
             Ok(String::new())
         }
         Id::EigrpNetwork | Id::NoEigrpNetwork => {

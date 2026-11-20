@@ -60,15 +60,15 @@ pub fn view(t: &Topology, name: &str) -> Topology {
         }
         d.tunnels.clear();
         d.default_networks.clear();
-        d.rip = None;
-        d.eigrp = None;
-        let (routes, ospf, bgp) = match mine {
-            Some(m) => (m.routes, m.ospf, m.bgp),
-            None => (Vec::new(), None, None),
+        let (routes, ospf, bgp, rip, eigrp) = match mine {
+            Some(m) => (m.routes, m.ospf, m.bgp, m.rip, m.eigrp),
+            None => (Vec::new(), None, None, None, None),
         };
         d.routes = routes;
         d.ospf = ospf;
         d.bgp = bgp;
+        d.rip = rip;
+        d.eigrp = eigrp;
     }
     v
 }

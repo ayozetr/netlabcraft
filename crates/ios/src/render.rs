@@ -630,6 +630,7 @@ pub fn running_config(d: &Device) -> String {
         }
         let _ = writeln!(s, "!");
     }
+    let eigrp_at = s.len();
     if let Some(e) = &d.eigrp {
         let _ = writeln!(s, "router eigrp {}", e.asn);
         if let Some(id) = e.router_id {
@@ -659,11 +660,14 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::knobs::proto_lines(&mut s, d, "eigrp");
         let _ = writeln!(s, "!");
     }
+    let tail = s.split_off(eigrp_at);
+    s.push_str(&crate::exec::vrf::with_families(d, tail, crate::exec::vrf::Family::Eigrp));
     crate::exec::vrf::ospf_sections(&mut s, d);
     let mut bgp = String::new();
     crate::exec::bgp::running_config(&mut bgp, d);
     s.push_str(&crate::exec::vrf::with_bgp_families(d, bgp));
     crate::exec::policy::running_config(&mut s, d);
+    let rip_at = s.len();
     if let Some(r) = &d.rip {
         let _ = writeln!(s, "router rip");
         if r.version != 1 {
@@ -688,6 +692,8 @@ pub fn running_config(d: &Device) -> String {
         crate::exec::knobs::proto_lines(&mut s, d, "rip");
         let _ = writeln!(s, "!");
     }
+    let tail = s.split_off(rip_at);
+    s.push_str(&crate::exec::vrf::with_families(d, tail, crate::exec::vrf::Family::Rip));
     if d.kind == DeviceKind::Switch
         && let Some(g) = d.gateway
     {

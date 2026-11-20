@@ -1867,6 +1867,9 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip bgp vrf NAME summary` | user, privileged | router, switch | The BGP sessions of a VRF |
 | `show ip ospf neighbor vrf NAME` | user, privileged | router, switch | The OSPF neighbours of a VRF |
 | `address-family ipv4 vrf NAME` |  | router, switch | Configure BGP inside a VRF |
+| `address-family ipv4 vrf NAME` |  | router, switch | Configure RIP inside a VRF |
+| `address-family ipv4 vrf NAME` |  | router, switch | Configure EIGRP inside a VRF (same AS as the process) |
+| `address-family ipv4 vrf NAME autonomous-system <1-65535>` |  | router, switch | Configure EIGRP inside a VRF, in its own autonomous system |
 | `spanning-tree mst configuration` | config | switch | Edit the multiple spanning tree region: name, revision and which VLANs each instance holds |
 | `no spanning-tree mst configuration` | config | switch | Empty the region's name, revision and instance table |
 | `name NAME` |  | switch | Name the region (switches share a region only with the same name) |
