@@ -2784,6 +2784,7 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::ShowCryptoIpsecSa
         | Id::ShowCryptoIsakmpPolicy
         | Id::ShowCryptoMap
+        | Id::ShowCryptoSession
         | Id::IpLocalPool
         | Id::NoIpLocalPool
         | Id::ShowIpLocalPool

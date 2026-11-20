@@ -326,3 +326,19 @@ fn the_dns_server_and_domain_of_the_group_reach_the_client() {
     let r = s.execute("device.configure", json!({"device": "R1", "lines": lines})).unwrap();
     assert_eq!(r["errors"].as_array().map(Vec::len), Some(2), "{r}");
 }
+
+#[test]
+fn show_crypto_session_lists_the_clients_and_empties_with_them() {
+    let mut s = lab(&[]);
+    cli(&mut s, "R1", "enable");
+    assert_eq!(cli(&mut s, "R1", "show crypto session"), "No VPN sessions");
+    connect(&mut s, "team", "key-test", "ann", "pw-test").unwrap();
+    let shown = cli(&mut s, "R1", "show crypto session");
+    assert!(shown.contains("1 remote-access, 0 site-to-site"), "{shown}");
+    assert!(shown.contains("Peer 203.0.113.2 (local 203.0.113.1)"), "{shown}");
+    assert!(shown.contains("remote-access client, group team, user ann, VPN address 10.9.9.1"), "{shown}");
+    assert!(ping_ok(&mut s, "10.0.0.10"));
+    assert!(cli(&mut s, "R1", "show crypto session").contains("Status: up; ESP packets encapsulated"));
+    s.execute("vpnclient.disconnect", json!({"device": "PC1"})).unwrap();
+    assert_eq!(cli(&mut s, "R1", "show crypto session"), "No VPN sessions");
+}

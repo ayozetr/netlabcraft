@@ -694,6 +694,7 @@ pub enum Id {
     ShowCryptoIpsecSa,
     ShowCryptoIsakmpPolicy,
     ShowCryptoMap,
+    ShowCryptoSession,
     ClearCryptoSa,
     // ---- remote-access VPN server ----
     IpLocalPool,
@@ -2636,6 +2637,7 @@ pub static SPECS: &[Spec] = &[
         "One interface's service policies and counters"
     ),
     spec!(ShowCryptoMap, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("map")], "Crypto maps and where they apply"),
+    spec!(ShowCryptoSession, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("session")], "Every VPN session this router holds"),
     spec!(
         WlanAdd,
         Modes::CONFIG,

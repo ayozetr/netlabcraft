@@ -626,6 +626,7 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
         Id::ShowCryptoIpsecSa => Ok(render::crypto_ipsec_sa(c.sim, c.d()?)),
         Id::ShowCryptoIsakmpPolicy => Ok(render::isakmp_policies(c.d()?)),
         Id::ShowCryptoMap => Ok(render::crypto_maps(c.d()?)),
+        Id::ShowCryptoSession => Ok(render::crypto_session(c.sim, c.d()?)),
         Id::ClearCryptoSa => {
             c.sim.clear_ipsec(c.dev);
             Ok(String::new())
