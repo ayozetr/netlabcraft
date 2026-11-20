@@ -5,7 +5,8 @@ use std::net::Ipv4Addr;
 
 use netlabcraft_core::{Ipv4Net, parse_ip};
 use netlabcraft_model::vpn::{
-    ClientGroup, CryptoMapEntry, IsakmpPolicy, LocalPool, MAX_CRYPTO, MAX_CRYPTO_TEXT, MAX_POOL_ADDRESSES, TransformSet, TunnelSource, tunnel_number,
+    ClientGroup, CryptoMapEntry, IpsecProfile, IsakmpPolicy, LocalPool, MAX_CRYPTO, MAX_CRYPTO_TEXT, MAX_POOL_ADDRESSES, TransformSet, TunnelSource,
+    tunnel_number,
 };
 use netlabcraft_model::{DeviceKind, MAX_DESCRIPTION, ifname};
 
@@ -115,6 +116,18 @@ fn map_entry<'a>(c: &'a mut Ctx) -> Result<&'a mut CryptoMapEntry, String> {
     c.dm()?.crypto.maps.iter_mut().find(|e| e.map == name && e.seq == seq).ok_or_else(|| "% The crypto map entry was deleted".to_string())
 }
 
+/// Whether the console is in IPsec profile mode (where the `set` commands of a crypto map entry
+/// edit a profile instead).
+fn in_profile(c: &Ctx) -> bool {
+    matches!(c.cli.mode, Mode::IpsecProfile(_))
+}
+
+/// The current IPsec profile (IPsec profile mode).
+pub(super) fn current_profile<'a>(c: &'a mut Ctx) -> Result<&'a mut IpsecProfile, String> {
+    let Mode::IpsecProfile(name) = c.cli.mode.clone() else { return Err("% Not in IPsec profile mode".into()) };
+    c.dm()?.crypto.profiles.iter_mut().find(|p| p.name == name).ok_or_else(|| "% The IPsec profile was deleted".to_string())
+}
+
 /// A new crypto map or dynamic map entry, empty.
 fn new_entry(map: &str, seq: u32, template: bool, dynamic_ref: Option<String>) -> CryptoMapEntry {
     CryptoMapEntry {
@@ -129,6 +142,7 @@ fn new_entry(map: &str, seq: u32, template: bool, dynamic_ref: Option<String>) -
         dynamic_ref,
         reverse_route: false,
         pfs: None,
+        gre_ends: None,
     }
 }
 
@@ -505,11 +519,19 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             let name = name_ok(arg(0))?;
             let note =
                 if c.d()?.crypto.transform_set(&name).is_none() { format!("Note: transform set {name} does not exist yet") } else { String::new() };
-            map_entry(c)?.transform_set = Some(name);
+            if in_profile(c) {
+                current_profile(c)?.transform_set = Some(name);
+            } else {
+                map_entry(c)?.transform_set = Some(name);
+            }
             Ok(note)
         }
         Id::NoCryptoSetTransformSet => {
-            map_entry(c)?.transform_set = None;
+            if in_profile(c) {
+                current_profile(c)?.transform_set = None;
+            } else {
+                map_entry(c)?.transform_set = None;
+            }
             Ok(String::new())
         }
         Id::IpsecSaLifetime | Id::NoIpsecSaLifetime | Id::CryptoSetSaLifetime | Id::NoCryptoSetSaLifetime => {
@@ -530,8 +552,14 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             } else {
                 None
             };
-            let life =
-                if matches!(id, Id::IpsecSaLifetime | Id::NoIpsecSaLifetime) { &mut c.dm()?.crypto.sa_lifetime } else { &mut map_entry(c)?.lifetime };
+            let global = matches!(id, Id::IpsecSaLifetime | Id::NoIpsecSaLifetime);
+            let life = if global {
+                &mut c.dm()?.crypto.sa_lifetime
+            } else if in_profile(c) {
+                &mut current_profile(c)?.lifetime
+            } else {
+                &mut map_entry(c)?.lifetime
+            };
             if seconds {
                 life.seconds = value;
             } else {
@@ -546,11 +574,19 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
                 .and_then(|n| n.parse::<u16>().ok())
                 .filter(|g| netlabcraft_model::vpn::PFS_GROUPS.contains(g))
                 .ok_or("% The groups are group2, group5, group14, group15, group16, group19, group20 and group24")?;
-            map_entry(c)?.pfs = Some(group);
+            if in_profile(c) {
+                current_profile(c)?.pfs = Some(group);
+            } else {
+                map_entry(c)?.pfs = Some(group);
+            }
             Ok(String::new())
         }
         Id::NoCryptoSetPfs => {
-            map_entry(c)?.pfs = None;
+            if in_profile(c) {
+                current_profile(c)?.pfs = None;
+            } else {
+                map_entry(c)?.pfs = None;
+            }
             Ok(String::new())
         }
         Id::CryptoMatchAddress => {
@@ -587,6 +623,36 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             }
             Ok(String::new())
         }
+        Id::IpsecProfile => {
+            let name = name_ok(arg(0))?;
+            let crypto = &mut c.dm()?.crypto;
+            if crypto.profile(&name).is_none() {
+                if crypto.profiles.len() >= MAX_CRYPTO {
+                    return Err(format!("% At most {MAX_CRYPTO} IPsec profiles"));
+                }
+                crypto.profiles.push(IpsecProfile::new(&name));
+            }
+            c.cli.mode = Mode::IpsecProfile(name);
+            Ok(String::new())
+        }
+        Id::NoIpsecProfile => {
+            let name = arg(0).to_string();
+            let crypto = &mut c.dm()?.crypto;
+            let before = crypto.profiles.len();
+            crypto.profiles.retain(|p| p.name != name);
+            if crypto.profiles.len() == before { Err(format!("% There is no IPsec profile {name}")) } else { Ok(String::new()) }
+        }
+        Id::TunnelProtection | Id::NoTunnelProtection => {
+            let Mode::Tunnel(n) = c.cli.mode else { return Err("% Not in a tunnel interface".into()) };
+            let name = if id == Id::TunnelProtection { Some(name_ok(arg(0))?) } else { None };
+            let note = match &name {
+                Some(p) if c.d()?.crypto.profile(p).is_none() => format!("Note: IPsec profile {p} does not exist yet (`crypto ipsec profile`)"),
+                _ => String::new(),
+            };
+            c.dm()?.tunnel_mut(n).ok_or("% Too many tunnel interfaces")?.protection = name;
+            Ok(note)
+        }
+        Id::ShowCryptoIpsecProfile => Ok(render::ipsec_profiles(c.d()?)),
         Id::ShowCryptoIsakmpSa => Ok(render::crypto_isakmp_sa(c.sim, c.d()?)),
         Id::ShowCryptoIpsecSa => Ok(render::crypto_ipsec_sa(c.sim, c.d()?)),
         Id::ShowCryptoIsakmpPolicy => Ok(render::isakmp_policies(c.d()?)),

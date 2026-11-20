@@ -55,6 +55,8 @@ impl Modes {
     pub const CRYPTO_MAP: Modes = Modes(1 << 22);
     /// `crypto ipsec transform-set NAME …`.
     pub const TRANSFORM: Modes = Modes(1 << 23);
+    /// `crypto ipsec profile NAME`.
+    pub const IPSEC_PROFILE: Modes = Modes(1 << 90);
     /// `interface Loopback N`.
     pub const LOOPBACK: Modes = Modes(1 << 24);
     /// `class-map [match-all|match-any] NAME`.
@@ -162,6 +164,7 @@ impl Modes {
             | (1 << 60)
             | (1 << 61)
             | (1 << 62)
+            | (1 << 90)
             | (1 << 36),
     );
     pub const BOTH: Modes = Modes(192);
@@ -692,6 +695,11 @@ pub enum Id {
     NoCryptoMapIf,
     ShowCryptoIsakmpSa,
     ShowCryptoIpsecSa,
+    IpsecProfile,
+    NoIpsecProfile,
+    TunnelProtection,
+    NoTunnelProtection,
+    ShowCryptoIpsecProfile,
     ShowCryptoIsakmpPolicy,
     ShowCryptoMap,
     ClearCryptoSa,
@@ -1702,7 +1710,9 @@ const BOTH_FW: Modes = Modes::BOTH.or(Modes::FIREWALL);
 const FW: Modes = Modes::FIREWALL;
 /// The site-to-site VPN sub-modes.
 const VRF_IFACES: Modes = Modes::IF.or(Modes::SUBIF).or(Modes::SVI).or(Modes::LOOPBACK);
-const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM).or(Modes::CLIENT_GROUP);
+const VPN_MODES: Modes = Modes::TUNNEL.or(Modes::ISAKMP).or(Modes::CRYPTO_MAP).or(Modes::TRANSFORM).or(Modes::CLIENT_GROUP).or(Modes::IPSEC_PROFILE);
+/// The commands a crypto map entry and an IPsec profile share.
+const MAP_OR_PROFILE: Modes = Modes::CRYPTO_MAP.or(Modes::IPSEC_PROFILE);
 /// The QoS sub-modes.
 const QOS_MODES: Modes = Modes::CLASS_MAP.or(Modes::POLICY_MAP).or(Modes::POLICY_CLASS);
 /// Where a service policy can be applied: routed interfaces, VLAN interfaces and tunnels.
@@ -2365,8 +2375,8 @@ pub static SPECS: &[Spec] = &[
     spec!(CryptoSetPeer, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("peer"), Arg("A.B.C.D")], "The far end of the IPsec tunnel"),
     spec!(NoCryptoSetPeer, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("peer")], "Clear the peer"),
     spec!(NoCryptoSetPeer, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("peer"), Arg("A.B.C.D")], "Clear the peer"),
-    spec!(CryptoSetTransformSet, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("transform-set"), Arg("WORD")], "The transform set to use"),
-    spec!(NoCryptoSetTransformSet, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("transform-set")], "Clear the transform set"),
+    spec!(CryptoSetTransformSet, MAP_OR_PROFILE, Modes::ROUTER, [K("set"), K("transform-set"), Arg("WORD")], "The transform set to use"),
+    spec!(NoCryptoSetTransformSet, MAP_OR_PROFILE, Modes::ROUTER, [K("no"), K("set"), K("transform-set")], "Clear the transform set"),
     spec!(
         IpsecSaLifetime,
         Modes::CONFIG,
@@ -2383,26 +2393,26 @@ pub static SPECS: &[Spec] = &[
     ),
     spec!(
         CryptoSetSaLifetime,
-        Modes::CRYPTO_MAP,
+        MAP_OR_PROFILE,
         Modes::ROUTER,
         [K("set"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}"), Arg("<N>")],
         "This entry's key lifetime"
     ),
     spec!(
         NoCryptoSetSaLifetime,
-        Modes::CRYPTO_MAP,
+        MAP_OR_PROFILE,
         Modes::ROUTER,
         [K("no"), K("set"), K("security-association"), K("lifetime"), Arg("{seconds|kilobytes}")],
         "Use the global key lifetime"
     ),
     spec!(
         CryptoSetPfs,
-        Modes::CRYPTO_MAP,
+        MAP_OR_PROFILE,
         Modes::ROUTER,
         [K("set"), K("pfs"), Arg("{group2|group5|group14|group15|group16|group19|group20|group24}")],
         "Run a fresh Diffie-Hellman exchange for every new set of IPsec keys"
     ),
-    spec!(NoCryptoSetPfs, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("pfs")], "Derive IPsec keys from the IKE keys alone"),
+    spec!(NoCryptoSetPfs, MAP_OR_PROFILE, Modes::ROUTER, [K("no"), K("set"), K("pfs")], "Derive IPsec keys from the IKE keys alone"),
     spec!(CryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("match"), K("address"), Arg("ACL")], "The access list choosing what to protect"),
     spec!(NoCryptoMatchAddress, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("match"), K("address")], "Protect nothing"),
     spec!(CryptoMapIf, Modes::IF.or(Modes::SUBIF), Modes::ROUTER, [K("crypto"), K("map"), Arg("WORD")], "Protect traffic leaving this interface"),
@@ -2495,6 +2505,42 @@ pub static SPECS: &[Spec] = &[
     spec!(ShowCryptoIsakmpSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("sa")], "IKE peers and their state"),
     spec!(ShowCryptoIsakmpPolicy, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("isakmp"), K("policy")], "IKE policies"),
     spec!(ShowCryptoIpsecSa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ipsec"), K("sa")], "IPsec associations and packet counts"),
+    spec!(
+        IpsecProfile,
+        Modes::CONFIG,
+        Modes::ROUTER,
+        [K("crypto"), K("ipsec"), K("profile"), Arg("WORD")],
+        "Define or edit the IPsec settings of a protected tunnel"
+    ),
+    spec!(NoIpsecProfile, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("ipsec"), K("profile"), Arg("WORD")], "Delete an IPsec profile"),
+    spec!(
+        TunnelProtection,
+        Modes::TUNNEL,
+        Modes::ROUTER,
+        [K("tunnel"), K("protection"), K("ipsec"), K("profile"), Arg("WORD")],
+        "Protect this tunnel's packets with an IPsec profile"
+    ),
+    spec!(
+        NoTunnelProtection,
+        Modes::TUNNEL,
+        Modes::ROUTER,
+        [K("no"), K("tunnel"), K("protection"), K("ipsec"), K("profile")],
+        "Send this tunnel's packets unprotected"
+    ),
+    spec!(
+        NoTunnelProtection,
+        Modes::TUNNEL,
+        Modes::ROUTER,
+        [K("no"), K("tunnel"), K("protection"), K("ipsec"), K("profile"), Arg("WORD")],
+        "Send this tunnel's packets unprotected"
+    ),
+    spec!(
+        ShowCryptoIpsecProfile,
+        EXECS,
+        Modes::ROUTER,
+        [K("show"), K("crypto"), K("ipsec"), K("profile")],
+        "IPsec profiles and the tunnels they protect"
+    ),
     // ---- QoS ----
     spec!(ClassMap, Modes::CONFIG, Modes::BOTH, [K("class-map"), Rest("[match-all|match-any] NAME")], "Define or edit a traffic class"),
     spec!(NoClassMap, Modes::CONFIG, Modes::BOTH, [K("no"), K("class-map"), Rest("[match-all|match-any] NAME")], "Delete a traffic class"),
@@ -7692,8 +7738,8 @@ pub static SPECS: &[Spec] = &[
     spec!(Ikev2ProfileKeyring, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("keyring"), K("local"), Arg("NAME")], "The keyring holding the keys"),
     spec!(Ikev2ProfileLifetime, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("lifetime"), Arg("<120-86400>")], "Seconds before the IKE SA is replaced"),
     spec!(NoIkev2ProfileLifetime, Modes::IKEV2_PROFILE, Modes::ROUTER, [K("no"), K("lifetime")], "Back to the default IKE SA lifetime"),
-    spec!(CryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("set"), K("ikev2-profile"), Arg("NAME")], "Negotiate this entry with IKEv2"),
-    spec!(NoCryptoSetIkev2Profile, Modes::CRYPTO_MAP, Modes::ROUTER, [K("no"), K("set"), K("ikev2-profile")], "Back to IKEv1"),
+    spec!(CryptoSetIkev2Profile, MAP_OR_PROFILE, Modes::ROUTER, [K("set"), K("ikev2-profile"), Arg("NAME")], "Negotiate this entry with IKEv2"),
+    spec!(NoCryptoSetIkev2Profile, MAP_OR_PROFILE, Modes::ROUTER, [K("no"), K("set"), K("ikev2-profile")], "Back to IKEv1"),
     spec!(ShowCryptoIkev2Sa, EXECS, Modes::ROUTER, [K("show"), K("crypto"), K("ikev2"), K("sa")], "IKEv2 security associations"),
     spec!(CryptoPkiTrustpoint, Modes::CONFIG, Modes::ROUTER, [K("crypto"), K("pki"), K("trustpoint"), Arg("NAME")], "Define or edit a trustpoint"),
     spec!(NoCryptoPkiTrustpoint, Modes::CONFIG, Modes::ROUTER, [K("no"), K("crypto"), K("pki"), K("trustpoint"), Arg("NAME")], "Delete a trustpoint"),
@@ -8631,6 +8677,7 @@ mod tests {
                 Modes::LOOPBACK,
                 Modes::ISAKMP,
                 Modes::CRYPTO_MAP,
+                Modes::IPSEC_PROFILE,
                 Modes::TRANSFORM,
                 Modes::CLASS_MAP,
                 Modes::POLICY_MAP,

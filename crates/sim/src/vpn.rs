@@ -535,6 +535,29 @@ fn owner<'a>(t: &'a Topology, me: &Device, addr: Ipv4Addr) -> Option<&'a Device>
     t.devices.iter().find(|x| x.id != me.id && crate::l3_ifaces(x).iter().any(|i| i.net.addr == addr))
 }
 
+/// The crypto map entry a tunnel protected by an IPsec profile stands for, when the tunnel's GRE
+/// packets go from `local` to `peer` (its source resolves to `local`, its destination is `peer`).
+pub(crate) fn protected_entry(d: &Device, local: Ipv4Addr, peer: Ipv4Addr) -> Option<CryptoMapEntry> {
+    if d.tunnels.is_empty() {
+        return None;
+    }
+    let ifaces = crate::l3_ifaces(d);
+    d.tunnels
+        .iter()
+        .filter(|tun| tun.protection.is_some() && tun.destination == Some(peer))
+        .find(|tun| match &tun.source {
+            Some(TunnelSource::Address(a)) => *a == local,
+            Some(TunnelSource::Interface(n)) => ifaces.iter().any(|i| same_name(&i.name, n) && i.net.addr == local),
+            None => false,
+        })
+        .and_then(|tun| d.crypto.profile_entry(tun, local))
+}
+
+/// Whether this router has any tunnel protected by an IPsec profile.
+pub(crate) fn has_protected_tunnel(d: &Device) -> bool {
+    d.tunnels.iter().any(|tun| tun.protection.is_some())
+}
+
 /// What this router itself needs before it can start IKE for a crypto map entry: a peer, a
 /// transform set that exists and a key for the peer.
 fn local_check(d: &Device, e: &CryptoMapEntry) -> Result<(Ipv4Addr, String), String> {
@@ -613,11 +636,24 @@ pub(crate) fn pfs_difference(t: &Topology, d: &Device, local: Ipv4Addr, peer: Ip
 /// on the interface the exchange reached, with the same transform set.
 fn quick_check(a: &Device, a_addr: Ipv4Addr, e: &CryptoMapEntry, b: &Device, b_addr: Ipv4Addr) -> Result<(), String> {
     let ts = e.transform_set.as_deref().and_then(|n| a.crypto.transform_set(n)).ok_or("the crypto map entry has no usable transform set")?;
-    let p_if = crate::l3_ifaces(b).into_iter().find(|i| i.net.addr == b_addr).map(|i| i.name).unwrap_or_default();
-    let p_map =
-        b.crypto.applied.iter().find(|(n, _)| same_name(n, &p_if)).map(|(_, m)| m).ok_or_else(|| format!("the peer has no crypto map on {p_if}"))?;
-    let pe =
-        b.crypto.map(p_map).find(|x| x.peer == Some(a_addr)).ok_or_else(|| format!("the peer's crypto map {p_map} has no entry for {a_addr}"))?;
+    let pe: CryptoMapEntry = match protected_entry(b, b_addr, a_addr) {
+        Some(e) => e,
+        None => {
+            let p_if = crate::l3_ifaces(b).into_iter().find(|i| i.net.addr == b_addr).map(|i| i.name).unwrap_or_default();
+            let p_map = b
+                .crypto
+                .applied
+                .iter()
+                .find(|(n, _)| same_name(n, &p_if))
+                .map(|(_, m)| m)
+                .ok_or_else(|| format!("the peer has no crypto map on {p_if}"))?;
+            b.crypto
+                .map(p_map)
+                .find(|x| x.peer == Some(a_addr))
+                .cloned()
+                .ok_or_else(|| format!("the peer's crypto map {p_map} has no entry for {a_addr}"))?
+        }
+    };
     let p_ts =
         pe.transform_set.as_deref().and_then(|n| b.crypto.transform_set(n)).ok_or("the peer's crypto map entry has no usable transform set")?;
     if p_ts.transforms != ts.transforms || p_ts.transport != ts.transport {
@@ -813,6 +849,9 @@ pub(crate) fn entry_transport(d: &Device, e: &CryptoMapEntry) -> bool {
 /// Whether the crypto map entry for a peer says transport mode (for the packets that come back).
 pub fn peer_uses_transport(d: &Device, peer: Ipv4Addr) -> bool {
     d.crypto.applied.values().any(|m| d.crypto.map(m).any(|e| e.peer == Some(peer) && entry_transport(d, e)))
+        || d.tunnels
+            .iter()
+            .any(|tun| tun.destination == Some(peer) && d.crypto.profile_entry(tun, Ipv4Addr::UNSPECIFIED).is_some_and(|e| entry_transport(d, &e)))
 }
 
 /// ESP transform from a transform set (RFC 2407 §4.4.4 and §4.5).
@@ -982,12 +1021,23 @@ impl Sim {
     /// map protects the datagram, `None` when it leaves in the clear. Without a security
     /// association the packet starts IKE and is dropped.
     pub(crate) fn crypto_out(&mut self, t: &Topology, d: &Device, out: &L3If, datagram: &[u8]) -> Result<Option<(Vec<u8>, Ipv4Addr)>, String> {
-        let Some(map) = d.crypto.applied.iter().find(|(n, _)| same_name(n, &out.name)).map(|(_, m)| m.clone()) else { return Ok(None) };
         let Ok(ip) = Ipv4::decode(datagram) else { return Ok(None) };
         if ip.protocol == PROTO_ESP || ip.protocol == PROTO_AH || is_isakmp(&ip) {
             return Ok(None);
         }
-        let Some(entry) = d.crypto.map(&map).find(|e| e.acl.as_deref().is_some_and(|a| acl_permits(d, a, &ip))).cloned() else { return Ok(None) };
+        // The GRE packets of a tunnel protected by an IPsec profile, else the crypto map applied
+        // to the interface the packet leaves by.
+        let protected = if ip.protocol == PROTO_GRE { protected_entry(d, ip.src, ip.dst) } else { None };
+        let (map, entry) = match protected {
+            Some(e) => (e.map.clone(), e),
+            None => {
+                let Some(map) = d.crypto.applied.iter().find(|(n, _)| same_name(n, &out.name)).map(|(_, m)| m.clone()) else { return Ok(None) };
+                let Some(entry) = d.crypto.map(&map).find(|e| e.acl.as_deref().is_some_and(|a| acl_permits(d, a, &ip))).cloned() else {
+                    return Ok(None);
+                };
+                (map, entry)
+            }
+        };
         if entry.ikev2_profile.is_some() {
             return self.crypto_out_v2(t, d, out, datagram, &entry);
         }
@@ -1369,7 +1419,7 @@ impl Sim {
             };
             self.debug_log(d.id, DebugKind::CryptoIsakmp, &format!("{what} message from {peer}: {body}"));
         }
-        if d.crypto.applied.is_empty() && d.crypto.key_for(peer).is_none() {
+        if d.crypto.applied.is_empty() && !has_protected_tunnel(d) && d.crypto.key_for(peer).is_none() {
             return Err(format!("ISAKMP from {peer}: IPsec is not configured here"));
         }
         let other = owner(t, d, peer);
@@ -1378,11 +1428,7 @@ impl Sim {
         let cur = self.state.get(&d.id).and_then(|s| s.ipsec.get(&peer)).cloned().unwrap_or_default();
         let my_key = d.crypto.key_for(peer).unwrap_or_default().to_string();
         // The crypto map entry towards this peer, on the interface it reached.
-        let my_entry = crate::l3_ifaces(d)
-            .into_iter()
-            .find(|i| i.net.addr == local)
-            .and_then(|i| d.crypto.applied.iter().find(|(n, _)| same_name(n, &i.name)).map(|(_, m)| m.clone()))
-            .and_then(|m| d.crypto.map(&m).find(|e| e.peer == Some(peer)).cloned());
+        let my_entry = crate::ikev2::entry_for(d, local, peer);
         if m.exchange == ike::EXCH_INFO {
             let what = m.notify().map_or("notification", ike::notify_name);
             if cur.phase == IkePhase::Established || cur.icookie != m.icookie {
@@ -1609,11 +1655,7 @@ impl Sim {
                     {
                         // The configurations say how they differ, when the peer is known.
                         let why = other.and_then(|o| {
-                            let oe = crate::l3_ifaces(o)
-                                .into_iter()
-                                .find(|i| i.net.addr == peer)
-                                .and_then(|i| o.crypto.applied.iter().find(|(n, _)| same_name(n, &i.name)).map(|(_, m)| m.clone()))
-                                .and_then(|mname| o.crypto.map(&mname).find(|e| e.peer == Some(local)).cloned())?;
+                            let oe = crate::ikev2::entry_for(o, peer, local)?;
                             quick_check(o, peer, &oe, d, local).err()
                         });
                         Err(why.unwrap_or_else(|| "the peer's ESP transforms differ from this router's transform set".to_string()))
@@ -1858,7 +1900,8 @@ impl Sim {
         if let Some(r) = self.esp_in_v2(t, d, ifc, ip, spi) {
             return r;
         }
-        let expects = d.crypto.applied.values().any(|m| d.crypto.map(m).any(|e| e.peer == Some(ip.src)));
+        let expects = d.crypto.applied.values().any(|m| d.crypto.map(m).any(|e| e.peer == Some(ip.src)))
+            || d.tunnels.iter().any(|tun| tun.protection.is_some() && tun.destination == Some(ip.src));
         let sa = self.state.get(&d.id).and_then(|s| s.ipsec.get(&ip.src));
         let keys = sa.filter(|sa| sa.phase == IkePhase::Established).and_then(|sa| {
             let prev = sa.prev_in.clone().filter(|p| p.0 == spi);

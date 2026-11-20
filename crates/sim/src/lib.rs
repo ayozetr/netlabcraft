@@ -3929,7 +3929,7 @@ impl Sim {
             return self.gre_out(t, d, out, datagram);
         }
         // Protected by a crypto map on this interface: sent to the IPsec peer as ESP.
-        if !d.crypto.applied.is_empty()
+        if (!d.crypto.applied.is_empty() || vpn::has_protected_tunnel(d))
             && let Some((mut esp, peer)) = self.crypto_out(t, d, out, &datagram)?
         {
             let (o2, nh2) = self.route(t, d, peer).ok_or_else(|| format!("no route to IPsec peer {peer}"))?;

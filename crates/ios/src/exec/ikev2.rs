@@ -302,12 +302,16 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             Ok(String::new())
         }
         Id::CryptoSetIkev2Profile | Id::NoCryptoSetIkev2Profile => {
-            let Mode::CryptoMap(name, seq) = c.cli.mode.clone() else { return Err("% Not in crypto map mode".into()) };
             let prof = if id == Id::CryptoSetIkev2Profile { Some(name_ok(&arg(0))?) } else { None };
             let note = match &prof {
                 Some(p) if c.d()?.crypto.ikev2.profile(p).is_none() => format!("Note: IKEv2 profile {p} does not exist yet"),
                 _ => String::new(),
             };
+            if matches!(c.cli.mode, Mode::IpsecProfile(_)) {
+                super::vpn::current_profile(c)?.ikev2_profile = prof;
+                return Ok(note);
+            }
+            let Mode::CryptoMap(name, seq) = c.cli.mode.clone() else { return Err("% Not in crypto map mode".into()) };
             let e = c.dm()?.crypto.maps.iter_mut().find(|e| e.map == name && e.seq == seq).ok_or("% The crypto map entry was deleted")?;
             e.ikev2_profile = prof;
             Ok(note)
