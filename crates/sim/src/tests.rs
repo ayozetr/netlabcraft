@@ -847,7 +847,7 @@ fn nat_translates_both_ways() {
                 log: false,
             }],
         });
-        r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: true });
+        r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: true, vrf: None });
     }
     // The ISP knows nothing about 192.168.1.0/24: without NAT the replies couldn't come back.
     let mut sim = Sim::new();
@@ -899,7 +899,7 @@ fn nat_to_an_interface_without_overload_serves_one_inside_host_at_a_time() {
             remarks: Vec::new(),
             entries: vec![AclEntry::new(true, AclProto::Ip, AclAddr { addr: ip("192.168.1.0"), wildcard: ip("0.0.0.255") }, AclAddr::ANY)],
         });
-        r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: false });
+        r.nat.rules.push(NatRule { acl: "1".into(), target: NatTarget::Interface("GigabitEthernet0/1".into()), overload: false, vrf: None });
     }
     let mut sim = Sim::new();
     let ping = |sim: &mut Sim, h| {

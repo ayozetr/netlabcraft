@@ -526,7 +526,8 @@ pub fn running_config(d: &Device) -> String {
             netlabcraft_model::NatTarget::Interface(i) => format!("interface {i}"),
             netlabcraft_model::NatTarget::Pool(p) => format!("pool {p}"),
         };
-        let _ = writeln!(s, "ip nat inside source list {} {target}{}", r.acl, if r.overload { " overload" } else { "" });
+        let vrf = r.vrf.as_ref().map_or(String::new(), |v| format!(" vrf {v}"));
+        let _ = writeln!(s, "ip nat inside source list {} {target}{vrf}{}", r.acl, if r.overload { " overload" } else { "" });
     }
     for (l, g) in &d.nat.statics {
         let _ = writeln!(s, "ip nat inside source static {l} {g}");

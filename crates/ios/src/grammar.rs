@@ -2041,7 +2041,7 @@ pub static SPECS: &[Spec] = &[
         NatSource,
         Modes::CONFIG,
         Modes::BOTH,
-        [K("ip"), K("nat"), K("inside"), K("source"), Rest("{static A B | list ACL {interface IF | pool NAME} [overload]}")],
+        [K("ip"), K("nat"), K("inside"), K("source"), Rest("{static A B | list ACL {interface IF | pool NAME} [vrf NAME] [overload]}")],
         "Translate inside addresses"
     ),
     spec!(NoNatSource, Modes::CONFIG, Modes::BOTH, [K("no"), K("ip"), K("nat"), K("inside"), K("source"), Rest("...")], "Remove a translation rule"),

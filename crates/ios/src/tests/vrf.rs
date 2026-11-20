@@ -298,3 +298,34 @@ fn a_dhcp_pool_serves_the_interfaces_of_its_vrf() {
     lab.run(r, "conf t\nip dhcp pool LAN\nno vrf\nend");
     assert!(lab.t.device(r).unwrap().dhcp_pools.iter().all(|p| p.vrf.is_none()));
 }
+
+#[test]
+fn a_nat_rule_with_a_vrf_translates_that_vrfs_traffic() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let a = lab.add(DeviceKind::Pc);
+    let srv = lab.add(DeviceKind::Server);
+    lab.cable(a, "fa0", r, "g0/0");
+    lab.cable(srv, "g0", r, "g0/1");
+    lab.run(a, "ipconfig 192.168.1.10 255.255.255.0 192.168.1.1");
+    lab.run(srv, "ipconfig 203.0.113.10 255.255.255.0 203.0.113.1");
+    lab.run(
+        r,
+        "en\nconf t\nip vrf RED\nexit\ninterface g0/0\nip vrf forwarding RED\nip address 192.168.1.1 255.255.255.0\nip nat inside\nno shut\n\
+         interface g0/1\nip vrf forwarding RED\nip address 203.0.113.1 255.255.255.0\nip nat outside\nno shut\nexit\n\
+         access-list 1 permit 192.168.1.0 0.0.0.255\nip nat inside source list 1 interface g0/1 overload\nend",
+    );
+    // A rule of the global table leaves the VRF's traffic alone.
+    assert!(lab.run(a, "ping 203.0.113.10").contains("answered"));
+    assert!(!lab.run(r, "show ip nat translations").contains("icmp"));
+    // The rule of the VRF translates it, and the answer comes back through the same translation.
+    assert!(lab.try_run(r, "conf t").is_empty());
+    assert!(lab.try_run(r, "ip nat inside source list 1 interface g0/1 vrf NOPE overload").starts_with("% VRF NOPE"));
+    lab.run(r, "ip nat inside source list 1 interface g0/1 vrf RED overload\nend");
+    assert!(lab.run(a, "ping 203.0.113.10").contains("answered"));
+    let table = lab.run(r, "show ip nat translations");
+    assert!(table.contains("icmp") && table.contains("203.0.113.1"), "{table}");
+    let run = lab.run(r, "show running-config");
+    assert!(run.contains("ip nat inside source list 1 interface GigabitEthernet0/1 vrf RED overload"), "{run}");
+    assert!(lab.run(r, "show ip nat statistics").contains("in VRF RED"));
+}

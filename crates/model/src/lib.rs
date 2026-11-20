@@ -1305,6 +1305,9 @@ pub struct NatRule {
     /// Port address translation: many inside hosts share one address.
     #[serde(default)]
     pub overload: bool,
+    /// `vrf NAME`: the rule translates the traffic of this VRF only (`None`: the global table).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vrf: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

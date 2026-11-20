@@ -635,7 +635,8 @@ fn nat_statistics(c: &Ctx<'_>) -> String {
             netlabcraft_model::NatTarget::Interface(i) => format!("interface {i}"),
             netlabcraft_model::NatTarget::Pool(p) => format!("pool {p}"),
         };
-        let _ = writeln!(s, "Dynamic rule: access list {} → {target}{}", r.acl, if r.overload { " (overload)" } else { "" });
+        let vrf = r.vrf.as_ref().map_or(String::new(), |v| format!(" in VRF {v}"));
+        let _ = writeln!(s, "Dynamic rule: access list {} → {target}{vrf}{}", r.acl, if r.overload { " (overload)" } else { "" });
     }
     for p in &d.nat.pools {
         let used = entries

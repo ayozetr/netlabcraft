@@ -1050,6 +1050,8 @@ pub struct NatEntry {
     pub last_us: u64,
     /// Packets translated through it, in both directions.
     pub uses: u64,
+    /// The VRF of the inside host (`None`: the global table); the same inside address in two VRFs is two hosts.
+    pub vrf: Option<String>,
 }
 
 impl NatEntry {
@@ -2192,9 +2194,14 @@ impl Sim {
         self.nat_purge(d);
         let id = flow_id(ip, true);
         let now = self.now;
+        let vrf = self.cur_vrf.clone();
         let st = self.st(d.id);
         if let Some(e) = st.nat.iter_mut().find(|e| {
-            e.inside_local == ip.src && e.protocol == ip.protocol && (e.local_id.is_none() || e.local_id == id) && (e.fixed || e.outside == ip.dst)
+            e.vrf == vrf
+                && e.inside_local == ip.src
+                && e.protocol == ip.protocol
+                && (e.local_id.is_none() || e.local_id == id)
+                && (e.fixed || e.outside == ip.dst)
         }) {
             e.uses = e.uses.saturating_add(1);
             e.last_us = now;
@@ -2214,10 +2221,14 @@ impl Sim {
                 created_us: self.now,
                 last_us: self.now,
                 uses: 1,
+                vrf: vrf.clone(),
             }
         } else {
             let key = netlabcraft_model::acl::PacketKey::bare(ip.protocol, ip.src, ip.dst);
             let Some((rule, acl_name, line)) = d.nat.rules.iter().find_map(|r| {
+                if r.vrf != vrf {
+                    return None;
+                }
                 let a = d.acls.iter().find(|a| a.name == r.acl)?;
                 let (permit, line) = a.evaluate(&key);
                 permit.then(|| (r, a.name.clone(), a.hit_key(line)))
@@ -2231,7 +2242,7 @@ impl Sim {
             st.nat_misses = st.nat_misses.saturating_add(1);
             let (global, pat) = match &rule.target {
                 netlabcraft_model::NatTarget::Interface(name) => {
-                    let ifc = l3_ifaces(d)
+                    let ifc = l3_ifaces_all(d)
                         .into_iter()
                         .find(|i| netlabcraft_model::ifname::parse(name).is_some_and(|n| n.to_string() == i.name))
                         .ok_or_else(|| format!("NAT interface {name} has no address"))?;
@@ -2274,6 +2285,7 @@ impl Sim {
                 created_us: self.now,
                 last_us: self.now,
                 uses: 1,
+                vrf: vrf.clone(),
             }
         };
         let out = rewrite(ip, true, entry.inside_global, entry.global_id);
@@ -2314,8 +2326,11 @@ impl Sim {
         self.nat_purge(d);
         let id = flow_id(ip, false);
         let now = self.now;
+        let vrf = self.cur_vrf.clone();
         let found = self.state.get_mut(&d.id).and_then(|s| {
-            s.nat.iter_mut().find(|e| e.inside_global == ip.dst && e.protocol == ip.protocol && (e.global_id.is_none() || e.global_id == id))
+            s.nat
+                .iter_mut()
+                .find(|e| e.vrf == vrf && e.inside_global == ip.dst && e.protocol == ip.protocol && (e.global_id.is_none() || e.global_id == id))
         });
         if let Some(e) = found {
             e.uses = e.uses.saturating_add(1);
@@ -2349,7 +2364,7 @@ impl Sim {
             .nat
             .iter()
             .filter(|e| e.alive(d, self.now))
-            .find(|e| e.inside_global == src && e.protocol == proto && e.global_id.is_none_or(|g| g == quoted_id))
+            .find(|e| e.vrf == self.cur_vrf && e.inside_global == src && e.protocol == proto && e.global_id.is_none_or(|g| g == quoted_id))
             .cloned()
             .or_else(|| {
                 d.nat.statics.iter().find(|(_, g)| *g == src).map(|(l, g)| NatEntry {
@@ -2363,6 +2378,7 @@ impl Sim {
                     created_us: 0,
                     last_us: 0,
                     uses: 0,
+                    vrf: self.cur_vrf.clone(),
                 })
             })?;
         original.get_mut(12..16)?.copy_from_slice(&e.inside_local.octets());

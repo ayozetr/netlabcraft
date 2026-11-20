@@ -403,7 +403,7 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `clear ip access-list counters NAME` | privileged | router, switch | Reset the match counts of one list |
 | `ip nat {inside\|outside}` | interface, subinterface | router, switch | Mark this interface inside or outside NAT |
 | `no ip nat {inside\|outside}` | interface, subinterface | router, switch | Take this interface out of NAT |
-| `ip nat inside source {static A B \| list ACL {interface IF \| pool NAME} [overload]}` | config | router, switch | Translate inside addresses |
+| `ip nat inside source {static A B \| list ACL {interface IF \| pool NAME} [vrf NAME] [overload]}` | config | router, switch | Translate inside addresses |
 | `no ip nat inside source ...` | config | router, switch | Remove a translation rule |
 | `ip nat pool WORD START END {netmask M \| prefix-length N}` | config | router, switch | Addresses to translate to |
 | `no ip nat pool WORD` | config | router, switch | Delete a NAT pool |
