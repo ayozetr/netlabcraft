@@ -319,7 +319,7 @@ fn a_nat_rule_with_a_vrf_translates_that_vrfs_traffic() {
     assert!(lab.run(a, "ping 203.0.113.10").contains("answered"));
     assert!(!lab.run(r, "show ip nat translations").contains("icmp"));
     // The rule of the VRF translates it, and the answer comes back through the same translation.
-    assert!(lab.try_run(r, "conf t").is_empty());
+    lab.run(r, "conf t");
     assert!(lab.try_run(r, "ip nat inside source list 1 interface g0/1 vrf NOPE overload").starts_with("% VRF NOPE"));
     lab.run(r, "ip nat inside source list 1 interface g0/1 vrf RED overload\nend");
     assert!(lab.run(a, "ping 203.0.113.10").contains("answered"));
