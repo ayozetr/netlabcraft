@@ -40,6 +40,7 @@ mod interface_counters;
 mod ipsec_crypto;
 mod ipsec_modes;
 mod ipsec_pfs;
+mod ipsec_profile;
 mod ipv6_ra;
 mod knobs;
 mod knobs_routing;
@@ -498,6 +499,8 @@ fn every_command_survives_hostile_arguments() {
                     "en\nconf t\narchive",
                     "en\nconf t\nspanning-tree mst configuration",
                     "en\nconf t\nipv6 router rip R",
+                    "en\nconf t\ncrypto ipsec profile P",
+                    "en\nconf t\ninterface tunnel 0",
                 ] {
                     for l in setup.lines() {
                         lab.try_run(d, l);

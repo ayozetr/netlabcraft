@@ -125,6 +125,8 @@ pub enum Mode {
     Transform(String),
     /// `R1(config-crypto-map)#`: the map's name and sequence number.
     CryptoMap(String, u32),
+    /// `R1(ipsec-profile)#`: the profile's name.
+    IpsecProfile(String),
     /// `R1(config-isakmp-group)#`: the remote-access client group's name.
     ClientGroup(String),
     /// `R1(config-bba-group)#`: the PPPoE group's name.
@@ -222,6 +224,7 @@ impl Mode {
             Mode::Isakmp(_) => Modes::ISAKMP,
             Mode::Transform(_) => Modes::TRANSFORM,
             Mode::CryptoMap(..) => Modes::CRYPTO_MAP,
+            Mode::IpsecProfile(_) => Modes::IPSEC_PROFILE,
             Mode::ClientGroup(_) => Modes::CLIENT_GROUP,
             Mode::BbaGroup(_) => Modes::BBA_GROUP,
             Mode::VirtualTemplate(_) => Modes::VTEMPLATE,
@@ -857,6 +860,7 @@ pub fn prompt(t: &Topology, dev: DeviceId, cli: &Cli) -> String {
         Mode::Isakmp(_) => format!("{n}(config-isakmp)#"),
         Mode::Transform(_) => format!("{n}(cfg-crypto-trans)#"),
         Mode::CryptoMap(..) => format!("{n}(config-crypto-map)#"),
+        Mode::IpsecProfile(_) => format!("{n}(ipsec-profile)#"),
         Mode::ClientGroup(_) => format!("{n}(config-isakmp-group)#"),
         Mode::BbaGroup(_) => format!("{n}(config-bba-group)#"),
         Mode::VirtualTemplate(_) | Mode::Dialer(_) => format!("{n}(config-if)#"),
@@ -1378,6 +1382,7 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
+                | Mode::IpsecProfile(_)
                 | Mode::ClientGroup(_)
                 | Mode::BbaGroup(_)
                 | Mode::VirtualTemplate(_)
@@ -1491,6 +1496,7 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
                 | Mode::Isakmp(_)
                 | Mode::Transform(_)
                 | Mode::CryptoMap(..)
+                | Mode::IpsecProfile(_)
                 | Mode::ClientGroup(_)
                 | Mode::BbaGroup(_)
                 | Mode::VirtualTemplate(_)
@@ -2782,6 +2788,11 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::NoCryptoMapIf
         | Id::ShowCryptoIsakmpSa
         | Id::ShowCryptoIpsecSa
+        | Id::IpsecProfile
+        | Id::NoIpsecProfile
+        | Id::TunnelProtection
+        | Id::NoTunnelProtection
+        | Id::ShowCryptoIpsecProfile
         | Id::ShowCryptoIsakmpPolicy
         | Id::ShowCryptoMap
         | Id::IpLocalPool

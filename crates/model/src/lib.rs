@@ -1951,7 +1951,15 @@ impl Device {
             if self.tunnels.len() >= vpn::MAX_TUNNELS {
                 return None;
             }
-            self.tunnels.push(vpn::Tunnel { number, ip: None, shutdown: false, description: String::new(), source: None, destination: None });
+            self.tunnels.push(vpn::Tunnel {
+                number,
+                ip: None,
+                shutdown: false,
+                description: String::new(),
+                source: None,
+                destination: None,
+                protection: None,
+            });
             self.tunnels.sort_by_key(|t| t.number);
         }
         self.tunnels.iter_mut().find(|t| t.number == number)

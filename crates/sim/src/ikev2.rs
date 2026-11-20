@@ -306,6 +306,11 @@ fn ah_child_proposal(integ: Integ, spi: u32) -> Proposal {
 /// The traffic selectors of a crypto map entry: the first permit line of its access list
 /// (source range, destination range).
 fn selectors(d: &Device, e: &CryptoMapEntry) -> Option<(TrafficSelector, TrafficSelector)> {
+    // A protected tunnel's entry protects its GRE packets between the two tunnel ends.
+    if let Some((local, peer)) = e.gre_ends {
+        let host = |a: Ipv4Addr| TrafficSelector { protocol: 47, start_port: 0, end_port: 65_535, start: a, end: a };
+        return Some((host(local), host(peer)));
+    }
     let acl = d.acls.iter().find(|a| Some(&a.name) == e.acl.as_ref())?;
     let line = acl.entries.iter().find(|x| x.permit)?;
     let range = |a: &netlabcraft_model::acl::AclAddr| {
@@ -317,6 +322,9 @@ fn selectors(d: &Device, e: &CryptoMapEntry) -> Option<(TrafficSelector, Traffic
 
 /// The crypto map entry for a peer on the interface holding `local`.
 pub(crate) fn entry_for(d: &Device, local: Ipv4Addr, peer: Ipv4Addr) -> Option<CryptoMapEntry> {
+    if let Some(e) = crate::vpn::protected_entry(d, local, peer) {
+        return Some(e);
+    }
     let ifc = crate::l3_ifaces(d).into_iter().find(|i| i.net.addr == local)?;
     let map = d.crypto.applied.iter().find(|(n, _)| same_name(n, &ifc.name)).map(|(_, m)| m.clone())?;
     d.crypto.map(&map).find(|e| e.peer == Some(peer)).cloned()
@@ -1115,6 +1123,8 @@ impl Sim {
                     let tsi = inner.iter().find_map(|p| if let Payload::TsI(v) = p { v.first().copied() } else { None });
                     let tsr = inner.iter().find_map(|p| if let Payload::TsR(v) = p { v.first().copied() } else { None });
                     let ok = match (tsi, tsr, e.acl.as_deref()) {
+                        // A protected tunnel: the peer's GRE packets from its end to this one.
+                        (Some(i), Some(r), _) if e.gre_ends.is_some() => e.gre_ends == Some((r.start, i.start)),
                         (Some(i), Some(r), Some(acl)) => {
                             let probe = Ipv4 { id: 0, ttl: 1, protocol: 0, src: r.start, dst: i.start, payload: Vec::new() };
                             acl_permits(d, acl, &probe)

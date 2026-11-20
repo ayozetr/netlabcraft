@@ -543,6 +543,12 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show crypto isakmp sa` | user, privileged | router | IKE peers and their state |
 | `show crypto isakmp policy` | user, privileged | router | IKE policies |
 | `show crypto ipsec sa` | user, privileged | router | IPsec associations and packet counts |
+| `crypto ipsec profile WORD` | config | router | Define or edit the IPsec settings of a protected tunnel |
+| `no crypto ipsec profile WORD` | config | router | Delete an IPsec profile |
+| `tunnel protection ipsec profile WORD` |  | router | Protect this tunnel's packets with an IPsec profile |
+| `no tunnel protection ipsec profile` |  | router | Send this tunnel's packets unprotected |
+| `no tunnel protection ipsec profile WORD` |  | router | Send this tunnel's packets unprotected |
+| `show crypto ipsec profile` | user, privileged | router | IPsec profiles and the tunnels they protect |
 | `class-map [match-all\|match-any] NAME` | config | router, switch | Define or edit a traffic class |
 | `no class-map [match-all\|match-any] NAME` | config | router, switch | Delete a traffic class |
 | `policy-map NAME` | config | router, switch | Define or edit what happens to each class |

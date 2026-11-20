@@ -38,6 +38,10 @@ pub struct Tunnel {
     pub source: Option<TunnelSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub destination: Option<Ipv4Addr>,
+    /// `tunnel protection ipsec profile NAME`: the GRE packets of this tunnel are protected by
+    /// IPsec with the settings of that profile.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub protection: Option<String>,
 }
 
 impl Tunnel {
@@ -124,6 +128,35 @@ pub struct CryptoMapEntry {
     /// set of IPsec keys (perfect forward secrecy); `None` derives them from the IKE SA alone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pfs: Option<u16>,
+    /// Only on the entry made for a tunnel protected by an IPsec profile (never stored): the
+    /// (local, peer) addresses of its GRE packets, which are what the entry protects instead of
+    /// an access list's traffic.
+    #[serde(skip)]
+    pub gre_ends: Option<(Ipv4Addr, Ipv4Addr)>,
+}
+
+/// `crypto ipsec profile NAME`: the IPsec settings of a protected tunnel interface (a crypto map
+/// entry without a peer or an access list, which the tunnel gives).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IpsecProfile {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transform_set: Option<String>,
+    /// `set pfs groupN`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pfs: Option<u16>,
+    /// `set security-association lifetime seconds|kilobytes N` (the global values otherwise).
+    #[serde(default, skip_serializing_if = "SaLifetime::is_unset")]
+    pub lifetime: SaLifetime,
+    /// `set ikev2-profile NAME`: negotiate with IKEv2 instead of IKEv1.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ikev2_profile: Option<String>,
+}
+
+impl IpsecProfile {
+    pub fn new(name: &str) -> IpsecProfile {
+        IpsecProfile { name: name.to_string(), transform_set: None, pfs: None, lifetime: SaLifetime::default(), ikev2_profile: None }
+    }
 }
 
 /// The Diffie-Hellman groups `set pfs` accepts, all of them computed for real.
@@ -170,6 +203,9 @@ pub struct Crypto {
     /// Sorted by map name, then sequence number.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub maps: Vec<CryptoMapEntry>,
+    /// `crypto ipsec profile NAME`, in the order they were made.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profiles: Vec<IpsecProfile>,
     /// `crypto map NAME` on an interface: interface name → map name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub applied: BTreeMap<String, String>,
@@ -474,6 +510,33 @@ impl Crypto {
         self.transform_sets.iter().find(|t| t.name == name)
     }
 
+    pub fn profile(&self, name: &str) -> Option<&IpsecProfile> {
+        self.profiles.iter().find(|p| p.name == name)
+    }
+
+    /// The crypto map entry a protected tunnel stands for: its profile's settings, the tunnel's
+    /// destination as the peer and the tunnel's GRE packets (from `local`) as the traffic.
+    /// `None` when the tunnel is not protected, the profile does not exist or there is no
+    /// destination.
+    pub fn profile_entry(&self, tun: &Tunnel, local: Ipv4Addr) -> Option<CryptoMapEntry> {
+        let prof = self.profile(tun.protection.as_deref()?)?;
+        let peer = tun.destination?;
+        Some(CryptoMapEntry {
+            map: format!("{}-head-0", tun.name()),
+            seq: 1,
+            peer: Some(peer),
+            transform_set: prof.transform_set.clone(),
+            acl: None,
+            ikev2_profile: prof.ikev2_profile.clone(),
+            lifetime: prof.lifetime,
+            template: false,
+            dynamic_ref: None,
+            reverse_route: false,
+            pfs: prof.pfs,
+            gre_ends: Some((local, peer)),
+        })
+    }
+
     /// The entries of one map, in sequence order.
     pub fn map(&self, name: &str) -> impl Iterator<Item = &CryptoMapEntry> {
         self.maps.iter().filter(move |e| e.map == name)
@@ -494,6 +557,11 @@ impl Crypto {
         for e in &mut self.maps {
             e.lifetime.sanitize();
         }
+        for p in &mut self.profiles {
+            p.lifetime.sanitize();
+            p.pfs = p.pfs.filter(|g| PFS_GROUPS.contains(g));
+        }
+        self.profiles.truncate(MAX_CRYPTO);
         self.policies.truncate(MAX_CRYPTO);
         self.keys.truncate(MAX_CRYPTO);
         self.transform_sets.truncate(MAX_CRYPTO);

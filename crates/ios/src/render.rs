@@ -3277,6 +3277,25 @@ fn vpn_config(s: &mut String, d: &Device) {
     if !c.transform_sets.is_empty() || !c.sa_lifetime.is_unset() {
         let _ = writeln!(s, "!");
     }
+    for p in &c.profiles {
+        let _ = writeln!(s, "crypto ipsec profile {}", p.name);
+        if let Some(t) = &p.transform_set {
+            let _ = writeln!(s, " set transform-set {t}");
+        }
+        if let Some(v) = &p.ikev2_profile {
+            let _ = writeln!(s, " set ikev2-profile {v}");
+        }
+        if let Some(n) = p.lifetime.seconds {
+            let _ = writeln!(s, " set security-association lifetime seconds {n}");
+        }
+        if let Some(n) = p.lifetime.kilobytes {
+            let _ = writeln!(s, " set security-association lifetime kilobytes {n}");
+        }
+        if let Some(g) = p.pfs {
+            let _ = writeln!(s, " set pfs group{g}");
+        }
+        let _ = writeln!(s, "!");
+    }
     crate::exec::ikev2::running_config(s, d);
     remote_access_config(s, d);
     for e in &c.maps {
@@ -3340,6 +3359,9 @@ fn vpn_config(s: &mut String, d: &Device) {
         }
         if let Some(a) = t.destination {
             let _ = writeln!(s, " tunnel destination {a}");
+        }
+        if let Some(p) = &t.protection {
+            let _ = writeln!(s, " tunnel protection ipsec profile {p}");
         }
         crate::exec::qos::service_policy_lines(s, d, &t.name());
         crate::exec::security::iface_lines(s, d, &t.name());
@@ -3543,7 +3565,9 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
             sa.local,
             if sa.iface.is_empty() { String::new() } else { format!(", interface {}", sa.iface) }
         );
-        if !sa.map.is_empty() {
+        if let Some(tun) = protected_tunnel(d, &sa.map) {
+            let _ = writeln!(s, "  Tunnel protection on {}: IPsec profile {}", tun.name(), tun.protection.as_deref().unwrap_or_default());
+        } else if !sa.map.is_empty() {
             let _ = writeln!(s, "  Crypto map {} entry {}", sa.map, sa.seq);
         }
         match &sa.failed {
@@ -3598,11 +3622,19 @@ pub fn crypto_ipsec_sa(sim: &Sim, d: &Device) -> String {
     s.trim_end().to_string()
 }
 
+/// The tunnel protected by an IPsec profile whose association has this (made-up) map name.
+fn protected_tunnel<'a>(d: &'a Device, map: &str) -> Option<&'a netlabcraft_model::vpn::Tunnel> {
+    d.tunnels.iter().find(|t| t.protection.is_some() && format!("{}-head-0", t.name()) == map)
+}
+
 /// What `show crypto ipsec sa` says about perfect forward secrecy: the group of the exchange
 /// that gave the keys in use, or what the crypto map entry asks for.
 fn pfs_line(d: &Device, sa: &netlabcraft_sim::vpn::IpsecSa) -> String {
     let used = sa.v1.as_deref().map(|v| v.pfs).or_else(|| sa.v2.as_deref().map(|v| v.pfs)).unwrap_or(0);
-    let asked = d.crypto.maps.iter().find(|e| e.map == sa.map && e.seq == sa.seq).and_then(|e| e.pfs);
+    let asked = d.crypto.maps.iter().find(|e| e.map == sa.map && e.seq == sa.seq).and_then(|e| e.pfs).or_else(|| {
+        let prof = protected_tunnel(d, &sa.map)?.protection.as_deref()?;
+        d.crypto.profile(prof)?.pfs
+    });
     match (used, asked) {
         (0, None) => "no (the IPsec keys come from the IKE keys alone)".to_string(),
         (0, Some(g)) => format!(
@@ -3629,6 +3661,31 @@ pub fn isakmp_policies(d: &Device) -> String {
             p.group,
             p.lifetime.unwrap_or(86_400)
         );
+    }
+    s.trim_end().to_string()
+}
+
+/// `show crypto ipsec profile`: each profile with its settings and the tunnels it protects.
+pub fn ipsec_profiles(d: &Device) -> String {
+    let c = &d.crypto;
+    if c.profiles.is_empty() {
+        return "No IPsec profiles configured".into();
+    }
+    let mut s = String::new();
+    for p in &c.profiles {
+        let _ = writeln!(s, "IPsec profile {}", p.name);
+        let ts = p.transform_set.as_deref().map_or("not set".to_string(), |n| match c.transform_set(n) {
+            Some(t) => format!("{n} ({}{})", t.transforms.join(" "), if t.transport { ", transport mode" } else { "" }),
+            None => format!("{n} (missing)"),
+        });
+        let _ = writeln!(s, "  Transform set: {ts}");
+        let _ = writeln!(s, "  PFS: {}", p.pfs.map_or("off".to_string(), |g| format!("group{g}")));
+        let secs = p.lifetime.seconds.or(c.sa_lifetime.seconds).unwrap_or(netlabcraft_model::vpn::DEFAULT_SA_SECONDS);
+        let kb = p.lifetime.kilobytes.or(c.sa_lifetime.kilobytes).unwrap_or(netlabcraft_model::vpn::DEFAULT_SA_KILOBYTES);
+        let _ = writeln!(s, "  Lifetime: {secs} seconds, {kb} kilobytes");
+        let _ = writeln!(s, "  Negotiated with: {}", p.ikev2_profile.as_deref().map_or("IKEv1".to_string(), |v| format!("IKEv2 profile {v}")));
+        let on: Vec<String> = d.tunnels.iter().filter(|t| t.protection.as_deref() == Some(p.name.as_str())).map(|t| t.name()).collect();
+        let _ = writeln!(s, "  Protects: {}", if on.is_empty() { "no tunnel".to_string() } else { on.join(", ") });
     }
     s.trim_end().to_string()
 }
