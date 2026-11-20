@@ -187,6 +187,8 @@ impl Report {
         for n in &self.notes {
             eprintln!("{n}");
         }
+        // TEMP-SHOW-NOTES
+        panic!("NOTES\n{}\nFAILURES\n{}", self.notes.join("\n"), self.failures.join("\n"));
         assert!(self.failures.is_empty(), "{}", self.failures.join("\n"));
     }
 }
