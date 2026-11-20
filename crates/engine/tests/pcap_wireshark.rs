@@ -187,10 +187,6 @@ impl Report {
         for n in &self.notes {
             eprintln!("{n}");
         }
-        // TEMP-SHOW-NOTES
-        if !self.notes.is_empty() {
-            panic!("NOTES\n{}\nFAILURES\n{}", self.notes.join("\n"), self.failures.join("\n"));
-        }
         assert!(self.failures.is_empty(), "{}", self.failures.join("\n"));
     }
 }
@@ -210,20 +206,18 @@ fn protocols(path: &Path) -> Vec<String> {
     seen
 }
 
-/// Protocols a lab's own traffic should show (all labs have run 40 simulated seconds), noted when `tshark` does not see them.
+/// Protocols a lab's own traffic shows within its 40 simulated seconds, and `tshark` must recognise them. VTP and CDP are not
+/// here because the simulator puts no frames of either on the wire.
 const PASSIVE: &[(&str, &[&str])] = &[
+    ("lan", &["stp"]),
     ("vlans", &["stp", "vlan"]),
     ("stp", &["stp"]),
     ("etherchannel", &["lacp"]),
-    ("vtp", &["vtp"]),
     ("rip", &["rip"]),
     ("ospf", &["ospf"]),
     ("hsrp", &["hsrp"]),
-    ("ipv6", &["icmpv6"]),
-    ("wlc", &["capwap"]),
+    ("wlc", &["capwap", "eap", "radius"]),
     ("sip-phones", &["sip"]),
-    ("ip-phones", &["cdp"]),
-    ("lan", &["stp"]),
 ];
 
 #[test]
@@ -246,7 +240,7 @@ fn wired_captures_are_valid_pcap_without_malformed_frames() {
         rep.check_file(sample, &path, frames, "ether", "pcap");
         for (lab, filters) in PASSIVE {
             if lab == sample {
-                rep.hope(sample, &path, filters);
+                rep.require(sample, &path, filters);
             }
         }
     }
@@ -271,39 +265,48 @@ const TRAFFIC: &[Traffic] = &[
     Traffic {
         sample: "vlans",
         typed: &[("PC1", "ping 192.168.20.10")],
-        expect: &["arp", "icmp.type == 8", "icmp.type == 0", "vlan"],
-        hope: &["stp"],
+        expect: &["arp", "icmp.type == 8", "icmp.type == 0", "vlan", "stp"],
+        hope: &[],
     },
     Traffic {
         sample: "two-subnets",
         typed: &[("PC1", "ping 10.0.2.10"), ("PC1", "tracert 10.0.2.10")],
-        expect: &["arp", "icmp.type == 8", "icmp.type == 0"],
-        hope: &["icmp.type == 11"],
+        expect: &["arp", "icmp.type == 8", "icmp.type == 0", "icmp.type == 11"],
+        hope: &[],
     },
     Traffic {
         sample: "nat-acl",
         // PC1 gets out through NAT; PC2 is refused by the access list.
         typed: &[("PC1", "ping 93.184.216.34"), ("PC2", "ping 93.184.216.34")],
-        expect: &["icmp.type == 8", "icmp.type == 0"],
-        hope: &["icmp.type == 3"],
+        expect: &["icmp.type == 8", "icmp.type == 0", "icmp.type == 3"],
+        hope: &[],
     },
     Traffic {
         sample: "services",
         typed: &[("PC1", "ipconfig /renew"), ("PC1", "nslookup www.netlabcraft.lab"), ("PC1", "ping www.netlabcraft.lab")],
-        expect: &["dhcp", "dns", "icmp.type == 8"],
-        hope: &["dns.flags.response == 1", "dhcp.option.dhcp == 5"],
+        expect: &["dhcp", "dns", "icmp.type == 8", "dns.flags.response == 1", "dhcp.option.dhcp == 5"],
+        hope: &[],
     },
     Traffic {
         sample: "dhcp",
         typed: &[("PC1", "ipconfig /renew"), ("PC1", "ping 192.168.50.1")],
-        expect: &["dhcp", "icmp.type == 8", "icmp.type == 0"],
-        hope: &["dhcp.option.dhcp == 1", "dhcp.option.dhcp == 2", "dhcp.option.dhcp == 3", "dhcp.option.dhcp == 5"],
+        // Discover, offer, request and acknowledgement.
+        expect: &[
+            "icmp.type == 8",
+            "icmp.type == 0",
+            "dhcp.option.dhcp == 1",
+            "dhcp.option.dhcp == 2",
+            "dhcp.option.dhcp == 3",
+            "dhcp.option.dhcp == 5",
+        ],
+        hope: &[],
     },
     Traffic {
         sample: "ipv6",
         typed: &[("PC1", "ping 2001:db8:2::10")],
-        expect: &["icmpv6"],
-        hope: &["icmpv6.type == 128", "icmpv6.type == 129", "icmpv6.type == 135", "icmpv6.type == 136", "icmpv6.type == 134"],
+        // Echo request and reply, neighbour solicitation and advertisement. The router advertisements go out too rarely to wait for.
+        expect: &["icmpv6.type == 128", "icmpv6.type == 129", "icmpv6.type == 135", "icmpv6.type == 136"],
+        hope: &[],
     },
 ];
 
@@ -343,15 +346,15 @@ struct App {
 }
 
 const APPS: &[App] = &[
-    App { app: "dns", extra: r#"{"text": "www.netlabcraft.lab"}"#, to: Some("Server0"), expect: &["udp.dstport == 53"], hope: &["dns"] },
-    App { app: "http", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 80 && tcp.flags.syn == 1"], hope: &["http"] },
-    App { app: "telnet", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 23 && tcp.flags.syn == 1"], hope: &["telnet"] },
-    App { app: "ssh", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 22 && tcp.flags.syn == 1"], hope: &["ssh"] },
-    App { app: "ftp", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 21 && tcp.flags.syn == 1"], hope: &["ftp"] },
-    App { app: "smtp", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 25 && tcp.flags.syn == 1"], hope: &["smtp"] },
-    App { app: "pop3", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 110 && tcp.flags.syn == 1"], hope: &["pop"] },
-    App { app: "tftp", extra: r#"{"text": "notes.txt"}"#, to: Some("Server0"), expect: &["udp.dstport == 69"], hope: &["tftp"] },
-    App { app: "snmp", extra: "{}", to: Some("Server0"), expect: &["udp.dstport == 161"], hope: &["snmp"] },
+    App { app: "dns", extra: r#"{"text": "www.netlabcraft.lab"}"#, to: Some("Server0"), expect: &["udp.dstport == 53", "dns"], hope: &[] },
+    App { app: "http", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 80 && tcp.flags.syn == 1", "http"], hope: &[] },
+    App { app: "telnet", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 23 && tcp.flags.syn == 1"], hope: &[] },
+    App { app: "ssh", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 22 && tcp.flags.syn == 1"], hope: &[] },
+    App { app: "ftp", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 21 && tcp.flags.syn == 1", "ftp"], hope: &[] },
+    App { app: "smtp", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 25 && tcp.flags.syn == 1", "smtp"], hope: &[] },
+    App { app: "pop3", extra: "{}", to: Some("Server0"), expect: &["tcp.dstport == 110 && tcp.flags.syn == 1", "pop"], hope: &[] },
+    App { app: "tftp", extra: r#"{"text": "notes.txt"}"#, to: Some("Server0"), expect: &["udp.dstport == 69", "tftp"], hope: &[] },
+    App { app: "snmp", extra: "{}", to: Some("Server0"), expect: &["udp.dstport == 161", "snmp"], hope: &[] },
     App {
         app: "udp",
         extra: r#"{"src_port": 4000, "dst_port": 5000, "size": 100}"#,
@@ -373,7 +376,7 @@ const APPS: &[App] = &[
         expect: &["icmp.type == 8 && ip.ttl == 9", "icmp.type == 0", "ip.dsfield.dscp == 46"],
         hope: &[],
     },
-    App { app: "dhcp", extra: "{}", to: None, expect: &["dhcp"], hope: &["dhcp.option.dhcp == 1"] },
+    App { app: "dhcp", extra: "{}", to: None, expect: &["dhcp", "dhcp.option.dhcp == 1"], hope: &[] },
     App { app: "arp", extra: "{}", to: Some("192.168.100.2"), expect: &["arp.opcode == 1", "arp.opcode == 2"], hope: &[] },
 ];
 

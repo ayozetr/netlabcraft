@@ -1,6 +1,6 @@
 # Pitfalls
 
-> **Last reviewed:** 2026-11-19 · **Last updated:** 2026-11-19 · **Change:** minor (the pcap test types traffic and reads more labs; CAPWAP Frame Control byte order)
+> **Last reviewed:** 2026-11-19 · **Last updated:** 2026-11-19 · **Change:** minor (the pcap test checks file type, checksums and protocols, and fires one PDU per application)
 
 Mistakes already made here, and the rule that stops each one. Read this before your first change; when you make a
 new mistake worth not repeating, add it in the same change.
@@ -39,6 +39,11 @@ new mistake worth not repeating, add it in the same change.
   requires the matching protocols in the capture. The sample labs lease their addresses while they are built, before any
   capture starts, so a DHCP check must type `ipconfig /renew` itself. The first run found that `tshark` reads the Frame Control
   of an 802.11 frame inside CAPWAP data with its two bytes swapped; `netlabcraft_wire::capwap` swaps them going in and out.
+  Every capture must also be a classic pcap file, hold no wrong IP, TCP, UDP, ICMP or ICMPv6 checksum and show the protocols
+  its lab runs (spanning tree, LACP, RIP, OSPF, HSRP, SIP, CAPWAP with EAP and RADIUS, DHCP, DNS, HTTP, FTP, SMTP, POP3, TFTP,
+  SNMP, ICMPv6 neighbour discovery); one PDU per application is fired in the `services` lab. `Report::hope` notes a frame that
+  would be good to see without failing; the first run's notes were VTP and CDP (the simulator puts no frames of either on the
+  wire) and Telnet and SSH (a PDU sends only the opening SYN, so there is nothing to decode).
 - **A new toolchain adds lints.** Clippy gates run with `-D warnings`, so a compiler bump can turn a green tree red
   (`nonminimal_bool` did, and CI on a rolling `stable` failed on `needless_range_loop`). The compiler is pinned in
   `rust-toolchain.toml`; bump it together with `rust-version`, and fix the code, not the gate.
@@ -224,6 +229,7 @@ new mistake worth not repeating, add it in the same change.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-20 | minor | The pcap test also checks the file type and every checksum, lists the protocols `tshark` recognises per lab, fires one PDU per application and types IPv6 pings; VTP and CDP put no frames on the wire. |
 | 2026-11-19 | minor | The pcap test now types traffic (ping, tracert, NAT and ACL, DNS, DHCP) into five labs and reads nine more; the CAPWAP Frame Control byte order it found. |
 | 2026-11-19 | minor | The pcap test that reads every capture with `capinfos` and `tshark`: it skips without them, CI requires them. |
 | 2026-11-18 | minor | Final consistency pass: the pitfall about the width of `Modes` (it is a `u128` now) and the one about pull requests that conflict with `main` and get no CI; the review line names only the latest change. |
