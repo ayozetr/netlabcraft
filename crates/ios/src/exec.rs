@@ -2987,7 +2987,9 @@ fn dispatch_line(t: &mut Topology, sim: &mut Sim, dev: DeviceId, cli: &mut Cli, 
         | Id::BgpAddressFamilyVrf
         | Id::RipAddressFamilyVrf
         | Id::EigrpAddressFamilyVrf
-        | Id::EigrpAddressFamilyVrfAs => vrf::command(&mut c, spec.id, &args),
+        | Id::EigrpAddressFamilyVrfAs
+        | Id::DhcpVrf
+        | Id::NoDhcpVrf => vrf::command(&mut c, spec.id, &args),
         Id::BbaGroup
         | Id::NoBbaGroup
         | Id::BbaTemplate

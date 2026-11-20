@@ -2000,6 +2000,9 @@ pub struct DhcpPool {
     /// `domain-name NAME`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub domain: Option<String>,
+    /// `vrf NAME`: the pool serves the interfaces of this VRF only (`None`: the global table).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vrf: Option<String>,
 }
 
 /// Most DHCP pools and excluded ranges per device.

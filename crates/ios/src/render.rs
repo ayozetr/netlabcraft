@@ -193,6 +193,9 @@ pub fn running_config(d: &Device) -> String {
         if let Some(dn) = &p.domain {
             let _ = writeln!(s, " domain-name {dn}");
         }
+        if let Some(v) = &p.vrf {
+            let _ = writeln!(s, " vrf {v}");
+        }
         match p.lease_secs {
             Some(u32::MAX) => {
                 let _ = writeln!(s, " lease infinite");
@@ -1366,6 +1369,9 @@ pub fn dhcp_pools(sim: &Sim, d: &Device, only: Option<&str>) -> Result<String, S
         let _ = writeln!(s, "  Default router   {}", p.default_router.map_or("-".to_string(), |r| r.to_string()));
         let _ = writeln!(s, "  DNS server       {}", p.dns.map_or("-".to_string(), |r| r.to_string()));
         let _ = writeln!(s, "  Domain name      {}", p.domain.as_deref().unwrap_or("-"));
+        if let Some(v) = &p.vrf {
+            let _ = writeln!(s, "  VRF              {v}");
+        }
         let _ = writeln!(s, "  Lease time       {}", netlabcraft_model::mgmt::lease_text(p.lease_secs.unwrap_or(86_400)));
         let _ = writeln!(s, "  Leased addresses {leased}");
         if let Some(n) = p.network {

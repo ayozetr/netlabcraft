@@ -3715,7 +3715,7 @@ impl Sim {
                         DhcpKind::Offer | DhcpKind::Ack | DhcpKind::Nak => self.dhcp_relay_down(t, d, msg),
                         _ if msg.relay.is_unspecified() => {
                             let helpers = helpers_of(d, ifc);
-                            let local_pool = d.dhcp_pools.iter().any(|p| p.network.is_some_and(|n| n.contains(ifc.net.addr)));
+                            let local_pool = d.dhcp_pools.iter().any(|p| p.vrf == ifc.vrf && p.network.is_some_and(|n| n.contains(ifc.net.addr)));
                             if !helpers.is_empty() && !local_pool {
                                 self.dhcp_relay_up(t, d, ifc, msg, &helpers)
                             } else {
@@ -4075,7 +4075,7 @@ impl Sim {
             let p = d
                 .dhcp_pools
                 .iter()
-                .find(|p| p.network.is_some_and(|n| n.contains(anchor)))
+                .find(|p| p.vrf == ifc.vrf && p.network.is_some_and(|n| n.contains(anchor)))
                 .ok_or_else(|| format!("no DHCP pool for {}", ifc.net.network()))?
                 .clone();
             (p, None)
@@ -4102,7 +4102,7 @@ impl Sim {
                 }
             }
             DhcpKind::Request => {
-                if msg.server_id.is_some_and(|s| !l3_ifaces(d).iter().any(|i| i.net.addr == s)) {
+                if msg.server_id.is_some_and(|s| !l3_ifaces_all(d).iter().any(|i| i.vrf == ifc.vrf && i.net.addr == s)) {
                     return Err("request for another DHCP server".into());
                 }
                 let wanted = msg.requested.unwrap_or(msg.client_ip);
@@ -4172,7 +4172,10 @@ impl Sim {
 
     /// Relay agent, server side: broadcast the server's answer on the client's segment.
     fn dhcp_relay_down(&mut self, t: &Topology, d: &Device, msg: Dhcp) -> Result<(), String> {
-        let ifc = l3_ifaces(d).into_iter().find(|i| i.net.addr == msg.relay).ok_or("DHCP answer for a relay address this router doesn't have")?;
+        let ifc = l3_ifaces_all(d)
+            .into_iter()
+            .find(|i| i.vrf == self.cur_vrf && i.net.addr == msg.relay)
+            .ok_or("DHCP answer for a relay address this router doesn't have")?;
         let udp = Udp { src_port: dhcp::SERVER_PORT, dst_port: dhcp::CLIENT_PORT, payload: msg.encode() };
         let ip = Ipv4 {
             id: self.ip_id(),

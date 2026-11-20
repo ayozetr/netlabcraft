@@ -414,6 +414,20 @@ pub(super) fn command(c: &mut Ctx, id: Id, args: &[String]) -> R {
             c.cli.vrf_ctx = Some(name);
             Ok(String::new())
         }
+        Id::DhcpVrf | Id::NoDhcpVrf => {
+            let Mode::DhcpPool(pool) = c.cli.mode.clone() else { return Err("% Not in DHCP pool mode".into()) };
+            let vrf = if id == Id::DhcpVrf {
+                let name = arg(0).to_string();
+                existing(c.d()?, &name)?;
+                Some(name)
+            } else {
+                None
+            };
+            let d = c.dm()?;
+            let p = d.dhcp_pools.iter_mut().find(|p| p.name == pool).ok_or("% The pool was deleted")?;
+            p.vrf = vrf;
+            Ok(String::new())
+        }
         Id::RipAddressFamilyVrf => {
             if c.cli.mode != Mode::Rip {
                 return Err("% Only under `router rip` (IPv4 RIP)".into());

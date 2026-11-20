@@ -1867,6 +1867,8 @@ Words may be abbreviated to any unambiguous prefix. `?` lists what can follow; T
 | `show ip bgp vrf NAME summary` | user, privileged | router, switch | The BGP sessions of a VRF |
 | `show ip ospf neighbor vrf NAME` | user, privileged | router, switch | The OSPF neighbours of a VRF |
 | `address-family ipv4 vrf NAME` |  | router, switch | Configure BGP inside a VRF |
+| `vrf NAME` |  | router, switch | The pool serves this VRF's interfaces |
+| `no vrf` |  | router, switch | The pool serves the global table again |
 | `address-family ipv4 vrf NAME` |  | router, switch | Configure RIP inside a VRF |
 | `address-family ipv4 vrf NAME` |  | router, switch | Configure EIGRP inside a VRF (same AS as the process) |
 | `address-family ipv4 vrf NAME autonomous-system <1-65535>` |  | router, switch | Configure EIGRP inside a VRF, in its own autonomous system |

@@ -1389,6 +1389,8 @@ pub enum Id {
     RouterOspfVrf,
     NoRouterOspfVrf,
     BgpAddressFamilyVrf,
+    DhcpVrf,
+    NoDhcpVrf,
     RipAddressFamilyVrf,
     EigrpAddressFamilyVrf,
     EigrpAddressFamilyVrfAs,
@@ -6431,6 +6433,8 @@ pub static SPECS: &[Spec] = &[
         "The OSPF neighbours of a VRF"
     ),
     spec!(BgpAddressFamilyVrf, Modes::BGP, Modes::BOTH, [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")], "Configure BGP inside a VRF"),
+    spec!(DhcpVrf, Modes::DHCP, Modes::BOTH, [K("vrf"), Arg("NAME")], "The pool serves this VRF's interfaces"),
+    spec!(NoDhcpVrf, Modes::DHCP, Modes::BOTH, [K("no"), K("vrf")], "The pool serves the global table again"),
     spec!(RipAddressFamilyVrf, Modes::RIP, Modes::BOTH, [K("address-family"), K("ipv4"), K("vrf"), Arg("NAME")], "Configure RIP inside a VRF"),
     spec!(
         EigrpAddressFamilyVrf,

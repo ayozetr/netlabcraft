@@ -269,3 +269,32 @@ fn eigrp_runs_in_a_vrf_address_family() {
     assert!(lab.try_run(r1, "address-family ipv4 vrf BLUE autonomous-system 200").starts_with("% "));
     assert!(lab.try_run(r1, "address-family ipv4 vrf NOPE").starts_with("% VRF NOPE"));
 }
+
+#[test]
+fn a_dhcp_pool_serves_the_interfaces_of_its_vrf() {
+    let mut lab = Lab::new();
+    let r = lab.add(DeviceKind::Router);
+    let pc = lab.add(DeviceKind::Pc);
+    lab.cable(pc, "fa0", r, "g0/0");
+    lab.run(
+        r,
+        "en\nconf t\nip vrf RED\nexit\ninterface g0/0\nip vrf forwarding RED\nip address 192.168.1.1 255.255.255.0\nno shut\nexit\n\
+         ip dhcp excluded-address 192.168.1.1 192.168.1.9\nip dhcp pool LAN\nnetwork 192.168.1.0 255.255.255.0\ndefault-router 192.168.1.1\nend",
+    );
+    // A pool of the global table does not answer on a VRF interface.
+    let out = lab.try_run(pc, "ipconfig /renew");
+    assert!(!out.contains("192.168.1.10"), "{out}");
+    // Put the pool in the VRF and the same request is answered.
+    lab.run(r, "conf t\nip dhcp pool LAN\nvrf RED");
+    assert!(lab.try_run(r, "vrf NOPE").starts_with("% VRF NOPE"));
+    lab.run(r, "end");
+    let out = lab.run(pc, "ipconfig /renew");
+    assert!(out.contains("192.168.1.10/24"), "{out}");
+    let pools = lab.run(r, "show ip dhcp pool");
+    assert!(pools.contains("VRF              RED"), "{pools}");
+    let run = lab.run(r, "show running-config");
+    assert!(run.contains("ip dhcp pool LAN\n network 192.168.1.0 255.255.255.0\n default-router 192.168.1.1\n vrf RED\n"), "{run}");
+    // `no vrf` puts the pool back in the global table.
+    lab.run(r, "conf t\nip dhcp pool LAN\nno vrf\nend");
+    assert!(lab.t.device(r).unwrap().dhcp_pools.iter().all(|p| p.vrf.is_none()));
+}
